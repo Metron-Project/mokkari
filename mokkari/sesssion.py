@@ -13,7 +13,7 @@ class Session:
         if params is None:
             params = {}
 
-        api_url = "https://metron.cloud/api/{}"
+        api_url = "https://metron.cloud/api/{}/"
         url = api_url.format("/".join(str(e) for e in endpoint))
         response = requests.get(url, params=params, auth=(self.username, self.passwd))
         return response.json()
