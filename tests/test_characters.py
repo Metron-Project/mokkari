@@ -20,6 +20,7 @@ class TestCreator(unittest.TestCase):
             == "https://static.metron.cloud/media/character/2018/11/11/black-bolt.jpg"
         )
         self.assertTrue(black_bolt.wikipedia == "Black_Bolt")
+        self.assertTrue(len(black_bolt.creators) == 2)
 
     def test_characterlist(self):
         character = self.c.characters_list()
