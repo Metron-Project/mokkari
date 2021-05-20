@@ -12,6 +12,8 @@ from mokkari import (
     exceptions,
     publisher,
     publishers_list,
+    team,
+    teams_list,
 )
 
 ONE_MINUTE = 60
@@ -79,3 +81,17 @@ class Session:
         if params is None:
             params = {}
         return publishers_list.PublishersList(self.call(["publisher"], params=params))
+
+    def team(self, _id):
+        try:
+            result = team.TeamSchema().load(self.call(["team", _id]))
+        except ValidationError as error:
+            raise exceptions.ApiError(error)
+
+        result.session = self
+        return result
+
+    def teams_list(self, params=None):
+        if params is None:
+            params = {}
+        return teams_list.TeamsList(self.call(["team"], params=params))
