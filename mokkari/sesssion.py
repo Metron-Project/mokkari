@@ -1,3 +1,5 @@
+import platform
+
 import requests
 from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
@@ -11,6 +13,9 @@ class Session:
     def __init__(self, username, passwd) -> None:
         self.username = username
         self.passwd = passwd
+        self.header = {
+            "User-Agent": f"Mokkari/0.0.1 ({platform.system()}; {platform.release()})"
+        }
 
     @sleep_and_retry
     @limits(calls=20, period=ONE_MINUTE)
@@ -20,7 +25,9 @@ class Session:
 
         api_url = "https://metron.cloud/api/{}/"
         url = api_url.format("/".join(str(e) for e in endpoint))
-        response = requests.get(url, params=params, auth=(self.username, self.passwd))
+        response = requests.get(
+            url, params=params, auth=(self.username, self.passwd), headers=self.header
+        )
         return response.json()
 
     def creator(self, _id):
