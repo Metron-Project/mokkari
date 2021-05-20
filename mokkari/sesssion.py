@@ -1,7 +1,10 @@
 import requests
 from marshmallow import ValidationError
+from ratelimit import limits, sleep_and_retry
 
 from . import character, character_list, creator, creators_list, exceptions
+
+ONE_MINUTE = 60
 
 
 class Session:
@@ -9,6 +12,8 @@ class Session:
         self.username = username
         self.passwd = passwd
 
+    @sleep_and_retry
+    @limits(calls=20, period=ONE_MINUTE)
     def call(self, endpoint, params=None):
         if params is None:
             params = {}

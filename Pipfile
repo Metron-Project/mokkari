@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 marshmallow = "*"
 requests = "*"
+ratelimit = "*"
 
 [dev-packages]
 coverage = "*"
