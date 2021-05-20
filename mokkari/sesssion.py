@@ -12,6 +12,8 @@ from mokkari import (
     creator,
     creators_list,
     exceptions,
+    issue,
+    issues_list,
     publisher,
     publishers_list,
     series,
@@ -127,3 +129,17 @@ class Session:
         if params is None:
             params = {}
         return series_list.SeriesList(self.call(["series"], params=params))
+
+    def issue(self, _id):
+        try:
+            result = issue.IssueSchema().load(self.call(["issue", _id]))
+        except ValidationError as error:
+            raise exceptions.ApiError(error)
+
+        result.session = self
+        return result
+
+    def issues_list(self, params=None):
+        if params is None:
+            params = {}
+        return issues_list.IssuesList(self.call(["issue"], params=params))
