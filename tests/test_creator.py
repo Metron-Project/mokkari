@@ -1,9 +1,6 @@
 import datetime
-from mokkari.creators_list import CreatorsList
 import os
 import unittest
-
-from requests import models
 
 import mokkari
 
