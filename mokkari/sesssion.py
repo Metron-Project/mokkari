@@ -4,7 +4,15 @@ import requests
 from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
 
-from . import character, character_list, creator, creators_list, exceptions
+from mokkari import (
+    character,
+    character_list,
+    creator,
+    creators_list,
+    exceptions,
+    publisher,
+    publishers_list,
+)
 
 ONE_MINUTE = 60
 
@@ -57,3 +65,17 @@ class Session:
         if params is None:
             params = {}
         return character_list.CharactersList(self.call(["character"], params=params))
+
+    def publisher(self, _id):
+        try:
+            result = publisher.PublisherSchema().load(self.call(["publisher", _id]))
+        except ValidationError as error:
+            raise exceptions.ApiError(error)
+
+        result.session = self
+        return result
+
+    def publishers_list(self, params=None):
+        if params is None:
+            params = {}
+        return publishers_list.PublishersList(self.call(["publisher"], params=params))
