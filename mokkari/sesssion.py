@@ -1,7 +1,7 @@
 import requests
 from marshmallow import ValidationError
 
-from . import creator, creators_list, exceptions
+from . import character, character_list, creator, creators_list, exceptions
 
 
 class Session:
@@ -31,3 +31,17 @@ class Session:
         if params is None:
             params = {}
         return creators_list.CreatorsList(self.call(["creator"], params=params))
+
+    def character(self, _id):
+        try:
+            result = character.CharacterSchema().load(self.call(["character", _id]))
+        except ValidationError as error:
+            raise exceptions.ApiError(error)
+
+        result.session = self
+        return result
+
+    def characters_list(self, params=None):
+        if params is None:
+            params = {}
+        return character_list.CharactersList(self.call(["character"], params=params))
