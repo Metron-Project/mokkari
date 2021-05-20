@@ -24,7 +24,7 @@ class TestInit(unittest.TestCase):
         except Exception as exc:
             self.fail("mokkari.api() raised {} unexpectedly!".format(exc))
 
-        self.assertEquals(m.__class__.__name__, mokkari.sesssion.Session.__name__)
+        self.assertEqual(m.__class__.__name__, mokkari.sesssion.Session.__name__)
 
 
 if __name__ == "__main__":
