@@ -6,7 +6,7 @@ from ratelimit import limits, sleep_and_retry
 
 from mokkari import (
     character,
-    character_list,
+    characters_list,
     creator,
     creators_list,
     exceptions,
@@ -64,7 +64,7 @@ class Session:
     def characters_list(self, params=None):
         if params is None:
             params = {}
-        return character_list.CharactersList(self.call(["character"], params=params))
+        return characters_list.CharactersList(self.call(["character"], params=params))
 
     def publisher(self, _id):
         try:
