@@ -1,8 +1,6 @@
 import requests
 from marshmallow import ValidationError
 
-from libmokkari import creator
-
 from . import creator, creators_list, exceptions
 
 
