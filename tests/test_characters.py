@@ -21,6 +21,7 @@ class TestCreator(unittest.TestCase):
         )
         self.assertTrue(black_bolt.wikipedia == "Black_Bolt")
         self.assertTrue(len(black_bolt.creators) == 2)
+        self.assertTrue(len(black_bolt.teams) == 2)
 
     def test_characterlist(self):
         character = self.c.characters_list()

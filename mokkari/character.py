@@ -1,6 +1,6 @@
 from marshmallow import INCLUDE, Schema, fields, post_load
 
-from mokkari import creator
+from mokkari import creator, team
 
 
 class Character:
@@ -17,7 +17,7 @@ class CharacterSchema(Schema):
     wikipedia = fields.Str()
     image = fields.Url()
     creators = fields.Nested(creator.CreatorSchema, many=True)
-    # teams
+    teams = fields.Nested(team.TeamSchema, many=True)
 
     class Meta:
         unknown = INCLUDE
