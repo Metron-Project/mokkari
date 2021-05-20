@@ -5,6 +5,8 @@ from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
 
 from mokkari import (
+    arc,
+    arcs_list,
     character,
     characters_list,
     creator,
@@ -95,3 +97,17 @@ class Session:
         if params is None:
             params = {}
         return teams_list.TeamsList(self.call(["team"], params=params))
+
+    def arc(self, _id):
+        try:
+            result = arc.ArcSchema().load(self.call(["arc", _id]))
+        except ValidationError as error:
+            raise exceptions.ApiError(error)
+
+        result.session = self
+        return result
+
+    def arcs_list(self, params=None):
+        if params is None:
+            params = {}
+        return arcs_list.ArcsList(self.call(["arc"], params=params))
