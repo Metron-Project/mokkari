@@ -1,10 +1,12 @@
 """Setup file for mokkari"""
 from setuptools import find_packages, setup
 
+import mokkari
+
 
 setup(
     name="mokkari",
-    version="0.0.1",
+    version=mokkari.VERSION,
     description="Python wrapper for Metron API ",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -14,17 +16,15 @@ setup(
     license="GPLv3",
     packages=find_packages(exclude=["tests"]),
     python_requires=">=3.8",
-    install_requires=[],
-    entry_points={},
+    install_requires=["marshmallow", "requests", "ratelimit"],
     classifiers=[
-        "Development Status :: 4 - Beta",
+        "Development Status :: 3 - Alpha",
         "Environment :: Console",
-        "Intended Audience :: End Users/Desktop",
+        "Intended Audience :: Developers",
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Natural Language :: English",
         "Programming Language :: Python :: 3.8",
-        "Topic :: Utilities",
-        "Topic :: Other/Nonlisted Topic",
+        "Topic :: Internet",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: POSIX",
         "Operating System :: POSIX :: BSD",
