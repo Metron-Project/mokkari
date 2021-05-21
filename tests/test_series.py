@@ -1,8 +1,8 @@
-from mokkari import series
 import os
 import unittest
 
-import mokkari
+from mokkari import api, exceptions
+from mokkari.series_list import SeriesList
 
 # TODO: Should mock the responses but for now let's use live data
 
@@ -11,7 +11,7 @@ class TestSeries(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = mokkari.api(username=username, passwd=passwd)
+        self.c = api(username=username, passwd=passwd)
 
     def test_known_series(self):
         death = self.c.series(1)
@@ -29,6 +29,14 @@ class TestSeries(unittest.TestCase):
     def test_serieslist(self):
         series = self.c.series_list()
         self.assertGreater(len(series.series), 0)
+
+    def test_bad_series(self):
+        with self.assertRaises(exceptions.ApiError):
+            self.c.series(-1)
+
+    def test_bad_response_data(self):
+        with self.assertRaises(exceptions.ApiError):
+            SeriesList({"results": {"name": 1}})
 
 
 if __name__ == "__main__":
