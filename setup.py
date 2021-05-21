@@ -14,7 +14,7 @@ setup(
     author_email="bdpepple@gmail.com",
     url="https://github.com/bpepple/mokkari",
     license="GPLv3",
-    packages=find_packages(exclude=["tests"]),
+    packages=find_packages(exclude=["tests", "docs"]),
     python_requires=">=3.8",
     install_requires=["marshmallow", "requests", "ratelimit"],
     classifiers=[
