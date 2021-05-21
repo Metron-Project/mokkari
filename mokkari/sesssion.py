@@ -32,6 +32,7 @@ class Session:
         self.header = {
             "User-Agent": f"Mokkari/0.0.1 ({platform.system()}; {platform.release()})"
         }
+        self.api_url = "https://metron.cloud/api/{}/"
 
     @sleep_and_retry
     @limits(calls=20, period=ONE_MINUTE)
@@ -39,12 +40,16 @@ class Session:
         if params is None:
             params = {}
 
-        api_url = "https://metron.cloud/api/{}/"
-        url = api_url.format("/".join(str(e) for e in endpoint))
+        url = self.api_url.format("/".join(str(e) for e in endpoint))
         response = requests.get(
             url, params=params, auth=(self.username, self.passwd), headers=self.header
         )
-        return response.json()
+        data = response.json()
+
+        if "detail" in data:
+            raise exceptions.ApiError(data["detail"])
+
+        return data
 
     def creator(self, _id):
         try:
