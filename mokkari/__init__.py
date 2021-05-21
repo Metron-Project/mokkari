@@ -1,7 +1,7 @@
 from . import exceptions, sesssion
 
 """Projects version information used in setup.py"""
-VERSION_INFO = (0, 0, 1)
+VERSION_INFO = (0, 0, 2)
 VERSION = ".".join(str(c) for c in VERSION_INFO)
 
 
