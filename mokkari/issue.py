@@ -3,6 +3,37 @@ from marshmallow import INCLUDE, Schema, fields, post_load
 from mokkari import arc, character, publisher, series, team
 
 
+class Role:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class RolesSchema(Schema):
+    id = fields.Int()
+    name = fields.Str()
+
+    @post_load
+    def make(self, data, **kwargs):
+        return Role(**data)
+
+
+class Credit:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class CreditsSchema(Schema):
+    id = fields.Int()
+    creator = fields.Str()
+    role = fields.Nested(RolesSchema, many=True)
+
+    @post_load
+    def make(self, data, **kwargs):
+        return Credit(**data)
+
+
 class Issue:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -21,7 +52,7 @@ class IssueSchema(Schema):
     desc = fields.Str()
     image = fields.URL()
     arcs = fields.Nested(arc.ArcSchema, many=True)
-    # credits
+    credits = fields.Nested(CreditsSchema, many=True)
     characters = fields.Nested(character.CharacterSchema, many=True)
     teams = fields.Nested(team.TeamSchema, many=True)
 

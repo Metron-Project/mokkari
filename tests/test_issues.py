@@ -27,6 +27,7 @@ class TestIssues(unittest.TestCase):
         )
         self.assertGreater(len(death.characters), 0)
         self.assertGreater(len(death.teams), 0)
+        self.assertGreater(len(death.credits), 0)
 
     def test_issueslist(self):
         issues = self.c.issues_list()
