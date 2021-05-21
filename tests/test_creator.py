@@ -2,7 +2,8 @@ import datetime
 import os
 import unittest
 
-import mokkari
+from mokkari import api, exceptions
+from mokkari.creators_list import CreatorsList
 
 # TODO: Should mock the responses but for now let's use live data
 
@@ -11,7 +12,7 @@ class TestCreator(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = mokkari.api(username=username, passwd=passwd)
+        self.c = api(username=username, passwd=passwd)
 
     def test_known_creator(self):
         jack = self.c.creator(3)
@@ -27,6 +28,14 @@ class TestCreator(unittest.TestCase):
     def test_comiclist(self):
         creators = self.c.creators_list()
         self.assertGreater(len(creators.creators), 0)
+
+    def test_bad_creator(self):
+        with self.assertRaises(exceptions.ApiError):
+            self.c.creator(-1)
+
+    def test_bad_response_data(self):
+        with self.assertRaises(exceptions.ApiError):
+            CreatorsList({"results": {"name": 1}})
 
 
 if __name__ == "__main__":
