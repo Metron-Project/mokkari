@@ -25,9 +25,9 @@ class TestArcs(unittest.TestCase):
         arcs = self.c.arcs_list()
         self.assertGreater(len(arcs.arcs), 0)
 
-    def test_bad_issue(self):
+    def test_bad_arc(self):
         with self.assertRaises(exceptions.ApiError):
-            self.c.issue(-1)
+            self.c.arc(-1)
 
     def test_bad_response_data(self):
         with self.assertRaises(exceptions.ApiError):
