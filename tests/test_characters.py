@@ -28,9 +28,9 @@ class TestCharacters(unittest.TestCase):
         character = self.c.characters_list()
         self.assertGreater(len(character.characters), 0)
 
-    def test_bad_issue(self):
+    def test_bad_character(self):
         with self.assertRaises(exceptions.ApiError):
-            self.c.issue(-1)
+            self.c.character(-1)
 
     def test_bad_response_data(self):
         with self.assertRaises(exceptions.ApiError):
