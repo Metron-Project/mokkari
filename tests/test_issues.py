@@ -1,8 +1,9 @@
+import datetime
 import os
 import unittest
-import datetime
 
-import mokkari
+from mokkari import api, exceptions
+from mokkari.issues_list import IssuesList
 
 # TODO: Should mock the responses but for now let's use live data
 
@@ -11,7 +12,7 @@ class TestIssues(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = mokkari.api(username=username, passwd=passwd)
+        self.c = api(username=username, passwd=passwd)
 
     def test_known_issue(self):
         death = self.c.issue(1)
@@ -32,6 +33,14 @@ class TestIssues(unittest.TestCase):
     def test_issueslist(self):
         issues = self.c.issues_list()
         self.assertGreater(len(issues.issues), 0)
+
+    def test_bad_issue(self):
+        with self.assertRaises(exceptions.ApiError):
+            self.c.issue(-1)
+
+    def test_bad_response_data(self):
+        with self.assertRaises(exceptions.ApiError):
+            IssuesList({"results": {"volume": "1"}})
 
 
 if __name__ == "__main__":
