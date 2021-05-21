@@ -8,6 +8,7 @@ class Arc:
 
 
 class ArcSchema(Schema):
+    """ Schema for the Arc API. """
     id = fields.Int()
     name = fields.Str()
     desc = fields.Str()

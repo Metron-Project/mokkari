@@ -8,6 +8,7 @@ class Series:
 
 
 class SeriesSchema(Schema):
+    """ Schema for the Series API."""
     id = fields.Int()
     name = fields.Str()
     sort_name = fields.Str()

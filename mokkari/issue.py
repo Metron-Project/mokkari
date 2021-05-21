@@ -41,6 +41,7 @@ class Issue:
 
 
 class IssueSchema(Schema):
+    """ Schema for the Issue API."""
     id = fields.Int()
     publisher = fields.Nested(publisher.PublisherSchema)
     series = fields.Nested(series.SeriesSchema)
