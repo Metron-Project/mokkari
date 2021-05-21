@@ -1,16 +1,17 @@
 import os
 import unittest
 
-import mokkari
+from mokkari import api, exceptions
+from mokkari.characters_list import CharactersList
 
 # TODO: Should mock the responses but for now let's use live data
 
 
-class TestCreator(unittest.TestCase):
+class TestCharacters(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = mokkari.api(username=username, passwd=passwd)
+        self.c = api(username=username, passwd=passwd)
 
     def test_known_character(self):
         black_bolt = self.c.character(1)
@@ -26,6 +27,14 @@ class TestCreator(unittest.TestCase):
     def test_characterlist(self):
         character = self.c.characters_list()
         self.assertGreater(len(character.characters), 0)
+
+    def test_bad_issue(self):
+        with self.assertRaises(exceptions.ApiError):
+            self.c.issue(-1)
+
+    def test_bad_response_data(self):
+        with self.assertRaises(exceptions.ApiError):
+            CharactersList({"results": {"name": 1}})
 
 
 if __name__ == "__main__":
