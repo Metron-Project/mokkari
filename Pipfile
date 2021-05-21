@@ -10,6 +10,8 @@ ratelimit = "*"
 
 [dev-packages]
 coverage = "*"
+sphinx-rtd-theme = "*"
+sphinxcontrib-napoleon = "*"
 
 [requires]
 python_version = "3.8"
