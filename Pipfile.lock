@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "333fa651f68016b629e173629b05c4b32447a2b9e6cb0a5ca2361bff2870e328"
+            "sha256": "658410b8eac99907f587b395ad4c689d962cd18d0ca076a375a27eb631b8ff6a"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -278,6 +278,14 @@
             "index": "pypi",
             "version": "==2.25.1"
         },
+        "requests-mock": {
+            "hashes": [
+                "sha256:33296f228d8c5df11a7988b741325422480baddfdf5dd9318fd0eb40c3ed8595",
+                "sha256:5c8ef0254c14a84744be146e9799dc13ebc4f6186058112d9aeed96b131b58e2"
+            ],
+            "index": "pypi",
+            "version": "==1.9.2"
+        },
         "six": {
             "hashes": [
                 "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926",
@@ -327,11 +335,11 @@
         },
         "sphinxcontrib-htmlhelp": {
             "hashes": [
-                "sha256:3c0bc24a2c41e340ac37c85ced6dafc879ab485c095b1d65d2461ac2f7cca86f",
-                "sha256:e8f5bb7e31b2dbb25b9cc435c8ab7a79787ebf7f906155729338f3156d93659b"
+                "sha256:d412243dfb797ae3ec2b59eca0e52dac12e75a241bf0e4eb861e450d06c6ed07",
+                "sha256:f5f8bb2d0d629f398bf47d0d69c07bc13b65f75a81ad9e2f71a63d4b7a2f6db2"
             ],
-            "markers": "python_version >= '3.5'",
-            "version": "==1.0.3"
+            "markers": "python_version >= '3.6'",
+            "version": "==2.0.0"
         },
         "sphinxcontrib-jsmath": {
             "hashes": [
@@ -359,11 +367,11 @@
         },
         "sphinxcontrib-serializinghtml": {
             "hashes": [
-                "sha256:eaa0eccc86e982a9b939b2b82d12cc5d013385ba5eadcc7e4fed23f4405f77bc",
-                "sha256:f242a81d423f59617a8e5cf16f5d4d74e28ee9a66f9e5b637a18082991db5a9a"
+                "sha256:352a9a00ae864471d3a7ead8d7d79f5fc0b57e8b3f95e9867eb9eb28999b92fd",
+                "sha256:aa5f6de5dfdf809ef505c4895e51ef5c9eac17d0f287933eb49ec495280b6952"
             ],
             "markers": "python_version >= '3.5'",
-            "version": "==1.1.4"
+            "version": "==1.1.5"
         },
         "urllib3": {
             "hashes": [

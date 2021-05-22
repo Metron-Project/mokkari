@@ -12,6 +12,7 @@ ratelimit = "*"
 coverage = "*"
 sphinx-rtd-theme = "*"
 sphinxcontrib-napoleon = "*"
+requests-mock = "*"
 
 [requires]
 python_version = "3.8"
