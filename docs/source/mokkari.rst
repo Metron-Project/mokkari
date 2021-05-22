@@ -116,6 +116,14 @@ mokkari.sesssion module
    :undoc-members:
    :show-inheritance:
 
+mokkari.sqlite\_cache module
+----------------------------
+
+.. automodule:: mokkari.sqlite_cache
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 mokkari.team module
 -------------------
 
