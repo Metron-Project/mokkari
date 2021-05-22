@@ -2,17 +2,19 @@ import datetime
 import os
 import unittest
 
-from mokkari import api, exceptions
+from mokkari import api, exceptions, sqlite_cache
 from mokkari.issues_list import IssuesList
-
-# TODO: Should mock the responses but for now let's use live data
 
 
 class TestIssues(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = api(username=username, passwd=passwd)
+        self.c = api(
+            username=username,
+            passwd=passwd,
+            cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
+        )
 
     def test_known_issue(self):
         death = self.c.issue(1)

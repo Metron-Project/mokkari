@@ -1,17 +1,18 @@
 import os
 import unittest
 
-from mokkari import api, exceptions
-from mokkari.series_list import SeriesList
-
-# TODO: Should mock the responses but for now let's use live data
+from mokkari import api, exceptions, series_list, sqlite_cache
 
 
 class TestSeries(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = api(username=username, passwd=passwd)
+        self.c = api(
+            username=username,
+            passwd=passwd,
+            cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
+        )
 
     def test_known_series(self):
         death = self.c.series(1)
@@ -36,7 +37,7 @@ class TestSeries(unittest.TestCase):
 
     def test_bad_response_data(self):
         with self.assertRaises(exceptions.ApiError):
-            SeriesList({"results": {"name": 1}})
+            series_list.SeriesList({"results": {"name": 1}})
 
 
 if __name__ == "__main__":

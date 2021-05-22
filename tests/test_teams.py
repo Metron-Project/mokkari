@@ -1,17 +1,18 @@
 import os
 import unittest
 
-from mokkari import api, exceptions
-from mokkari.teams_list import TeamsList
-
-# TODO: Should mock the responses but for now let's use live data
+from mokkari import api, exceptions, sqlite_cache, teams_list
 
 
 class TestTeams(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = api(username=username, passwd=passwd)
+        self.c = api(
+            username=username,
+            passwd=passwd,
+            cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
+        )
 
     def test_known_team(self):
         inhumans = self.c.team(1)
@@ -33,7 +34,7 @@ class TestTeams(unittest.TestCase):
 
     def test_bad_response_data(self):
         with self.assertRaises(exceptions.ApiError):
-            TeamsList({"results": {"name": 1}})
+            teams_list.TeamsList({"results": {"name": 1}})
 
 
 if __name__ == "__main__":

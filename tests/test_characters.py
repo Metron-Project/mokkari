@@ -1,17 +1,19 @@
 import os
 import unittest
 
-from mokkari import api, exceptions
+from mokkari import api, exceptions, sqlite_cache
 from mokkari.characters_list import CharactersList
-
-# TODO: Should mock the responses but for now let's use live data
 
 
 class TestCharacters(unittest.TestCase):
     def setUp(self):
         username = os.getenv("METRON_USERNAME", "username")
         passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = api(username=username, passwd=passwd)
+        self.c = api(
+            username=username,
+            passwd=passwd,
+            cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
+        )
 
     def test_known_character(self):
         black_bolt = self.c.character(1)
