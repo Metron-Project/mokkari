@@ -17,6 +17,10 @@ PyPi
 .. code:: bash
 
   $ pip3 install --user mokkari
+  
+Documentation
+-------------
+- `Read the project documentation <https://mokkari.readthedocs.io/en/latest/>`_
 
 Bugs/Requests
 -------------
