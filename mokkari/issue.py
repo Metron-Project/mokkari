@@ -14,7 +14,7 @@ class RolesSchema(Schema):
     name = fields.Str()
 
     @post_load
-    def make(self, data, **kwargs):
+    def make_object(self, data, **kwargs):
         return Role(**data)
 
 
@@ -30,7 +30,7 @@ class CreditsSchema(Schema):
     role = fields.Nested(RolesSchema, many=True)
 
     @post_load
-    def make(self, data, **kwargs):
+    def make_object(self, data, **kwargs):
         return Credit(**data)
 
 
@@ -61,5 +61,5 @@ class IssueSchema(Schema):
         unknown = INCLUDE
 
     @post_load
-    def make(self, data, **kwargs):
+    def make_object(self, data, **kwargs):
         return Issue(**data)

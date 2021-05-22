@@ -25,5 +25,5 @@ class SeriesSchema(Schema):
         unknown = INCLUDE
 
     @post_load
-    def make(self, data, **kwargs):
+    def make_object(self, data, **kwargs):
         return Series(**data)

@@ -22,5 +22,5 @@ class CreatorSchema(Schema):
         dateformat = "%Y-%m-%d"
 
     @post_load
-    def make(self, data, **kwargs):
+    def make_object(self, data, **kwargs):
         return Creator(**data)
