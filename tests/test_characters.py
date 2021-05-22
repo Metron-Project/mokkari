@@ -1,43 +1,29 @@
-import os
-import unittest
-
-from mokkari import api, exceptions, sqlite_cache
-from mokkari.characters_list import CharactersList
+import pytest
+from mokkari import characters_list, exceptions
 
 
-class TestCharacters(unittest.TestCase):
-    def setUp(self):
-        username = os.getenv("METRON_USERNAME", "username")
-        passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = api(
-            username=username,
-            passwd=passwd,
-            cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
-        )
-
-    def test_known_character(self):
-        black_bolt = self.c.character(1)
-        self.assertTrue(black_bolt.name == "Black Bolt")
-        self.assertTrue(
-            black_bolt.image
-            == "https://static.metron.cloud/media/character/2018/11/11/black-bolt.jpg"
-        )
-        self.assertTrue(black_bolt.wikipedia == "Black_Bolt")
-        self.assertTrue(len(black_bolt.creators) == 2)
-        self.assertTrue(len(black_bolt.teams) == 2)
-
-    def test_characterlist(self):
-        character = self.c.characters_list()
-        self.assertGreater(len(character.characters), 0)
-
-    def test_bad_character(self):
-        with self.assertRaises(exceptions.ApiError):
-            self.c.character(-1)
-
-    def test_bad_response_data(self):
-        with self.assertRaises(exceptions.ApiError):
-            CharactersList({"results": {"name": 1}})
+def test_known_character(talker):
+    black_bolt = talker.character(1)
+    assert black_bolt.name == "Black Bolt"
+    assert (
+        black_bolt.image
+        == "https://static.metron.cloud/media/character/2018/11/11/black-bolt.jpg"
+    )
+    assert black_bolt.wikipedia == "Black_Bolt"
+    assert len(black_bolt.creators) == 2
+    assert len(black_bolt.teams) == 2
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_characterlist(talker):
+    character = talker.characters_list()
+    assert len(character.characters) > 0
+
+
+def test_bad_character(talker):
+    with pytest.raises(exceptions.ApiError):
+        talker.character(-1)
+
+
+def test_bad_response_data(talker):
+    with pytest.raises(exceptions.ApiError):
+        characters_list.CharactersList({"results": {"name": 1}})

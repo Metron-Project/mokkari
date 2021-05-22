@@ -1,40 +1,26 @@
-import os
-import unittest
-
-from mokkari import api, exceptions, sqlite_cache
-from mokkari.arcs_list import ArcsList
+import pytest
+from mokkari import arcs_list, exceptions
 
 
-class TestArcs(unittest.TestCase):
-    def setUp(self):
-        username = os.getenv("METRON_USERNAME", "username")
-        passwd = os.getenv("METRON_PASSWD", "passwd")
-        self.c = api(
-            username=username,
-            passwd=passwd,
-            cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
-        )
-
-    def test_known_arc(self):
-        heroes = self.c.arc(1)
-        self.assertTrue(heroes.name == "Heroes In Crisis")
-        self.assertTrue(
-            heroes.image
-            == "https://static.metron.cloud/media/arc/2018/11/12/heroes-in-crisis.jpeg"
-        )
-
-    def test_arcslist(self):
-        arcs = self.c.arcs_list()
-        self.assertGreater(len(arcs.arcs), 0)
-
-    def test_bad_arc(self):
-        with self.assertRaises(exceptions.ApiError):
-            self.c.arc(-1)
-
-    def test_bad_response_data(self):
-        with self.assertRaises(exceptions.ApiError):
-            ArcsList({"results": {"name": 1}})
+def test_known_arc(talker):
+    heroes = talker.arc(1)
+    assert heroes.name == "Heroes In Crisis"
+    assert (
+        heroes.image
+        == "https://static.metron.cloud/media/arc/2018/11/12/heroes-in-crisis.jpeg"
+    )
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_arcslist(talker):
+    arcs = talker.arcs_list()
+    assert len(arcs.arcs) > 0
+
+
+def test_bad_arc(talker):
+    with pytest.raises(exceptions.ApiError):
+        talker.arc(-1)
+
+
+def test_bad_response_data():
+    with pytest.raises(exceptions.ApiError):
+        arcs_list.ArcsList({"results": {"name": 1}})
