@@ -26,6 +26,13 @@ ONE_MINUTE = 60
 
 
 class Session:
+    """
+    Session to request api endpoints
+
+    :param str username: The username for authentication with metron.cloud
+    :param str passwd: The password used for authentication with metron.cloud
+    """
+
     def __init__(self, username, passwd) -> None:
         self.username = username
         self.passwd = passwd
@@ -37,6 +44,12 @@ class Session:
     @sleep_and_retry
     @limits(calls=20, period=ONE_MINUTE)
     def call(self, endpoint, params=None):
+        """
+        Method to make request for api endpoints.
+
+        :param str endpoint: The endpoint to request information from.
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
 
@@ -52,6 +65,11 @@ class Session:
         return data
 
     def creator(self, _id):
+        """
+        Method to request data for a creator based on its ``_id``.
+
+        :param int _id: The creator id.
+        """
         try:
             result = creator.CreatorSchema().load(self.call(["creator", _id]))
         except ValidationError as error:
@@ -61,11 +79,21 @@ class Session:
         return result
 
     def creators_list(self, params=None):
+        """
+        Method to request a list of creators.
+
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
         return creators_list.CreatorsList(self.call(["creator"], params=params))
 
     def character(self, _id):
+        """
+        Method to request data for a character based on its ``_id``.
+
+        :param int _id: The character id.
+        """
         try:
             result = character.CharacterSchema().load(self.call(["character", _id]))
         except ValidationError as error:
@@ -75,11 +103,21 @@ class Session:
         return result
 
     def characters_list(self, params=None):
+        """
+        Method to request a list of characters.
+
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
         return characters_list.CharactersList(self.call(["character"], params=params))
 
     def publisher(self, _id):
+        """
+        Method to request data for a publisher based on its ``_id``.
+
+        :param int _id: The publisher id.
+        """
         try:
             result = publisher.PublisherSchema().load(self.call(["publisher", _id]))
         except ValidationError as error:
@@ -89,11 +127,21 @@ class Session:
         return result
 
     def publishers_list(self, params=None):
+        """
+        Method to request a list of publishers.
+
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
         return publishers_list.PublishersList(self.call(["publisher"], params=params))
 
     def team(self, _id):
+        """
+        Method to request data for a team based on its ``_id``.
+
+        :param int _id: The team id.
+        """
         try:
             result = team.TeamSchema().load(self.call(["team", _id]))
         except ValidationError as error:
@@ -103,11 +151,21 @@ class Session:
         return result
 
     def teams_list(self, params=None):
+        """
+        Method to request a list of teams.
+
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
         return teams_list.TeamsList(self.call(["team"], params=params))
 
     def arc(self, _id):
+        """
+        Method to request data for a story arc based on its ``_id``.
+
+        :param int _id: The story arc id.
+        """
         try:
             result = arc.ArcSchema().load(self.call(["arc", _id]))
         except ValidationError as error:
@@ -117,11 +175,21 @@ class Session:
         return result
 
     def arcs_list(self, params=None):
+        """
+        Method to request a list of story arcs.
+
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
         return arcs_list.ArcsList(self.call(["arc"], params=params))
 
     def series(self, _id):
+        """
+        Method to request data for a series based on its ``_id``.
+
+        :param int _id: The series id.
+        """
         try:
             result = series.SeriesSchema().load(self.call(["series", _id]))
         except ValidationError as error:
@@ -131,11 +199,21 @@ class Session:
         return result
 
     def series_list(self, params=None):
+        """
+        Method to request a list of series.
+
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
         return series_list.SeriesList(self.call(["series"], params=params))
 
     def issue(self, _id):
+        """
+        Method to request data for an issue based on it's ``_id``.
+
+        :param int _id: The issue id.
+        """
         try:
             result = issue.IssueSchema().load(self.call(["issue", _id]))
         except ValidationError as error:
@@ -145,6 +223,11 @@ class Session:
         return result
 
     def issues_list(self, params=None):
+        """
+        Method to request a list of issues.
+
+        :param dict params: Parameters to add to the request.
+        """
         if params is None:
             params = {}
         return issues_list.IssuesList(self.call(["issue"], params=params))

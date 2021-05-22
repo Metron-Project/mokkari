@@ -8,8 +8,8 @@ VERSION = ".".join(str(c) for c in VERSION_INFO)
 def api(username=None, passwd=None):
     """ Entry function the sets login credentials for metron.cloud.
 
-    :param username: The username used for metron.cloud.
-    :param passwd: The password used for metron.cloud.
+    :param str username: The username used for metron.cloud.
+    :param str passwd: The password used for metron.cloud.
     """
     if username is None:
         raise exceptions.AuthenticationError("Missing username.")
