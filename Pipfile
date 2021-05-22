@@ -9,10 +9,12 @@ requests = "*"
 ratelimit = "*"
 
 [dev-packages]
-coverage = "*"
 sphinx-rtd-theme = "*"
 sphinxcontrib-napoleon = "*"
 requests-mock = "*"
+pytest = "*"
+pytest-cov = "*"
+flake8 = "*"
 
 [requires]
 python_version = "3.8"
