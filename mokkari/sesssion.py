@@ -1,4 +1,6 @@
 import platform
+from collections import OrderedDict
+from urllib.parse import urlencode
 
 import requests
 from marshmallow import ValidationError
@@ -33,13 +35,14 @@ class Session:
     :param str passwd: The password used for authentication with metron.cloud
     """
 
-    def __init__(self, username, passwd) -> None:
+    def __init__(self, username, passwd, cache=None) -> None:
         self.username = username
         self.passwd = passwd
         self.header = {
             "User-Agent": f"Mokkari/0.0.1 ({platform.system()}; {platform.release()})"
         }
         self.api_url = "https://metron.cloud/api/{}/"
+        self.cache = cache
 
     @sleep_and_retry
     @limits(calls=20, period=ONE_MINUTE)
@@ -53,7 +56,25 @@ class Session:
         if params is None:
             params = {}
 
+        cache_params = ""
+        if len(params) > 0:
+            orderedParams = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
+            cache_params = "?{}".format(urlencode(orderedParams))
+
         url = self.api_url.format("/".join(str(e) for e in endpoint))
+        cache_key = f"{url}{cache_params}"
+
+        if self.cache:
+            try:
+                cached_response = self.cache.get(cache_key)
+
+                if cached_response is not None:
+                    return cached_response
+            except AttributeError as e:
+                raise exceptions.CacheError(
+                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                )
+
         response = requests.get(
             url, params=params, auth=(self.username, self.passwd), headers=self.header
         )
@@ -61,6 +82,15 @@ class Session:
 
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
+
+        if self.cache:
+            try:
+                self.cache.store(cache_key, data)
+                
+            except AttributeError as e:
+                raise exceptions.CacheError(
+                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                )
 
         return data
 
