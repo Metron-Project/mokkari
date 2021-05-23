@@ -58,8 +58,8 @@ class Session:
 
         cache_params = ""
         if len(params) > 0:
-            orderedParams = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
-            cache_params = "?{}".format(urlencode(orderedParams))
+            ordered_params = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
+            cache_params = "?{}".format(urlencode(ordered_params))
 
         url = self.api_url.format("/".join(str(e) for e in endpoint))
         cache_key = f"{url}{cache_params}"
@@ -86,7 +86,6 @@ class Session:
         if self.cache:
             try:
                 self.cache.store(cache_key, data)
-                
             except AttributeError as e:
                 raise exceptions.CacheError(
                     "Cache object passed in is missing attribute: {}".format(repr(e))
