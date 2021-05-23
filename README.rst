@@ -5,6 +5,9 @@ Mokkari
 .. image:: https://codecov.io/gh/bpepple/mokkari/branch/main/graph/badge.svg?token=QU1ROMMOS4
     :target: https://codecov.io/gh/bpepple/mokkari
 
+.. image:: https://sonarcloud.io/api/project_badges/measure?project=bpepple_mokkari&metric=alert_status
+    :target: https://sonarcloud.io/dashboard?id=bpepple_mokkari
+
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
     :target: https://github.com/psf/black
 
