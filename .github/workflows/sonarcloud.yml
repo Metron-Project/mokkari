@@ -39,7 +39,7 @@ jobs:
           file: ./coverage.xml
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarcloud-github-action@v1.6
         with:
           args: >
             -Dsonar.python.coverage.reportPaths=coverage.xml
