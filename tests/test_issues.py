@@ -21,6 +21,18 @@ def test_known_issue(talker):
     assert len(death.credits) > 0
 
 
+def test_issue_without_store_date(talker):
+    spidey = talker.issue(31047)
+    assert spidey.publisher.name == "Marvel"
+    assert spidey.series.name == "The Spectacular Spider-Man"
+    assert spidey.volume == 1
+    assert spidey.name[0] == "A Night on the Prowl!"
+    assert spidey.cover_date == datetime.date(1980, 10, 1)
+    assert spidey.store_date is None
+    assert "Dennis O'Neil" in [c.creator for c in spidey.credits]
+    assert "Spider-Man" in [c.name for c in spidey.characters]
+
+
 def test_issueslist(talker):
     issues = talker.issues_list()
     assert len(issues.issues) > 0
