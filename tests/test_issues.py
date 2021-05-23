@@ -33,6 +33,17 @@ def test_issue_without_store_date(talker):
     assert "Spider-Man" in [c.name for c in spidey.characters]
 
 
+def test_issue_without_story_title(talker):
+    redemption = talker.issue(30662)
+    assert redemption.publisher.name == "AWA Studios"
+    assert redemption.series.name == "Redemption"
+    assert redemption.volume == 1
+    assert len(redemption.name) == 0
+    assert redemption.cover_date == datetime.date(2021, 5, 1)
+    assert redemption.store_date == datetime.date(2021, 5, 19)
+    assert "Christa Faust" in [c.creator for c in redemption.credits]
+
+
 def test_issueslist(talker):
     issues = talker.issues_list()
     assert len(issues.issues) > 0
