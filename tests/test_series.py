@@ -14,6 +14,8 @@ def test_known_series(talker):
         death.image
         == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     )
+    assert death.series_type.name == "Mini-Series"
+    assert death.publisher_id == 1
 
 
 def test_serieslist(talker):
