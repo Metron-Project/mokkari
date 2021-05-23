@@ -40,11 +40,11 @@ jobs:
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v1.6
-        with:
-          args: >
-            -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.sources=mokkari/
-            -Dsonar.tests=tests/
+        # with:
+        #   args: >
+        #     -Dsonar.python.coverage.reportPaths=coverage.xml
+        #     -Dsonar.sources=mokkari/
+        #     -Dsonar.tests=tests/
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
