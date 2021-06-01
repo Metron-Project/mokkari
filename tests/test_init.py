@@ -1,5 +1,5 @@
 import pytest
-from mokkari import api, exceptions, sesssion
+from mokkari import api, exceptions, session
 
 
 def test_api():
@@ -18,4 +18,4 @@ def test_api():
     except Exception as exc:
         print("mokkari.api() raised {} unexpectedly!".format(exc))
 
-    assert m.__class__.__name__ == sesssion.Session.__name__
+    assert m.__class__.__name__ == session.Session.__name__

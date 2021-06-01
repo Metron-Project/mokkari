@@ -1,4 +1,4 @@
-from . import exceptions, sesssion
+from . import exceptions, session
 
 # Projects version information used in setup.py
 VERSION_INFO = (0, 1, 0)
@@ -17,4 +17,4 @@ def api(username=None, passwd=None, cache=None):
     if passwd is None:
         raise exceptions.AuthenticationError("Missing passwd.")
 
-    return sesssion.Session(username, passwd, cache=cache)
+    return session.Session(username, passwd, cache=cache)
