@@ -1,6 +1,7 @@
 import datetime
 
 import pytest
+import requests_mock
 from mokkari import exceptions, issues_list
 
 
@@ -50,8 +51,13 @@ def test_issueslist(talker):
 
 
 def test_bad_issue(talker):
-    with pytest.raises(exceptions.ApiError):
-        talker.issue(-1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/issue/-1/",
+            text='{"response_code": 404, "detail": "Not found."}',
+        )
+        with pytest.raises(exceptions.ApiError):
+            talker.issue(-1)
 
 
 def test_bad_response_data():

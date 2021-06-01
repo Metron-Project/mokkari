@@ -1,4 +1,5 @@
 import pytest
+import requests_mock
 from mokkari import characters_list, exceptions
 
 
@@ -20,8 +21,13 @@ def test_characterlist(talker):
 
 
 def test_bad_character(talker):
-    with pytest.raises(exceptions.ApiError):
-        talker.character(-1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/character/-1/",
+            text='{"response_code": 404, "detail": "Not found."}',
+        )
+        with pytest.raises(exceptions.ApiError):
+            talker.character(-1)
 
 
 def test_bad_response_data(talker):

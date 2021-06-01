@@ -1,4 +1,5 @@
 import pytest
+import requests_mock
 from mokkari import arcs_list, exceptions
 
 
@@ -17,8 +18,14 @@ def test_arcslist(talker):
 
 
 def test_bad_arc(talker):
-    with pytest.raises(exceptions.ApiError):
-        talker.arc(-1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/arc/-8/",
+            text='{"response_code": 404, "detail": "Not found."}',
+        )
+
+        with pytest.raises(exceptions.ApiError):
+            talker.arc(-8)
 
 
 def test_bad_response_data():

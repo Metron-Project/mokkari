@@ -1,6 +1,7 @@
 import datetime
 
 import pytest
+import requests_mock
 from mokkari import creators_list, exceptions
 
 
@@ -22,8 +23,13 @@ def test_comiclist(talker):
 
 
 def test_bad_creator(talker):
-    with pytest.raises(exceptions.ApiError):
-        talker.creator(-1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/creator/-1/",
+            text='{"response_code": 404, "detail": "Not found."}',
+        )
+        with pytest.raises(exceptions.ApiError):
+            talker.creator(-1)
 
 
 def test_bad_response_data(talker):
