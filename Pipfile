@@ -11,11 +11,11 @@ ratelimit = "*"
 [dev-packages]
 sphinx-rtd-theme = "*"
 sphinxcontrib-napoleon = "*"
-requests-mock = "*"
 pytest = "*"
 pytest-cov = "*"
 flake8 = "*"
 pytest-xdist = "*"
+requests-mock = "*"
 
 [requires]
 python_version = "3.8"
