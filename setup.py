@@ -18,7 +18,7 @@ setup(
     python_requires=">=3.8",
     install_requires=["marshmallow", "requests", "ratelimit"],
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Environment :: Console",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
