@@ -1,5 +1,3 @@
-import itertools
-
 from marshmallow import ValidationError
 
 from . import character, exceptions
@@ -24,11 +22,3 @@ class CharactersList:
 
     def __len__(self):
         return len(self.characters)
-
-    def __getitem__(self, index):
-        try:
-            return next(itertools.islice(self.characters, index, index + 1))
-        except TypeError:
-            return list(
-                itertools.islice(self.characters, index.start, index.stop, index.step)
-            )

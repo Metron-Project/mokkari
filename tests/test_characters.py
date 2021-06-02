@@ -17,7 +17,11 @@ def test_known_character(talker):
 
 def test_characterlist(talker):
     character = talker.characters_list()
-    assert len(character.characters) > 0
+    character_iter = iter(character)
+    assert next(character_iter).name == "'Mazing Man"
+    assert next(character_iter).name == "0101"
+    assert next(character_iter).name == "2-D"
+    assert len(character) == 28
 
 
 def test_bad_character(talker):

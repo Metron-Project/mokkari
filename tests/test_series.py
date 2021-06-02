@@ -21,7 +21,11 @@ def test_known_series(talker):
 
 def test_serieslist(talker):
     series = talker.series_list()
-    assert len(series.series), 0
+    series_iter = iter(series)
+    assert next(series_iter).id == 1530
+    assert next(series_iter).id == 1531
+    assert next(series_iter).id == 1532
+    assert len(series) == 28
 
 
 def test_bad_series(talker):

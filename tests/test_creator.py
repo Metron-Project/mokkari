@@ -19,7 +19,12 @@ def test_known_creator(talker):
 
 def test_comiclist(talker):
     creators = talker.creators_list()
-    assert len(creators.creators) > 0
+    creator_iter = iter(creators)
+    assert next(creator_iter).name == "A. J. Jothikumar"
+    assert next(creator_iter).name == "A. J. Lieberman"
+    assert next(creator_iter).name == "A.J. Fierro"
+    assert next(creator_iter).name == "ACO"
+    assert len(creators) == 28
 
 
 def test_bad_creator(talker):

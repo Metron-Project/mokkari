@@ -1,5 +1,3 @@
-import itertools
-
 from marshmallow import ValidationError
 
 from . import creator, exceptions
@@ -24,11 +22,3 @@ class CreatorsList:
 
     def __len__(self):
         return len(self.creators)
-
-    def __getitem__(self, index):
-        try:
-            return next(itertools.islice(self.creators, index, index + 1))
-        except TypeError:
-            return list(
-                itertools.islice(self.creators, index.start, index.stop, index.step)
-            )

@@ -47,7 +47,11 @@ def test_issue_without_story_title(talker):
 
 def test_issueslist(talker):
     issues = talker.issues_list()
-    assert len(issues.issues) > 0
+    issue_iter = iter(issues)
+    assert next(issue_iter).id == 16909
+    assert next(issue_iter).id == 16910
+    assert next(issue_iter).id == 16911
+    assert len(issues) == 28
 
 
 def test_bad_issue(talker):

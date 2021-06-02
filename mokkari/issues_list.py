@@ -1,5 +1,3 @@
-import itertools
-
 from marshmallow import ValidationError
 
 from mokkari import exceptions, issue
@@ -24,11 +22,3 @@ class IssuesList:
 
     def __len__(self):
         return len(self.issues)
-
-    def __getitem__(self, index):
-        try:
-            return next(itertools.islice(self.issues, index, index + 1))
-        except TypeError:
-            return list(
-                itertools.islice(self.issues, index.start, index.stop, index.step)
-            )

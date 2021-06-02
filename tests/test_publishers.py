@@ -16,7 +16,11 @@ def test_known_publishers(talker):
 
 def test_publisherlist(talker):
     publishers = talker.publishers_list()
-    assert len(publishers.publishers) > 0
+    publisher_iter = iter(publishers)
+    assert next(publisher_iter).name == "12-Gauge Comics"
+    assert next(publisher_iter).name == "AWA Studios"
+    assert next(publisher_iter).name == "AfterShock Comics"
+    assert len(publishers) == 28
 
 
 def test_bad_publisher(talker):

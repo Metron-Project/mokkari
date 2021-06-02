@@ -16,7 +16,11 @@ def test_known_team(talker):
 
 def test_teamlist(talker):
     teams = talker.teams_list()
-    assert len(teams.teams) > 0
+    team_iter = iter(teams)
+    assert next(team_iter).name == "A-Force"
+    assert next(team_iter).name == "A.I.M."
+    assert next(team_iter).name == "A.R.G.U.S."
+    assert len(teams) == 28
 
 
 def test_bad_team(talker):

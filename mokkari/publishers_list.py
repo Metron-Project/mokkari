@@ -1,5 +1,3 @@
-import itertools
-
 from marshmallow import ValidationError
 
 from . import publisher, exceptions
@@ -24,11 +22,3 @@ class PublishersList:
 
     def __len__(self):
         return len(self.publishers)
-
-    def __getitem__(self, index):
-        try:
-            return next(itertools.islice(self.publishers, index, index + 1))
-        except TypeError:
-            return list(
-                itertools.islice(self.publishers, index.start, index.stop, index.step)
-            )

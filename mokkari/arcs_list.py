@@ -1,5 +1,3 @@
-import itertools
-
 from marshmallow import ValidationError
 
 from mokkari import arc, exceptions
@@ -24,11 +22,3 @@ class ArcsList:
 
     def __len__(self):
         return len(self.arcs)
-
-    def __getitem__(self, index):
-        try:
-            return next(itertools.islice(self.arcs, index, index + 1))
-        except TypeError:
-            return list(
-                itertools.islice(self.arcs, index.start, index.stop, index.step)
-            )

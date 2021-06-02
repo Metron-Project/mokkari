@@ -1,5 +1,3 @@
-import itertools
-
 from marshmallow import ValidationError
 
 from mokkari import exceptions, team
@@ -24,11 +22,3 @@ class TeamsList:
 
     def __len__(self):
         return len(self.teams)
-
-    def __getitem__(self, index):
-        try:
-            return next(itertools.islice(self.teams, index, index + 1))
-        except TypeError:
-            return list(
-                itertools.islice(self.teams, index.start, index.stop, index.step)
-            )

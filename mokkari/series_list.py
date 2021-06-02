@@ -1,5 +1,3 @@
-import itertools
-
 from marshmallow import ValidationError
 
 from mokkari import exceptions, series
@@ -24,11 +22,3 @@ class SeriesList:
 
     def __len__(self):
         return len(self.series)
-
-    def __getitem__(self, index):
-        try:
-            return next(itertools.islice(self.series, index, index + 1))
-        except TypeError:
-            return list(
-                itertools.islice(self.series, index.start, index.stop, index.step)
-            )
