@@ -6,7 +6,6 @@ from mokkari import exceptions, series
 class SeriesList:
     def __init__(self, response):
         self.series = []
-        self.response = response
 
         schema = series.SeriesSchema()
         for series_dict in response["results"]:

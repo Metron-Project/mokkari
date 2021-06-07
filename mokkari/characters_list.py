@@ -1,12 +1,11 @@
 from marshmallow import ValidationError
 
-from . import character, exceptions
+from mokkari import character, exceptions
 
 
 class CharactersList:
     def __init__(self, response):
         self.characters = []
-        self.response = response
 
         schema = character.CharacterSchema()
         for character_dict in response["results"]:

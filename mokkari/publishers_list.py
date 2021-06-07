@@ -1,12 +1,11 @@
 from marshmallow import ValidationError
 
-from . import publisher, exceptions
+from mokkari import exceptions, publisher
 
 
 class PublishersList:
     def __init__(self, response):
         self.publishers = []
-        self.response = response
 
         schema = publisher.PublisherSchema()
         for pub_dict in response["results"]:

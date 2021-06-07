@@ -6,7 +6,6 @@ from mokkari import exceptions, team
 class TeamsList:
     def __init__(self, response):
         self.teams = []
-        self.response = response
 
         schema = team.TeamSchema()
         for team_dict in response["results"]:

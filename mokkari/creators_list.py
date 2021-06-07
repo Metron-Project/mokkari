@@ -1,12 +1,11 @@
 from marshmallow import ValidationError
 
-from . import creator, exceptions
+from mokkari import creator, exceptions
 
 
 class CreatorsList:
     def __init__(self, response) -> None:
         self.creators = []
-        self.response = response
 
         schema = creator.CreatorSchema()
         for creator_dict in response["results"]:

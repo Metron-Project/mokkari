@@ -6,7 +6,6 @@ from mokkari import arc, exceptions
 class ArcsList:
     def __init__(self, response):
         self.arcs = []
-        self.response = response
 
         schema = arc.ArcSchema()
         for arc_dict in response["results"]:

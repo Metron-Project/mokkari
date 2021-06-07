@@ -6,7 +6,6 @@ from mokkari import exceptions, issue
 class IssuesList:
     def __init__(self, response):
         self.issues = []
-        self.response = response
 
         schema = issue.IssueSchema()
         for issue_dict in response["results"]:
