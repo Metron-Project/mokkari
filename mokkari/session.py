@@ -8,6 +8,7 @@ from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
 
 from mokkari import (
+    __version__,
     arc,
     arcs_list,
     character,
@@ -47,7 +48,7 @@ class Session:
         self.username = username
         self.passwd = passwd
         self.header = {
-            "User-Agent": f"Mokkari/0.0.1 ({platform.system()}; {platform.release()})"
+            "User-Agent": f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
         }
         self.api_url = "https://metron.cloud/api/{}/"
         self.cache = cache

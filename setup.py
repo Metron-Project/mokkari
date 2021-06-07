@@ -3,10 +3,9 @@ from setuptools import find_packages, setup
 
 import mokkari
 
-
 setup(
     name="mokkari",
-    version=mokkari.VERSION,
+    version=mokkari.__version__,
     description="Python wrapper for Metron API ",
     long_description=open("README.rst").read(),
     long_description_content_type="text/x-rst",
