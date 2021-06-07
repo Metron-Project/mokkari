@@ -3,7 +3,7 @@ from typing import Optional
 from mokkari import exceptions, session, sqlite_cache
 
 # Projects version information used in setup.py
-VERSION_INFO = (0, 1, 2)
+VERSION_INFO = (0, 1, 4)
 VERSION = ".".join(str(c) for c in VERSION_INFO)
 
 
