@@ -25,6 +25,7 @@ def test_comiclist(talker):
     assert next(creator_iter).name == "A.J. Fierro"
     assert next(creator_iter).name == "ACO"
     assert len(creators) == 28
+    assert creators[3].name == "ACO"
 
 
 def test_bad_creator(talker):

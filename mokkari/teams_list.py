@@ -22,3 +22,6 @@ class TeamsList:
 
     def __len__(self):
         return len(self.teams)
+
+    def __getitem__(self, index: int):
+        return self.teams[index]

@@ -18,6 +18,7 @@ def test_arcslist(talker):
     assert next(arc_iter).name == "52"
     assert next(arc_iter).name == "A Court of Owls"
     assert len(arcs) == 28
+    assert arcs[1].name == "A Court of Owls"
 
 
 def test_bad_arc(talker):

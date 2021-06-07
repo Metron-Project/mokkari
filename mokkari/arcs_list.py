@@ -22,3 +22,6 @@ class ArcsList:
 
     def __len__(self):
         return len(self.arcs)
+
+    def __getitem__(self, index: int):
+        return self.arcs[index]

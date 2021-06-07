@@ -21,6 +21,7 @@ def test_publisherlist(talker):
     assert next(publisher_iter).name == "AWA Studios"
     assert next(publisher_iter).name == "AfterShock Comics"
     assert len(publishers) == 28
+    assert publishers[2].name == "AfterShock Comics"
 
 
 def test_bad_publisher(talker):

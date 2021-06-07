@@ -21,6 +21,7 @@ def test_teamlist(talker):
     assert next(team_iter).name == "A.I.M."
     assert next(team_iter).name == "A.R.G.U.S."
     assert len(teams) == 28
+    assert teams[2].name == "A.R.G.U.S."
 
 
 def test_bad_team(talker):

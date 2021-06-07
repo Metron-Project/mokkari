@@ -22,3 +22,6 @@ class PublishersList:
 
     def __len__(self):
         return len(self.publishers)
+
+    def __getitem__(self, index: int):
+        return self.publishers[index]

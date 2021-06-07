@@ -22,6 +22,7 @@ def test_characterlist(talker):
     assert next(character_iter).name == "0101"
     assert next(character_iter).name == "2-D"
     assert len(character) == 28
+    assert character[2].name == "2-D"
 
 
 def test_bad_character(talker):

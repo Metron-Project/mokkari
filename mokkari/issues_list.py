@@ -22,3 +22,6 @@ class IssuesList:
 
     def __len__(self):
         return len(self.issues)
+
+    def __getitem__(self, index: int):
+        return self.issues[index]

@@ -52,6 +52,7 @@ def test_issueslist(talker):
     assert next(issue_iter).id == 16910
     assert next(issue_iter).id == 16911
     assert len(issues) == 28
+    assert issues[2].id == 16911
 
 
 def test_bad_issue(talker):

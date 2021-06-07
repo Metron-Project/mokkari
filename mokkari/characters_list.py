@@ -22,3 +22,6 @@ class CharactersList:
 
     def __len__(self):
         return len(self.characters)
+
+    def __getitem__(self, index: int):
+        return self.characters[index]

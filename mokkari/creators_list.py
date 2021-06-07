@@ -22,3 +22,6 @@ class CreatorsList:
 
     def __len__(self):
         return len(self.creators)
+
+    def __getitem__(self, index: int):
+        return self.creators[index]

@@ -22,3 +22,6 @@ class SeriesList:
 
     def __len__(self):
         return len(self.series)
+
+    def __getitem__(self, index: int):
+        return self.series[index]

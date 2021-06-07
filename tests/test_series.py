@@ -26,6 +26,7 @@ def test_serieslist(talker):
     assert next(series_iter).id == 1531
     assert next(series_iter).id == 1532
     assert len(series) == 28
+    assert series[2].id == 1532
 
 
 def test_bad_series(talker):
