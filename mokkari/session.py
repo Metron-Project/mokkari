@@ -1,5 +1,6 @@
 import platform
 from collections import OrderedDict
+from typing import Dict, List, Optional, Union
 from urllib.parse import urlencode
 
 import requests
@@ -20,6 +21,7 @@ from mokkari import (
     publishers_list,
     series,
     series_list,
+    sqlite_cache,
     team,
     teams_list,
 )
@@ -33,9 +35,15 @@ class Session:
 
     :param str username: The username for authentication with metron.cloud
     :param str passwd: The password used for authentication with metron.cloud
+    :param SqliteCache optional: SqliteCache to use
     """
 
-    def __init__(self, username, passwd, cache=None) -> None:
+    def __init__(
+        self,
+        username: str,
+        passwd: str,
+        cache: Optional[sqlite_cache.SqliteCache] = None,
+    ) -> None:
         self.username = username
         self.passwd = passwd
         self.header = {
@@ -46,7 +54,9 @@ class Session:
 
     @sleep_and_retry
     @limits(calls=20, period=ONE_MINUTE)
-    def call(self, endpoint, params=None):
+    def call(
+        self, endpoint: List[Union[str, int]], params: Dict[str, Union[str, int]] = None
+    ):
         """
         Method to make request for api endpoints.
 
@@ -93,7 +103,7 @@ class Session:
 
         return data
 
-    def creator(self, _id):
+    def creator(self, _id: int) -> creator.Creator:
         """
         Method to request data for a creator based on its ``_id``.
 
@@ -107,7 +117,7 @@ class Session:
         result.session = self
         return result
 
-    def creators_list(self, params=None):
+    def creators_list(self, params: Dict[str, Union[str, int]] = None):
         """
         Method to request a list of creators.
 
@@ -117,7 +127,7 @@ class Session:
             params = {}
         return creators_list.CreatorsList(self.call(["creator"], params=params))
 
-    def character(self, _id):
+    def character(self, _id: int) -> character.Character:
         """
         Method to request data for a character based on its ``_id``.
 
@@ -131,7 +141,7 @@ class Session:
         result.session = self
         return result
 
-    def characters_list(self, params=None):
+    def characters_list(self, params: Dict[str, Union[str, int]] = None):
         """
         Method to request a list of characters.
 
@@ -141,7 +151,7 @@ class Session:
             params = {}
         return characters_list.CharactersList(self.call(["character"], params=params))
 
-    def publisher(self, _id):
+    def publisher(self, _id: int) -> publisher.Publisher:
         """
         Method to request data for a publisher based on its ``_id``.
 
@@ -155,7 +165,7 @@ class Session:
         result.session = self
         return result
 
-    def publishers_list(self, params=None):
+    def publishers_list(self, params: Dict[str, Union[str, int]] = None):
         """
         Method to request a list of publishers.
 
@@ -165,7 +175,7 @@ class Session:
             params = {}
         return publishers_list.PublishersList(self.call(["publisher"], params=params))
 
-    def team(self, _id):
+    def team(self, _id: int) -> team.Team:
         """
         Method to request data for a team based on its ``_id``.
 
@@ -179,7 +189,7 @@ class Session:
         result.session = self
         return result
 
-    def teams_list(self, params=None):
+    def teams_list(self, params: Dict[str, Union[str, int]] = None):
         """
         Method to request a list of teams.
 
@@ -189,7 +199,7 @@ class Session:
             params = {}
         return teams_list.TeamsList(self.call(["team"], params=params))
 
-    def arc(self, _id):
+    def arc(self, _id: int) -> arc.Arc:
         """
         Method to request data for a story arc based on its ``_id``.
 
@@ -203,7 +213,7 @@ class Session:
         result.session = self
         return result
 
-    def arcs_list(self, params=None):
+    def arcs_list(self, params: Dict[str, Union[str, int]] = None):
         """
         Method to request a list of story arcs.
 
@@ -213,7 +223,7 @@ class Session:
             params = {}
         return arcs_list.ArcsList(self.call(["arc"], params=params))
 
-    def series(self, _id):
+    def series(self, _id: int) -> series.Series:
         """
         Method to request data for a series based on its ``_id``.
 
@@ -227,7 +237,7 @@ class Session:
         result.session = self
         return result
 
-    def series_list(self, params=None):
+    def series_list(self, params: Dict[str, Union[str, int]] = None):
         """
         Method to request a list of series.
 
@@ -237,7 +247,7 @@ class Session:
             params = {}
         return series_list.SeriesList(self.call(["series"], params=params))
 
-    def issue(self, _id):
+    def issue(self, _id: int) -> issue.Issue:
         """
         Method to request data for an issue based on it's ``_id``.
 
@@ -251,7 +261,7 @@ class Session:
         result.session = self
         return result
 
-    def issues_list(self, params=None):
+    def issues_list(self, params: Dict[str, Union[str, int]] = None):
         """
         Method to request a list of issues.
 
