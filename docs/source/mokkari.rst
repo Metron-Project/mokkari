@@ -108,10 +108,10 @@ mokkari.series\_list module
    :undoc-members:
    :show-inheritance:
 
-mokkari.sesssion module
------------------------
+mokkari.session module
+----------------------
 
-.. automodule:: mokkari.sesssion
+.. automodule:: mokkari.session
    :members:
    :undoc-members:
    :show-inheritance:
