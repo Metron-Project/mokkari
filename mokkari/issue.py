@@ -56,6 +56,7 @@ class IssueSchema(Schema):
     credits = fields.Nested(CreditsSchema, many=True)
     characters = fields.Nested(character.CharacterSchema, many=True)
     teams = fields.Nested(team.TeamSchema, many=True)
+    __str__ = fields.Str(attribute="issue_name")
 
     class Meta:
         unknown = INCLUDE
