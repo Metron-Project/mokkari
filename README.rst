@@ -43,7 +43,7 @@ Example Usage
 
     # Print the results
     for i in this_week:
-        print(f"{i.id} {i.__str__}")
+        print(f"{i.id} {i.issue_name}")
 
     # Retrieve the detail for an individual issue
     asm_68 = m.issue(31660)
