@@ -26,6 +26,28 @@ PyPi
 .. code:: bash
 
   $ pip3 install --user mokkari
+
+Example Usage
+-------------
+.. code-block:: python
+
+    import mokkari
+
+    # Your own config file to keep your private key local and secret
+    from config import username, password
+
+    # Get all Marvel comics for the week of 2021-06-07
+    this_week = m.issues_list({"store_date_range_after": "2021-06-07", "store_date_range_before": "2021-06-13", "publisher": "marvel"})
+
+    # Print the results
+    for i in this_week:
+        print(f"{i.id} {i.__str__}")
+
+    # Retrieve the detail for an individual issue
+    asm_68 = m.issue(31660)
+
+    # Print the issue Description
+    print(asm_68.desc)
   
 Documentation
 -------------
