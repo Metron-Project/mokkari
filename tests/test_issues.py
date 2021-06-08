@@ -10,7 +10,7 @@ def test_known_issue(talker):
     assert death.publisher.name == "Marvel"
     assert death.series.name == "Death of the Inhumans"
     assert death.volume == 1
-    assert death.name[0] == "Chapter One: Vox"
+    assert death.story_titles[0] == "Chapter One: Vox"
     assert death.cover_date == datetime.date(2018, 9, 1)
     assert death.store_date == datetime.date(2018, 7, 4)
     assert (
@@ -27,7 +27,7 @@ def test_issue_without_store_date(talker):
     assert spidey.publisher.name == "Marvel"
     assert spidey.series.name == "The Spectacular Spider-Man"
     assert spidey.volume == 1
-    assert spidey.name[0] == "A Night on the Prowl!"
+    assert spidey.story_titles[0] == "A Night on the Prowl!"
     assert spidey.cover_date == datetime.date(1980, 10, 1)
     assert spidey.store_date is None
     assert "Dennis O'Neil" in [c.creator for c in spidey.credits]
@@ -39,7 +39,7 @@ def test_issue_without_story_title(talker):
     assert redemption.publisher.name == "AWA Studios"
     assert redemption.series.name == "Redemption"
     assert redemption.volume == 1
-    assert len(redemption.name) == 0
+    assert len(redemption.story_titles) == 0
     assert redemption.cover_date == datetime.date(2021, 5, 1)
     assert redemption.store_date == datetime.date(2021, 5, 19)
     assert "Christa Faust" in [c.creator for c in redemption.credits]

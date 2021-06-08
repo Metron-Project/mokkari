@@ -42,12 +42,13 @@ class Issue:
 
 class IssueSchema(Schema):
     """ Schema for the Issue API."""
+
     id = fields.Int()
     publisher = fields.Nested(publisher.PublisherSchema)
     series = fields.Nested(series.SeriesSchema)
     volume = fields.Int()
     number = fields.Str()
-    name = fields.List(fields.Str(allow_none=True))
+    name = fields.List(fields.Str(allow_none=True), attribute="story_titles")
     cover_date = fields.Date()
     store_date = fields.Date(allow_none=True)
     desc = fields.Str(allow_none=True)
