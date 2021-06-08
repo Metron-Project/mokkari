@@ -33,8 +33,10 @@ Example Usage
 
     import mokkari
 
-    # Your own config file to keep your private key local and secret
+    # Your own config file to keep your credentials secret
     from config import username, password
+
+    m = mokkari.api(username, password)
 
     # Get all Marvel comics for the week of 2021-06-07
     this_week = m.issues_list({"store_date_range_after": "2021-06-07", "store_date_range_before": "2021-06-13", "publisher": "marvel"})
