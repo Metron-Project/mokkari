@@ -15,7 +15,7 @@ class CreatorSchema(Schema):
     death = fields.Date(allow_none=True)
     desc = fields.Str()
     wikipedia = fields.Str()
-    image = fields.Str()
+    image = fields.Url()
 
     class Meta:
         unknown = INCLUDE
