@@ -26,4 +26,12 @@ class ArcSchema(Schema):
 
     @post_load
     def make_object(self, data, **kwargs):
+        """
+        Make the arc object.
+
+        :param data: Data from Metron reponse.
+
+        :returns: Arc object
+        :rtype: Arc
+        """
         return Arc(**data)
