@@ -109,6 +109,9 @@ class Session:
         Method to request data for a creator based on its ``_id``.
 
         :param int _id: The creator id.
+
+        :return: :class:`Creator` object
+        :rtype: Creator
         """
         try:
             result = creator.CreatorSchema().load(self.call(["creator", _id]))
@@ -118,11 +121,15 @@ class Session:
         result.session = self
         return result
 
-    def creators_list(self, params: Dict[str, Union[str, int]] = None):
+    def creators_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
         """
         Method to request a list of creators.
 
-        :param dict params: Parameters to add to the request.
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Creator` objects containing their id and name.
+        :rtype: CreatorsList
         """
         if params is None:
             params = {}
@@ -133,6 +140,9 @@ class Session:
         Method to request data for a character based on its ``_id``.
 
         :param int _id: The character id.
+
+        :return: :class:`Character` object
+        :rtype: Character
         """
         try:
             result = character.CharacterSchema().load(self.call(["character", _id]))
@@ -142,11 +152,15 @@ class Session:
         result.session = self
         return result
 
-    def characters_list(self, params: Dict[str, Union[str, int]] = None):
+    def characters_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
         """
         Method to request a list of characters.
 
-        :param dict params: Parameters to add to the request.
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Character` objects containing their id and name.
+        :rtype: CharactersList
         """
         if params is None:
             params = {}
