@@ -1,6 +1,6 @@
 import platform
 from collections import OrderedDict
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlencode
 
 import requests
@@ -57,7 +57,7 @@ class Session:
     @limits(calls=20, period=ONE_MINUTE)
     def call(
         self, endpoint: List[Union[str, int]], params: Dict[str, Union[str, int]] = None
-    ):
+    ) -> Dict[str, Any]:
         """
         Method to make request for api endpoints.
 
@@ -86,9 +86,16 @@ class Session:
                     "Cache object passed in is missing attribute: {}".format(repr(e))
                 )
 
-        response = requests.get(
-            url, params=params, auth=(self.username, self.passwd), headers=self.header
-        )
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                auth=(self.username, self.passwd),
+                headers=self.header,
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise exceptions.ApiError("Connection error: {}".format(repr(e)))
+
         data = response.json()
 
         if "detail" in data:
