@@ -68,7 +68,7 @@ class Session:
             params = {}
 
         cache_params = ""
-        if len(params) > 0:
+        if params:
             ordered_params = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
             cache_params = "?{}".format(urlencode(ordered_params))
 
