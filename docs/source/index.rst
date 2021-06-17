@@ -6,12 +6,25 @@
 Welcome to Mokkari's documentation!
 ===================================
 
+Release v\ |version|.
+
+.. include:: about.rst.inc
+
+Guide
+=====
+
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+    :maxdepth: 2
 
-   modules
+    install
 
+API Reference
+=============
+
+.. toctree::
+    :maxdepth: 2
+
+    modules
 
 Indices and tables
 ==================

@@ -14,7 +14,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath("../.."))
-
+# This import needs to be *after* setting the sys path
+import mokkari
 
 # -- Project information -----------------------------------------------------
 
@@ -23,7 +24,7 @@ copyright = "2021, Brian Pepple"
 author = "Brian Pepple"
 
 # The full version, including alpha/beta/rc tags
-release = "0.1.4"
+version = release = mokkari.__version__
 
 
 # -- General configuration ---------------------------------------------------
