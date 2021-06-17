@@ -178,6 +178,9 @@ class Session:
         Method to request data for a publisher based on its ``_id``.
 
         :param int _id: The publisher id.
+
+        :return: :class:`Publisher` object
+        :rtype: Publisher
         """
         try:
             result = publisher.PublisherSchema().load(self.call(["publisher", _id]))
@@ -191,7 +194,11 @@ class Session:
         """
         Method to request a list of publishers.
 
-        :param dict params: Parameters to add to the request.
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Publisher` objects containing their id and name.
+        :rtype: PublishersList
         """
         if params is None:
             params = {}
@@ -202,6 +209,9 @@ class Session:
         Method to request data for a team based on its ``_id``.
 
         :param int _id: The team id.
+
+        :return: :class:`Team` object
+        :rtype: Team
         """
         try:
             result = team.TeamSchema().load(self.call(["team", _id]))
@@ -215,7 +225,11 @@ class Session:
         """
         Method to request a list of teams.
 
-        :param dict params: Parameters to add to the request.
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Team` objects containing their id and name.
+        :rtype: TeamsList
         """
         if params is None:
             params = {}
@@ -226,6 +240,9 @@ class Session:
         Method to request data for a story arc based on its ``_id``.
 
         :param int _id: The story arc id.
+
+        :return: :class:`Arc` object
+        :rtype: Arc
         """
         try:
             result = arc.ArcSchema().load(self.call(["arc", _id]))
@@ -239,7 +256,11 @@ class Session:
         """
         Method to request a list of story arcs.
 
-        :param dict params: Parameters to add to the request.
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Arc` objects containing their id and name.
+        :rtype: ArcsList
         """
         if params is None:
             params = {}
@@ -250,6 +271,9 @@ class Session:
         Method to request data for a series based on its ``_id``.
 
         :param int _id: The series id.
+
+        :return: :class:`Series` object
+        :rtype: Series
         """
         try:
             result = series.SeriesSchema().load(self.call(["series", _id]))
@@ -263,7 +287,11 @@ class Session:
         """
         Method to request a list of series.
 
-        :param dict params: Parameters to add to the request.
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Series` objects containing their id and name.
+        :rtype: SeriesList
         """
         if params is None:
             params = {}
@@ -274,6 +302,9 @@ class Session:
         Method to request data for an issue based on it's ``_id``.
 
         :param int _id: The issue id.
+
+        :return: :class:`Issue` object
+        :rtype: Issue
         """
         try:
             result = issue.IssueSchema().load(self.call(["issue", _id]))
@@ -287,7 +318,11 @@ class Session:
         """
         Method to request a list of issues.
 
-        :param dict params: Parameters to add to the request.
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Issue` objects containing their id and name.
+        :rtype: IssuesList
         """
         if params is None:
             params = {}
