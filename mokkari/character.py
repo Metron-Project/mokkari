@@ -11,6 +11,7 @@ class Character:
 
 class CharacterSchema(Schema):
     """ Schema for the Arc API."""
+
     id = fields.Int()
     name = fields.Str()
     alias = fields.List(fields.Str)
@@ -25,4 +26,12 @@ class CharacterSchema(Schema):
 
     @post_load
     def make_object(self, data, **kwargs):
+        """
+        Make the character object.
+
+        :param data: Data from Metron reponse.
+
+        :returns: :class:`Character` object
+        :rtype: Character
+        """
         return Character(**data)

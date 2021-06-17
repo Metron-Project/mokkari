@@ -11,6 +11,7 @@ class Team:
 
 class TeamSchema(Schema):
     """ Schema for the Team API."""
+
     id = fields.Int()
     name = fields.Str()
     desc = fields.Str()
@@ -23,4 +24,12 @@ class TeamSchema(Schema):
 
     @post_load
     def make_object(self, data, **kwargs):
+        """
+        Make the arc object.
+
+        :param data: Data from Metron reponse.
+
+        :returns: :class:`Team` object
+        :rtype: Team
+        """
         return Team(**data)

@@ -31,7 +31,7 @@ class ArcSchema(Schema):
 
         :param data: Data from Metron reponse.
 
-        :returns: Arc object
+        :returns: :class:`Arc` object
         :rtype: Arc
         """
         return Arc(**data)

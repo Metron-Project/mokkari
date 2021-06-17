@@ -13,6 +13,14 @@ class SeriesTypeSchema(Schema):
 
     @post_load
     def make_object(self, data, **kwargs):
+        """
+        Make the arc object.
+
+        :param data: Data from Metron reponse.
+
+        :returns: :class:`SeriesType` object
+        :rtype: SeriesType
+        """
         return SeriesType(**data)
 
 
@@ -30,7 +38,7 @@ class SeriesSchema(Schema):
     sort_name = fields.Str()
     volume = fields.Int()
     series_type = fields.Nested(SeriesTypeSchema)
-    publisher = fields.Int(attribute='publisher_id')
+    publisher = fields.Int(attribute="publisher_id")
     year_began = fields.Int()
     year_end = fields.Int()
     desc = fields.Str()
@@ -42,4 +50,12 @@ class SeriesSchema(Schema):
 
     @post_load
     def make_object(self, data, **kwargs):
+        """
+        Make the arc object.
+
+        :param data: Data from Metron reponse.
+
+        :returns: :class:`Series` object
+        :rtype: Series
+        """
         return Series(**data)

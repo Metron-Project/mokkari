@@ -9,6 +9,7 @@ class Creator:
 
 class CreatorSchema(Schema):
     """ Schema for the Creator API."""
+
     id = fields.Int()
     name = fields.Str()
     birth = fields.Date(allow_none=True)
@@ -23,4 +24,12 @@ class CreatorSchema(Schema):
 
     @post_load
     def make_object(self, data, **kwargs):
+        """
+        Make the arc object.
+
+        :param data: Data from Metron reponse.
+
+        :returns: :class:`Creator` object
+        :rtype: Creator
+        """
         return Creator(**data)

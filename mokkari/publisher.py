@@ -20,4 +20,12 @@ class PublisherSchema(Schema):
 
     @post_load
     def make_object(self, data, **kwargs):
+        """
+        Make the arc object.
+
+        :param data: Data from Metron reponse.
+
+        :returns: :class:`Publisher` object
+        :rtype: Publisher
+        """
         return Publisher(**data)
