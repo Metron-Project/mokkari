@@ -27,6 +27,10 @@ def test_serieslist(talker):
     assert next(series_iter).id == 1532
     assert len(series) == 28
     assert series[2].id == 1532
+    assert (
+        series[2].display_name
+        == "100ᵗʰ Anniversary Special: Guardians of the Galaxy (2014)"
+    )
 
 
 def test_bad_series(talker):

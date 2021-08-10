@@ -44,6 +44,7 @@ class SeriesSchema(Schema):
     desc = fields.Str()
     issue_count = fields.Int()
     image = fields.Url()
+    display_name = fields.Str(data_key="__str__")
 
     class Meta:
         unknown = INCLUDE
