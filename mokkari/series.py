@@ -40,7 +40,7 @@ class SeriesSchema(Schema):
     series_type = fields.Nested(SeriesTypeSchema)
     publisher = fields.Int(attribute="publisher_id")
     year_began = fields.Int()
-    year_end = fields.Int()
+    year_end = fields.Int(allow_none=True)
     desc = fields.Str()
     issue_count = fields.Int()
     image = fields.Url()

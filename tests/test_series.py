@@ -19,6 +19,18 @@ def test_known_series(talker):
     assert death.publisher_id == 1
 
 
+def test_series_without_year_end(talker):
+    abs_carnage = talker.series(2311)
+    assert abs_carnage.name == "Absolute Carnage"
+    assert abs_carnage.sort_name == "Absolute Carnage"
+    assert abs_carnage.volume == 1
+    assert abs_carnage.year_began == 2019
+    assert abs_carnage.year_end is None
+    assert abs_carnage.issue_count == 5
+    assert abs_carnage.publisher_id == 1
+    assert abs_carnage.series_type.name == "Mini-Series"
+
+
 def test_serieslist(talker):
     series = talker.series_list()
     series_iter = iter(series)
