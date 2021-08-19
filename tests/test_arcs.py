@@ -15,10 +15,11 @@ def test_known_arc(talker):
 def test_arcslist(talker):
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
+    assert next(arc_iter).name == "2099"
     assert next(arc_iter).name == "52"
     assert next(arc_iter).name == "A Court of Owls"
     assert len(arcs) == 28
-    assert arcs[1].name == "A Court of Owls"
+    assert arcs[2].name == "A Court of Owls"
 
 
 def test_bad_arc(talker):

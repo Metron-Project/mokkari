@@ -66,6 +66,12 @@ class IssueSchema(Schema):
     .. versionchanged:: 0.1.6
         ``__str__`` field change to ``issue_name``
 
+    .. versionchanged:: 0.2.0
+        Added ``price`` field
+
+    .. versionchanged:: 0.2.0
+        Added ``sku`` field
+
     """
 
     id = fields.Int()
@@ -76,6 +82,8 @@ class IssueSchema(Schema):
     story_titles = fields.List(fields.Str(allow_none=True), data_key="name")
     cover_date = fields.Date()
     store_date = fields.Date(allow_none=True)
+    price = fields.Str(allow_none=True)
+    sku = fields.Str(allow_none=True)
     desc = fields.Str(allow_none=True)
     image = fields.URL()
     arcs = fields.Nested(arc.ArcSchema, many=True)

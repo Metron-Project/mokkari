@@ -13,6 +13,8 @@ def test_known_issue(talker):
     assert death.story_titles[0] == "Chapter One: Vox"
     assert death.cover_date == datetime.date(2018, 9, 1)
     assert death.store_date == datetime.date(2018, 7, 4)
+    assert death.price is None
+    assert not death.sku
     assert (
         death.image
         == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
@@ -20,6 +22,14 @@ def test_known_issue(talker):
     assert len(death.characters) > 0
     assert len(death.teams) > 0
     assert len(death.credits) > 0
+
+
+def test_issue_with_price_and_sku(talker):
+    die_16 = talker.issue(36860)
+    assert die_16.price == "3.99"
+    assert die_16.sku == "JUN210207"
+    assert die_16.cover_date == datetime.date(2021, 8, 1)
+    assert die_16.store_date == datetime.date(2021, 8, 25)
 
 
 def test_issue_without_store_date(talker):
@@ -48,12 +58,12 @@ def test_issue_without_story_title(talker):
 def test_issueslist(talker):
     issues = talker.issues_list()
     issue_iter = iter(issues)
-    assert next(issue_iter).id == 16909
-    assert next(issue_iter).id == 16910
-    assert next(issue_iter).id == 16911
+    assert next(issue_iter).id == 32656
+    assert next(issue_iter).id == 32657
+    assert next(issue_iter).id == 32658
     assert len(issues) == 28
-    assert issues[2].id == 16911
-    assert issues[4].issue_name == "100ᵗʰ Anniversary Special: X-Men #1"
+    assert issues[2].id == 32658
+    assert issues[1].issue_name == "100 Bullets #2"
 
 
 def test_bad_issue(talker):
