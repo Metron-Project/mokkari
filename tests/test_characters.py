@@ -20,9 +20,9 @@ def test_characterlist(talker):
     character_iter = iter(character)
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "0101"
-    assert next(character_iter).name == "2-D"
+    assert next(character_iter).name == "2 Face 2"
     assert len(character) == 28
-    assert character[2].name == "2-D"
+    assert character[2].name == "2 Face 2"
 
 
 def test_bad_character(talker):
