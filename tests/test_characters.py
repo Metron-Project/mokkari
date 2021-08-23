@@ -1,5 +1,6 @@
 import pytest
 import requests_mock
+
 from mokkari import characters_list, exceptions
 
 

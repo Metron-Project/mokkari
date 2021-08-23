@@ -2,6 +2,7 @@ import json
 
 import pytest
 import requests_mock
+
 from mokkari import api, exceptions, sqlite_cache
 
 

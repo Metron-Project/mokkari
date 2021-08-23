@@ -1,5 +1,6 @@
 import pytest
 import requests_mock
+
 from mokkari import exceptions, series_list
 
 
