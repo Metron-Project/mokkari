@@ -1,21 +1,6 @@
 [tool.black]
 line-length = 88
 target-version = ['py38'] 
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.eggs
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
 
 [tool.isort]
 profile = "black"
@@ -24,3 +9,12 @@ line_length = 88
 default_section = "THIRDPARTY"
 known_first_party = []
 known_third_party = ["marshmallow", "pytest", "ratelimit", "requests", "requests_mock", "setuptools"]
+
+[tool.coverage.run]
+source = ["mokkari"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.pytest.ini_options]
+addopts = ["--cov=mokkari/", "-n 3"]
