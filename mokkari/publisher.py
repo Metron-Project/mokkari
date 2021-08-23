@@ -8,7 +8,8 @@ class Publisher:
 
 
 class PublisherSchema(Schema):
-    """ Schema for the Publisher API."""
+    """Schema for the Publisher API."""
+
     id = fields.Int()
     name = fields.Str()
     founded = fields.Int()

@@ -10,7 +10,7 @@ class Team:
 
 
 class TeamSchema(Schema):
-    """ Schema for the Team API."""
+    """Schema for the Team API."""
 
     id = fields.Int()
     name = fields.Str()

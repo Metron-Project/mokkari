@@ -14,7 +14,7 @@ class Arc:
 
 
 class ArcSchema(Schema):
-    """ Schema for the Arc API. """
+    """Schema for the Arc API."""
 
     id = fields.Int()
     name = fields.Str()

@@ -10,7 +10,7 @@ class Character:
 
 
 class CharacterSchema(Schema):
-    """ Schema for the Arc API."""
+    """Schema for the Arc API."""
 
     id = fields.Int()
     name = fields.Str()

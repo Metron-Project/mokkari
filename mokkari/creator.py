@@ -8,7 +8,7 @@ class Creator:
 
 
 class CreatorSchema(Schema):
-    """ Schema for the Creator API."""
+    """Schema for the Creator API."""
 
     id = fields.Int()
     name = fields.Str()
