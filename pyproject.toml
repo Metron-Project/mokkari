@@ -17,4 +17,4 @@ source = ["mokkari"]
 show_missing = true
 
 [tool.pytest.ini_options]
-addopts = ["--cov=mokkari/", "-n 3"]
+addopts = ["--cov", "-n 3"]
