@@ -18,6 +18,8 @@ pytest-xdist = "*"
 requests-mock = "*"
 black = "*"
 pre-commit = "*"
+isort = "*"
+seed-isort-config = "*"
 
 [requires]
 python_version = "3.8"
