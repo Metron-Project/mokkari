@@ -7,10 +7,7 @@ from mokkari import exceptions, teams_list
 def test_known_team(talker):
     inhumans = talker.team(1)
     assert inhumans.name == "Inhumans"
-    assert (
-        inhumans.image
-        == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
-    )
+    assert inhumans.image == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
     assert inhumans.wikipedia == "Inhumans"
     assert len(inhumans.creators) == 2
 

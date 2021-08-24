@@ -12,10 +12,7 @@ def test_known_series(talker):
     assert death.year_began == 2018
     assert death.year_end == 2018
     assert death.issue_count == 5
-    assert (
-        death.image
-        == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
-    )
+    assert death.image == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     assert death.series_type.name == "Mini-Series"
     assert death.publisher_id == 1
 
@@ -42,8 +39,7 @@ def test_serieslist(talker):
     assert len(series) == 28
     assert series[3].id == 1532
     assert (
-        series[3].display_name
-        == "100ᵗʰ Anniversary Special: Guardians of the Galaxy (2014)"
+        series[3].display_name == "100ᵗʰ Anniversary Special: Guardians of the Galaxy (2014)"
     )
 
 

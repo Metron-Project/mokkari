@@ -1,7 +1,6 @@
 # Projects version information used in setup.py
 # Keep this at beginning of file to prevent circular import with session
-__version_info__ = (0, 2, 0)
-__version__ = ".".join(str(c) for c in __version_info__)
+__version__ = "0.2.2"
 
 from typing import Optional
 
