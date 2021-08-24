@@ -16,10 +16,7 @@ def test_known_issue(talker):
     assert death.store_date == datetime.date(2018, 7, 4)
     assert death.price is None
     assert not death.sku
-    assert (
-        death.image
-        == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
-    )
+    assert death.image == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     assert len(death.characters) > 0
     assert len(death.teams) > 0
     assert len(death.credits) > 0
