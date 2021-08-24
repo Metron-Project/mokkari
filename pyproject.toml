@@ -1,14 +1,69 @@
+[tool.poetry]
+name = "mokkari"
+version = "0.2.2"
+description = "Python wrapper for Metron API"
+authors = ["Brian Pepple <bdpepple@gmail.com>"]
+license = "GPL-3.0-or-later"
+maintainers = ["Brian Pepple <bdpepple@gmail.com>"]
+readme = "README.rst"
+packages = [
+	{ include = "mokkari" },
+]
+include = [
+    { path = "tests", format = "sdist" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Internet",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: BSD",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+]
+keywords=["comics", "comic", "metadata"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+marshmallow = "^3.13.0"
+requests = "^2.26.0"
+ratelimit = "^2.2.1"
+
+# Optional dependencies
+sphinx-rtd-theme = {version="^0.5.2", optional=true}
+sphinxcontrib-napoleon = {version="^0.7", optional=true}
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.4"
+pytest-cov = "^2.12.1"
+flake8 = "^3.9.2"
+pytest-xdist = "^2.3.0"
+requests-mock = "^1.9.3"
+black = "^21.7b0"
+pre-commit = "^2.14.0"
+isort = "^5.9.3"
+seed-isort-config = "^2.2.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
 [tool.black]
-line-length = 88
+line-length = 95
 target-version = ['py38'] 
 
 [tool.isort]
 profile = "black"
 multi_line_output = 3
-line_length = 88
+line_length = 95
 default_section = "THIRDPARTY"
 known_first_party = []
-known_third_party = ["marshmallow", "pytest", "ratelimit", "requests", "requests_mock", "setuptools"]
+known_third_party = ["marshmallow", "pytest", "ratelimit", "requests", "requests_mock"]
 
 [tool.coverage.run]
 source = ["mokkari"]
