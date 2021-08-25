@@ -35,8 +35,8 @@ requests = "^2.26.0"
 ratelimit = "^2.2.1"
 
 # Optional dependencies
-sphinx-rtd-theme = {version="^0.5.2", optional=true}
-sphinxcontrib-napoleon = {version="^0.7", optional=true}
+sphinxcontrib-napoleon = {version = "^0.7", optional = true}
+sphinx-rtd-theme = {version = "^0.5.2", optional = true}
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"
@@ -64,6 +64,13 @@ line_length = 95
 default_section = "THIRDPARTY"
 known_first_party = []
 known_third_party = ["marshmallow", "pytest", "ratelimit", "requests", "requests_mock"]
+
+[tool.poetry.urls]
+"Homepage" = "https://github.com/bpepple/mokkari"
+"Bug Tracker" = "https://github.com/bpepple/mokkari/issues"
+
+[tool.poetry.extras]
+docs = ["sphinx-rtd-theme", "sphinxcontrib-napoleon"]
 
 [tool.coverage.run]
 source = ["mokkari"]
