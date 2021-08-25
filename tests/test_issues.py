@@ -63,6 +63,20 @@ def test_issueslist(talker):
     assert issues[2].id == 32658
     assert issues[1].issue_name == "100 Bullets #2"
 
+def test_issue_with_upc_sku_price(talker):
+    usca_3 = talker.issue(36812)
+    assert usca_3.series.name == "The United States of Captain America"
+    assert usca_3.number == "3"
+    assert usca_3.price == "4.99"
+    assert usca_3.sku == "JUN210696"
+    assert usca_3.upc == "75960620100600311"
+
+def test_issue_without_upc_sku_price(talker):
+    bullets = talker.issue(32662)
+    assert bullets.price is None
+    assert bullets.sku == ""
+    assert bullets.upc == ""
+
 
 def test_bad_issue(talker):
     with requests_mock.Mocker() as r:

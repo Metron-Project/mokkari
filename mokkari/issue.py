@@ -72,6 +72,9 @@ class IssueSchema(Schema):
     .. versionchanged:: 0.2.0
         Added ``sku`` field
 
+    .. versionchanged:: 0.2.2
+        Added ``upc`` field
+
     """
 
     id = fields.Int()
@@ -83,7 +86,8 @@ class IssueSchema(Schema):
     cover_date = fields.Date()
     store_date = fields.Date(allow_none=True)
     price = fields.Str(allow_none=True)
-    sku = fields.Str(allow_none=True)
+    sku = fields.Str()
+    upc = fields.Str()
     desc = fields.Str(allow_none=True)
     image = fields.URL()
     arcs = fields.Nested(arc.ArcSchema, many=True)
