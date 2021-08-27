@@ -140,6 +140,14 @@ mokkari.teams\_list module
    :undoc-members:
    :show-inheritance:
 
+mokkari.variant module
+----------------------
+
+.. automodule:: mokkari.variant
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
