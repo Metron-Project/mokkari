@@ -63,6 +63,7 @@ def test_issueslist(talker):
     assert issues[2].id == 32658
     assert issues[1].issue_name == "100 Bullets #2"
 
+
 def test_issue_with_upc_sku_price(talker):
     usca_3 = talker.issue(36812)
     assert usca_3.series.name == "The United States of Captain America"
@@ -71,29 +72,36 @@ def test_issue_with_upc_sku_price(talker):
     assert usca_3.sku == "JUN210696"
     assert usca_3.upc == "75960620100600311"
 
+
 def test_issue_without_upc_sku_price(talker):
     bullets = talker.issue(32662)
     assert bullets.price is None
     assert bullets.sku == ""
     assert bullets.upc == ""
 
+
 def test_issue_with_variants(talker):
     paprika = talker.issue(37094)
-    assert paprika.series.id ==2511
+    assert paprika.series.id == 2511
     assert paprika.series.name == "Mirka Andolfo's Sweet Paprika"
     assert paprika.volume == 1
     assert paprika.number == "2"
-    assert paprika.cover_date == datetime.date(2021, 9,1)
-    assert paprika.store_date == datetime.date(2021,9,1)
+    assert paprika.cover_date == datetime.date(2021, 9, 1)
+    assert paprika.store_date == datetime.date(2021, 9, 1)
     assert len(paprika.credits) == 3
     assert len(paprika.variants) == 4
     assert paprika.variants[0].name == "Cover B Sejic"
     assert paprika.variants[0].sku == "JUN210257"
-    assert paprika.variants[0].image == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2b.jpg"
+    assert (
+        paprika.variants[0].image
+        == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2b.jpg"
+    )
     assert paprika.variants[1].name == "Cover C March"
     assert paprika.variants[1].sku == "JUN210258"
-    assert paprika.variants[1].image == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2c.jpg"
-
+    assert (
+        paprika.variants[1].image
+        == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2c.jpg"
+    )
 
 
 def test_bad_issue(talker):
