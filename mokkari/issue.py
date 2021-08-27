@@ -1,6 +1,6 @@
 from marshmallow import INCLUDE, Schema, fields, post_load
 
-from mokkari import arc, character, publisher, series, team
+from mokkari import arc, character, publisher, series, team, variant
 
 
 class Role:
@@ -95,6 +95,7 @@ class IssueSchema(Schema):
     characters = fields.Nested(character.CharacterSchema, many=True)
     teams = fields.Nested(team.TeamSchema, many=True)
     issue_name = fields.Str(data_key="__str__")
+    variants = fields.Nested(variant.VariantSchema, many=True)
 
     class Meta:
         unknown = INCLUDE

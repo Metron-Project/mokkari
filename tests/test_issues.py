@@ -77,6 +77,24 @@ def test_issue_without_upc_sku_price(talker):
     assert bullets.sku == ""
     assert bullets.upc == ""
 
+def test_issue_with_variants(talker):
+    paprika = talker.issue(37094)
+    assert paprika.series.id ==2511
+    assert paprika.series.name == "Mirka Andolfo's Sweet Paprika"
+    assert paprika.volume == 1
+    assert paprika.number == "2"
+    assert paprika.cover_date == datetime.date(2021, 9,1)
+    assert paprika.store_date == datetime.date(2021,9,1)
+    assert len(paprika.credits) == 3
+    assert len(paprika.variants) == 4
+    assert paprika.variants[0].name == "Cover B Sejic"
+    assert paprika.variants[0].sku == "JUN210257"
+    assert paprika.variants[0].image == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2b.jpg"
+    assert paprika.variants[1].name == "Cover C March"
+    assert paprika.variants[1].sku == "JUN210258"
+    assert paprika.variants[1].image == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2c.jpg"
+
+
 
 def test_bad_issue(talker):
     with requests_mock.Mocker() as r:
