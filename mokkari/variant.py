@@ -1,7 +1,5 @@
 from marshmallow import INCLUDE, Schema, fields, post_load
 
-from mokkari import creator
-
 
 class Variant:
     def __init__(self, **kwargs):
