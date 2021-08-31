@@ -1,3 +1,8 @@
+"""
+Test Issues module.
+
+This module contains tests for Issue objects.
+"""
 import datetime
 
 import pytest
@@ -7,6 +12,7 @@ from mokkari import exceptions, issues_list
 
 
 def test_known_issue(talker):
+    """Test for a known issue."""
     death = talker.issue(1)
     assert death.publisher.name == "Marvel"
     assert death.series.name == "Death of the Inhumans"
@@ -23,6 +29,7 @@ def test_known_issue(talker):
 
 
 def test_issue_with_price_and_sku(talker):
+    """Test issue with price & sku values."""
     die_16 = talker.issue(36860)
     assert die_16.price == "3.99"
     assert die_16.sku == "JUN210207"
@@ -31,6 +38,7 @@ def test_issue_with_price_and_sku(talker):
 
 
 def test_issue_without_store_date(talker):
+    """Test issue that does not have a store date."""
     spidey = talker.issue(31047)
     assert spidey.publisher.name == "Marvel"
     assert spidey.series.name == "The Spectacular Spider-Man"
@@ -43,6 +51,7 @@ def test_issue_without_store_date(talker):
 
 
 def test_issue_without_story_title(talker):
+    """Test an issue that does not have a story title."""
     redemption = talker.issue(30662)
     assert redemption.publisher.name == "AWA Studios"
     assert redemption.series.name == "Redemption"
@@ -54,6 +63,7 @@ def test_issue_without_story_title(talker):
 
 
 def test_issueslist(talker):
+    """Test the IssueList."""
     issues = talker.issues_list()
     issue_iter = iter(issues)
     assert next(issue_iter).id == 32656
@@ -65,6 +75,7 @@ def test_issueslist(talker):
 
 
 def test_issue_with_upc_sku_price(talker):
+    """Test issue with upc, sku, and price values."""
     usca_3 = talker.issue(36812)
     assert usca_3.series.name == "The United States of Captain America"
     assert usca_3.number == "3"
@@ -74,6 +85,7 @@ def test_issue_with_upc_sku_price(talker):
 
 
 def test_issue_without_upc_sku_price(talker):
+    """Test issue without upc, sku, and price values."""
     bullets = talker.issue(32662)
     assert bullets.price is None
     assert bullets.sku == ""
@@ -81,6 +93,7 @@ def test_issue_without_upc_sku_price(talker):
 
 
 def test_issue_with_variants(talker):
+    """Test issue with variant data."""
     paprika = talker.issue(37094)
     assert paprika.series.id == 2511
     assert paprika.series.name == "Mirka Andolfo's Sweet Paprika"
@@ -105,6 +118,7 @@ def test_issue_with_variants(talker):
 
 
 def test_bad_issue(talker):
+    """Test for a non-existant issue."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/issue/-1/",
@@ -115,5 +129,6 @@ def test_bad_issue(talker):
 
 
 def test_bad_response_data():
+    """Test for bad issue response."""
     with pytest.raises(exceptions.ApiError):
         issues_list.IssuesList({"results": {"volume": "1"}})
