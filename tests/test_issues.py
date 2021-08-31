@@ -74,6 +74,17 @@ def test_issueslist(talker):
     assert issues[1].issue_name == "100 Bullets #2"
 
 
+def test_issueslist_with_params(talker):
+    """Test the IssueList with params given."""
+    params = {
+        "series_name": "Kang",
+    }
+    issues = talker.issues_list(params=params)
+    assert len(issues) == 1
+    assert issues[0].issue_name == "Kang The Conqueror #1"
+    assert issues[0].cover_date == datetime.date(2021, 10, 1)
+
+
 def test_issue_with_upc_sku_price(talker):
     """Test issue with upc, sku, and price values."""
     usca_3 = talker.issue(36812)
