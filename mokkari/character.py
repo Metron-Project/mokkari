@@ -1,10 +1,25 @@
+"""
+Character module.
+
+This module provides the following classes:
+
+- Character
+- CharacterSchema
+"""
 from marshmallow import INCLUDE, Schema, fields, post_load
 
 from mokkari import creator, team
 
 
 class Character:
+    """
+    The Character object contains information for story arcs.
+
+    :param `**kwargs`: The keyword arguments is used for setting character data from Metron.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new Character."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -22,6 +37,8 @@ class CharacterSchema(Schema):
     teams = fields.Nested(team.TeamSchema, many=True)
 
     class Meta:
+        """Any unknown fields will be included."""
+
         unknown = INCLUDE
 
     @post_load
