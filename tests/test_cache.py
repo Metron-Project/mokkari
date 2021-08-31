@@ -1,3 +1,8 @@
+"""
+Test Cache module.
+
+This module contains tests for SqliteCache objects.
+"""
 import json
 
 import pytest
@@ -7,17 +12,24 @@ from mokkari import api, exceptions, sqlite_cache
 
 
 class NoGet:
+    """The NoGet object fakes storing data from the sqlite cache."""
+
     def store(self, key, value):
+        """Save no data."""
         # This method should store key value pair
         return
 
 
 class NoStore:
+    """The NoStore object fakes getting data from the sqlite cache."""
+
     def get(self, key):
+        """Retrieve no data."""
         return None
 
 
 def test_no_get(dummy_username, dummy_password):
+    """Test for retrieving failure."""
     m = api(username=dummy_username, passwd=dummy_password, cache=NoGet())
 
     with pytest.raises(exceptions.CacheError):
@@ -25,6 +37,7 @@ def test_no_get(dummy_username, dummy_password):
 
 
 def test_no_store(dummy_username, dummy_password):
+    """Test for saving data error."""
     m = api(username=dummy_username, passwd=dummy_password, cache=NoStore())
 
     with requests_mock.Mocker() as r:
@@ -38,6 +51,7 @@ def test_no_store(dummy_username, dummy_password):
 
 
 def test_sql_store(dummy_username, dummy_password):
+    """Test for saving data to the sqlite cache."""
     fresh_cache = sqlite_cache.SqliteCache(":memory:")
     test_cache = sqlite_cache.SqliteCache("tests/testing_mock.sqlite")
 
