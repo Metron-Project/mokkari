@@ -1,3 +1,10 @@
+"""
+Session module.
+
+This module provides the following classes:
+
+- Session
+"""
 import platform
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Union
@@ -32,7 +39,7 @@ ONE_MINUTE = 60
 
 class Session:
     """
-    Session to request api endpoints
+    Session to request api endpoints.
 
     :param str username: The username for authentication with metron.cloud
     :param str passwd: The password used for authentication with metron.cloud
@@ -45,6 +52,7 @@ class Session:
         passwd: str,
         cache: Optional[sqlite_cache.SqliteCache] = None,
     ) -> None:
+        """Intialize a new Session."""
         self.username = username
         self.passwd = passwd
         self.header = {
@@ -59,7 +67,7 @@ class Session:
         self, endpoint: List[Union[str, int]], params: Dict[str, Union[str, int]] = None
     ) -> Dict[str, Any]:
         """
-        Method to make request for api endpoints.
+        Make request for api endpoints.
 
         :param str endpoint: The endpoint to request information from.
         :param dict params: Parameters to add to the request.
@@ -113,7 +121,7 @@ class Session:
 
     def creator(self, _id: int) -> creator.Creator:
         """
-        Method to request data for a creator based on its ``_id``.
+        Request data for a creator based on its ``_id``.
 
         :param int _id: The creator id.
 
@@ -130,7 +138,7 @@ class Session:
 
     def creators_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
         """
-        Method to request a list of creators.
+        Request a list of creators.
 
         :param params: Parameters to add to the request.
         :type params: dict, optional
@@ -144,7 +152,7 @@ class Session:
 
     def character(self, _id: int) -> character.Character:
         """
-        Method to request data for a character based on its ``_id``.
+        Request data for a character based on its ``_id``.
 
         :param int _id: The character id.
 
@@ -161,7 +169,7 @@ class Session:
 
     def characters_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
         """
-        Method to request a list of characters.
+        Request a list of characters.
 
         :param params: Parameters to add to the request.
         :type params: dict, optional
@@ -175,7 +183,7 @@ class Session:
 
     def publisher(self, _id: int) -> publisher.Publisher:
         """
-        Method to request data for a publisher based on its ``_id``.
+        Request data for a publisher based on its ``_id``.
 
         :param int _id: The publisher id.
 
@@ -192,7 +200,7 @@ class Session:
 
     def publishers_list(self, params: Dict[str, Union[str, int]] = None):
         """
-        Method to request a list of publishers.
+        Request a list of publishers.
 
         :param params: Parameters to add to the request.
         :type params: dict, optional
@@ -206,7 +214,7 @@ class Session:
 
     def team(self, _id: int) -> team.Team:
         """
-        Method to request data for a team based on its ``_id``.
+        Request data for a team based on its ``_id``.
 
         :param int _id: The team id.
 
@@ -223,7 +231,7 @@ class Session:
 
     def teams_list(self, params: Dict[str, Union[str, int]] = None):
         """
-        Method to request a list of teams.
+        Request a list of teams.
 
         :param params: Parameters to add to the request.
         :type params: dict, optional
@@ -237,7 +245,7 @@ class Session:
 
     def arc(self, _id: int) -> arc.Arc:
         """
-        Method to request data for a story arc based on its ``_id``.
+        Request data for a story arc based on its ``_id``.
 
         :param int _id: The story arc id.
 
@@ -254,7 +262,7 @@ class Session:
 
     def arcs_list(self, params: Dict[str, Union[str, int]] = None):
         """
-        Method to request a list of story arcs.
+        Request a list of story arcs.
 
         :param params: Parameters to add to the request.
         :type params: dict, optional
@@ -268,7 +276,7 @@ class Session:
 
     def series(self, _id: int) -> series.Series:
         """
-        Method to request data for a series based on its ``_id``.
+        Request data for a series based on its ``_id``.
 
         :param int _id: The series id.
 
@@ -285,7 +293,7 @@ class Session:
 
     def series_list(self, params: Dict[str, Union[str, int]] = None):
         """
-        Method to request a list of series.
+        Request a list of series.
 
         :param params: Parameters to add to the request.
         :type params: dict, optional
@@ -299,7 +307,7 @@ class Session:
 
     def issue(self, _id: int) -> issue.Issue:
         """
-        Method to request data for an issue based on it's ``_id``.
+        Request data for an issue based on it's ``_id``.
 
         :param int _id: The issue id.
 
@@ -316,7 +324,7 @@ class Session:
 
     def issues_list(self, params: Dict[str, Union[str, int]] = None):
         """
-        Method to request a list of issues.
+        Request a list of issues.
 
         :param params: Parameters to add to the request.
         :type params: dict, optional
