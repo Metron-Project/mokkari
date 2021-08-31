@@ -1,8 +1,6 @@
 =======
 Mokkari
 =======
-.. image:: https://img.shields.io/github/v/release/bpepple/mokkari   :alt: GitHub release (latest by date)
-    :target: https://github.com/bpepple/mokkari/releases
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
     :target: https://github.com/psf/black
 
