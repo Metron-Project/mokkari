@@ -1,3 +1,11 @@
+"""
+Arc module.
+
+This module provides the following classes:
+
+- Arc
+- ArcSchema
+"""
 from marshmallow import INCLUDE, Schema, fields, post_load
 
 
@@ -9,6 +17,7 @@ class Arc:
     """
 
     def __init__(self, **kwargs):
+        """Intialize a new Arc."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -22,6 +31,8 @@ class ArcSchema(Schema):
     image = fields.Url()
 
     class Meta:
+        """Any unknown fields will be included."""
+
         unknown = INCLUDE
 
     @post_load
