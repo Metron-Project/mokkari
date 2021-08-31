@@ -1,3 +1,8 @@
+"""
+Test Series module.
+
+This module contains tests for Series objects.
+"""
 import pytest
 import requests_mock
 
@@ -5,6 +10,7 @@ from mokkari import exceptions, series_list
 
 
 def test_known_series(talker):
+    """Test for a known series."""
     death = talker.series(1)
     assert death.name == "Death of the Inhumans"
     assert death.sort_name == "Death of the Inhumans"
@@ -18,6 +24,7 @@ def test_known_series(talker):
 
 
 def test_series_without_year_end(talker):
+    """Test for series without a year-end date."""
     abs_carnage = talker.series(2311)
     assert abs_carnage.name == "Absolute Carnage"
     assert abs_carnage.sort_name == "Absolute Carnage"
@@ -30,6 +37,7 @@ def test_series_without_year_end(talker):
 
 
 def test_serieslist(talker):
+    """Test the SeriesList."""
     series = talker.series_list()
     series_iter = iter(series)
     assert next(series_iter).id == 2354
@@ -44,6 +52,7 @@ def test_serieslist(talker):
 
 
 def test_bad_series(talker):
+    """Test for a non-existant series."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/series/-1/",
@@ -54,5 +63,6 @@ def test_bad_series(talker):
 
 
 def test_bad_response_data():
+    """Test for a bad series response."""
     with pytest.raises(exceptions.ApiError):
         series_list.SeriesList({"results": {"name": 1}})

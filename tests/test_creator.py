@@ -1,3 +1,8 @@
+"""
+Test Creator module.
+
+This module contains tests for Creator objects.
+"""
 import datetime
 
 import pytest
@@ -7,6 +12,7 @@ from mokkari import creators_list, exceptions
 
 
 def test_known_creator(talker):
+    """Test for a known creator."""
     jack = talker.creator(3)
     assert jack.name == "Jack Kirby"
     assert jack.birth == datetime.date(1917, 8, 28)
@@ -19,6 +25,7 @@ def test_known_creator(talker):
 
 
 def test_comiclist(talker):
+    """Test the CreatorsList."""
     creators = talker.creators_list()
     creator_iter = iter(creators)
     assert next(creator_iter).name == "A. J. Jothikumar"
@@ -30,6 +37,7 @@ def test_comiclist(talker):
 
 
 def test_bad_creator(talker):
+    """Test for a non-existant creator."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/creator/-1/",
@@ -40,5 +48,6 @@ def test_bad_creator(talker):
 
 
 def test_bad_response_data(talker):
+    """Test for a bad creator response."""
     with pytest.raises(exceptions.ApiError):
         creators_list.CreatorsList({"results": {"name": 1}})

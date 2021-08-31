@@ -1,3 +1,8 @@
+"""
+Test Arcs module.
+
+This module contains tests for Arc objects.
+"""
 import pytest
 import requests_mock
 
@@ -5,6 +10,7 @@ from mokkari import arcs_list, exceptions
 
 
 def test_known_arc(talker):
+    """Test for known arcs."""
     heroes = talker.arc(1)
     assert heroes.name == "Heroes In Crisis"
     assert (
@@ -14,6 +20,7 @@ def test_known_arc(talker):
 
 
 def test_arcslist(talker):
+    """Test for ArcsList."""
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
     assert next(arc_iter).name == "2099"
@@ -24,6 +31,7 @@ def test_arcslist(talker):
 
 
 def test_bad_arc(talker):
+    """Test for bad arc requests."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/arc/-8/",
@@ -35,5 +43,6 @@ def test_bad_arc(talker):
 
 
 def test_bad_response_data():
+    """Test for bad arc response."""
     with pytest.raises(exceptions.ApiError):
         arcs_list.ArcsList({"results": {"name": 1}})

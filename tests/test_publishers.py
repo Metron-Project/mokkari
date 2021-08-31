@@ -1,3 +1,8 @@
+"""
+Test Publishers module.
+
+This module contains tests for Publisher objects.
+"""
 import pytest
 import requests_mock
 
@@ -5,6 +10,7 @@ from mokkari import exceptions, publishers_list
 
 
 def test_known_publishers(talker):
+    """Test for a known publisher."""
     marvel = talker.publisher(1)
     assert marvel.name == "Marvel"
     assert marvel.image == "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg"
@@ -13,6 +19,7 @@ def test_known_publishers(talker):
 
 
 def test_publisherlist(talker):
+    """Test the PublishersList."""
     publishers = talker.publishers_list()
     publisher_iter = iter(publishers)
     assert next(publisher_iter).name == "12-Gauge Comics"
@@ -23,6 +30,7 @@ def test_publisherlist(talker):
 
 
 def test_bad_publisher(talker):
+    """Test for a non-existant publisher."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/publisher/-1/",
@@ -33,5 +41,6 @@ def test_bad_publisher(talker):
 
 
 def test_bad_response_data():
+    """Test for a bad publisher response."""
     with pytest.raises(exceptions.ApiError):
         publishers_list.PublishersList({"results": {"name": 1}})

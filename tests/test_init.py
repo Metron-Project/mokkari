@@ -1,9 +1,15 @@
+"""
+Test Init module.
+
+This module contains tests for project init.
+"""
 import pytest
 
 from mokkari import api, exceptions, session
 
 
 def test_api():
+    """Test for api()."""
     with pytest.raises(exceptions.AuthenticationError):
         api()
 

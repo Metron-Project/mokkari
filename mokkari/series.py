@@ -1,13 +1,32 @@
+"""
+Series module.
+
+This module provides the following classes:
+
+- SeriesType
+- SeriesTypeSchema
+- Series
+- SeriesSchema
+"""
 from marshmallow import INCLUDE, Schema, fields, post_load
 
 
 class SeriesType:
+    """
+    The SeriesType object contains information for type of series.
+
+    :param `**kwargs`: The keyword arguments is used for setting series type data.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new SeriesType."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
 
 class SeriesTypeSchema(Schema):
+    """Schema for the Series Type."""
+
     id = fields.Int()
     name = fields.Str()
 
@@ -25,7 +44,14 @@ class SeriesTypeSchema(Schema):
 
 
 class Series:
+    """
+    The Series object contains information for comic series.
+
+    :param `**kwargs`: The keyword arguments is used for setting series data.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new Series."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -47,6 +73,8 @@ class SeriesSchema(Schema):
     display_name = fields.Str(data_key="__str__")
 
     class Meta:
+        """Any unknown fields will be included."""
+
         unknown = INCLUDE
 
     @post_load

@@ -1,8 +1,23 @@
+"""
+Creator module.
+
+This module provides the following classes:
+
+- Creator
+- CreatorSchema
+"""
 from marshmallow import INCLUDE, Schema, fields, post_load
 
 
 class Creator:
+    """
+    The Creator object contains information for story arcs.
+
+    :param `**kwargs`: The keyword arguments is used for setting creator data from Metron.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new Creator."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -19,6 +34,8 @@ class CreatorSchema(Schema):
     image = fields.Url()
 
     class Meta:
+        """Any unknown fields will be included."""
+
         unknown = INCLUDE
         dateformat = "%Y-%m-%d"
 

@@ -1,3 +1,8 @@
+"""
+Test Teams module.
+
+This module contains tests for Team objects.
+"""
 import pytest
 import requests_mock
 
@@ -5,6 +10,7 @@ from mokkari import exceptions, teams_list
 
 
 def test_known_team(talker):
+    """Test for a known team."""
     inhumans = talker.team(1)
     assert inhumans.name == "Inhumans"
     assert inhumans.image == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
@@ -13,6 +19,7 @@ def test_known_team(talker):
 
 
 def test_teamlist(talker):
+    """Test the TeamsList."""
     teams = talker.teams_list()
     team_iter = iter(teams)
     assert next(team_iter).name == "A-Force"
@@ -23,6 +30,7 @@ def test_teamlist(talker):
 
 
 def test_bad_team(talker):
+    """Test for a non-existant team."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/team/-1/",
@@ -33,5 +41,6 @@ def test_bad_team(talker):
 
 
 def test_bad_response_data():
+    """Test for a bad team response."""
     with pytest.raises(exceptions.ApiError):
         teams_list.TeamsList({"results": {"name": 1}})
