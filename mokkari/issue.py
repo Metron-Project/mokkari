@@ -1,15 +1,36 @@
+"""
+Issue module.
+
+This module provides the following classes:
+
+- Role
+- RolesSchema
+- Credit
+- CreditsSchema
+- Issue
+- IssueSchema
+"""
 from marshmallow import INCLUDE, Schema, fields, post_load
 
 from mokkari import arc, character, publisher, series, team, variant
 
 
 class Role:
+    """
+    The Role object contains information for creators' role.
+
+    :param `**kwargs`: The keyword arguments is used for setting role data from Metron.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new Role."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
 
 class RolesSchema(Schema):
+    """Schema for the Roles."""
+
     id = fields.Int()
     name = fields.Str()
 
@@ -27,12 +48,21 @@ class RolesSchema(Schema):
 
 
 class Credit:
+    """
+    The Credit object contains information for creators credits for an issue.
+
+    :param `**kwargs`: The keyword arguments is used for setting creator credit data.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new Credit."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
 
 class CreditsSchema(Schema):
+    """Schema for the Credits."""
+
     id = fields.Int()
     creator = fields.Str()
     role = fields.Nested(RolesSchema, many=True)
@@ -51,7 +81,14 @@ class CreditsSchema(Schema):
 
 
 class Issue:
+    """
+    The Issue object contains information for an issue.
+
+    :param `**kwargs`: The keyword arguments is used for setting issue data from Metron.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new Issue."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -98,6 +135,8 @@ class IssueSchema(Schema):
     variants = fields.Nested(variant.VariantSchema, many=True)
 
     class Meta:
+        """Any unknown fields will be included."""
+
         unknown = INCLUDE
 
     @post_load

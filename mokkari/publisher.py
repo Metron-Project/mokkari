@@ -1,8 +1,23 @@
+"""
+Publisher module.
+
+This module provides the following classes:
+
+- Publisher
+- PublisherSchema
+"""
 from marshmallow import INCLUDE, Schema, fields, post_load
 
 
 class Publisher:
+    """
+    The Publisher object contains information for publishers.
+
+    :param `**kwargs`: The keyword arguments is used for setting publisher data from Metron.
+    """
+
     def __init__(self, **kwargs):
+        """Intialize a new Publisher."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -18,6 +33,8 @@ class PublisherSchema(Schema):
     image = fields.Url()
 
     class Meta:
+        """Any unknown fields will be included."""
+
         unknown = INCLUDE
 
     @post_load
