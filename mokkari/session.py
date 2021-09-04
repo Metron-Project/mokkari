@@ -133,7 +133,6 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
-        result.session = self
         return result
 
     def creators_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
@@ -164,7 +163,6 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
-        result.session = self
         return result
 
     def characters_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
@@ -195,7 +193,6 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
-        result.session = self
         return result
 
     def publishers_list(self, params: Dict[str, Union[str, int]] = None):
@@ -226,7 +223,6 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
-        result.session = self
         return result
 
     def teams_list(self, params: Dict[str, Union[str, int]] = None):
@@ -257,7 +253,6 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
-        result.session = self
         return result
 
     def arcs_list(self, params: Dict[str, Union[str, int]] = None):
@@ -288,7 +283,6 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
-        result.session = self
         return result
 
     def series_list(self, params: Dict[str, Union[str, int]] = None):
@@ -319,7 +313,6 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
-        result.session = self
         return result
 
     def issues_list(self, params: Dict[str, Union[str, int]] = None):
