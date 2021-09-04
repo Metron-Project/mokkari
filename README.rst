@@ -1,7 +1,16 @@
 =======
 Mokkari
 =======
-.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+.. image:: https://img.shields.io/pypi/v/mokkari.svg?logo=PyPI&label=Version&style=flat-square   :alt: PyPI
+    :target: https://pypi.org/project/mokkari
+
+.. image:: https://img.shields.io/pypi/pyversions/mokkari.svg?logo=Python&label=Python-Versions&style=flat-square
+    :target: https://pypi.org/project/mokkari
+
+.. image:: https://img.shields.io/github/license/bpepple/mokkari
+    :target: https://opensource.org/licenses/GPL-3.0  
+
+.. image:: https://img.shields.io/badge/Code%20Style-Black-000000.svg?style=flat-square
     :target: https://github.com/psf/black
 
 Quick Description
