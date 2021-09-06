@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath("../.."))
 # This import needs to be *after* setting the sys path
-import mokkari
+import mokkari  # noqa #E402
 
 # -- Project information -----------------------------------------------------
 
