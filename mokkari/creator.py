@@ -11,7 +11,7 @@ from marshmallow import INCLUDE, Schema, fields, post_load
 
 class Creator:
     """
-    The Creator object contains information for story arcs.
+    The Creator object contains information for creators.
 
     :param `**kwargs`: The keyword arguments is used for setting creator data from Metron.
     """
@@ -42,9 +42,9 @@ class CreatorSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the Creator object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Creator` object
         :rtype: Creator

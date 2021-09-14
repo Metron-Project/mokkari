@@ -33,9 +33,9 @@ class SeriesTypeSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the SeriesType object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`SeriesType` object
         :rtype: SeriesType
@@ -80,9 +80,9 @@ class SeriesSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the Series object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Series` object
         :rtype: Series

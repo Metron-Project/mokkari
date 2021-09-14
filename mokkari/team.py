@@ -42,9 +42,9 @@ class TeamSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the Team object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Team` object
         :rtype: Team

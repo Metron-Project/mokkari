@@ -40,7 +40,7 @@ class ArcSchema(Schema):
         """
         Make the arc object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Arc` object
         :rtype: Arc

@@ -13,7 +13,7 @@ from mokkari import creator, team
 
 class Character:
     """
-    The Character object contains information for story arcs.
+    The Character object contains information for characters.
 
     :param `**kwargs`: The keyword arguments is used for setting character data from Metron.
     """
@@ -25,7 +25,7 @@ class Character:
 
 
 class CharacterSchema(Schema):
-    """Schema for the Arc API."""
+    """Schema for the Character API."""
 
     id = fields.Int()
     name = fields.Str()
@@ -46,7 +46,7 @@ class CharacterSchema(Schema):
         """
         Make the character object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Character` object
         :rtype: Character

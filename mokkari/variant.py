@@ -37,9 +37,9 @@ class VariantSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the Variant object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Variant` object
         :rtype: Variant

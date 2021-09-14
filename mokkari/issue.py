@@ -37,9 +37,9 @@ class RolesSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the Role object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Role` object
         :rtype: Role
@@ -70,9 +70,9 @@ class CreditsSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the Credit object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Credit` object
         :rtype: Credit
@@ -144,7 +144,7 @@ class IssueSchema(Schema):
         """
         Make the arc object.
 
-        :param data: Data from Metron reponse.
+        :param data: Data from Metron response.
 
         :returns: :class:`Issue` object
         :rtype: Issue
