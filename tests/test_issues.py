@@ -130,17 +130,17 @@ def test_issue_with_variants(talker):
         == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2c.jpg"
     )
 
+
 def test_issue_with_page_count(talker):
     """Test issue that has a page count."""
     gr = talker.issue(8118)
     assert gr.page_count == 40
-    assert gr. number == "1"
+    assert gr.number == "1"
     assert gr.upc == "75960609672500111"
     assert gr.cover_date == datetime.date(2020, 2, 1)
     assert gr.store_date == datetime.date(2019, 12, 18)
     assert gr.series.name == "Revenge of the Cosmic Ghost Rider"
     assert gr.volume == 1
-
 
 
 def test_bad_issue(talker):
