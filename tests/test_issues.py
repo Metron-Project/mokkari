@@ -31,7 +31,7 @@ def test_known_issue(talker):
 def test_issue_with_price_and_sku(talker):
     """Test issue with price & sku values."""
     die_16 = talker.issue(36860)
-    assert die_16.price == "3.99"
+    assert die_16.price == 3.99
     assert die_16.sku == "JUN210207"
     assert die_16.cover_date == datetime.date(2021, 8, 1)
     assert die_16.store_date == datetime.date(2021, 8, 25)
@@ -80,7 +80,7 @@ def test_issueslist_with_params(talker):
         "series_name": "Kang",
     }
     issues = talker.issues_list(params=params)
-    assert len(issues) == 1
+    assert len(issues) == 2
     assert issues[0].issue_name == "Kang The Conqueror #1"
     assert issues[0].cover_date == datetime.date(2021, 10, 1)
 
@@ -90,7 +90,7 @@ def test_issue_with_upc_sku_price(talker):
     usca_3 = talker.issue(36812)
     assert usca_3.series.name == "The United States of Captain America"
     assert usca_3.number == "3"
-    assert usca_3.price == "4.99"
+    assert usca_3.price == 4.99
     assert usca_3.sku == "JUN210696"
     assert usca_3.upc == "75960620100600311"
 
@@ -112,7 +112,10 @@ def test_issue_with_variants(talker):
     assert paprika.number == "2"
     assert paprika.cover_date == datetime.date(2021, 9, 1)
     assert paprika.store_date == datetime.date(2021, 9, 1)
-    assert len(paprika.credits) == 3
+    assert paprika.price == 3.99
+    assert paprika.sku == "JUN210256"
+    assert paprika.page_count is None
+    assert len(paprika.credits) == 9
     assert len(paprika.variants) == 4
     assert paprika.variants[0].name == "Cover B Sejic"
     assert paprika.variants[0].sku == "JUN210257"
@@ -126,6 +129,18 @@ def test_issue_with_variants(talker):
         paprika.variants[1].image
         == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2c.jpg"
     )
+
+def test_issue_with_page_count(talker):
+    """Test issue that has a page count."""
+    gr = talker.issue(8118)
+    assert gr.page_count == 40
+    assert gr. number == "1"
+    assert gr.upc == "75960609672500111"
+    assert gr.cover_date == datetime.date(2020, 2, 1)
+    assert gr.store_date == datetime.date(2019, 12, 18)
+    assert gr.series.name == "Revenge of the Cosmic Ghost Rider"
+    assert gr.volume == 1
+
 
 
 def test_bad_issue(talker):

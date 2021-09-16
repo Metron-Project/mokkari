@@ -98,19 +98,20 @@ class IssueSchema(Schema):
     Schema for the Issue API.
 
     .. versionchanged:: 0.1.6
-        ``name`` field  changed to ``story_titles``
 
-    .. versionchanged:: 0.1.6
-        ``__str__`` field change to ``issue_name``
-
-    .. versionchanged:: 0.2.0
-        Added ``price`` field
+        - ``name`` field  changed to ``story_titles``
+        - ``__str__`` field change to ``issue_name``
 
     .. versionchanged:: 0.2.0
-        Added ``sku`` field
+        Added ``price`` and ``sku`` fields
 
     .. versionchanged:: 0.2.2
         Added ``upc`` field
+
+    .. versionchanged:: 0.2.4
+
+        - Added ``page_count`` field
+        - Changed ``price`` field from a string to float value.
 
     """
 
@@ -122,9 +123,10 @@ class IssueSchema(Schema):
     story_titles = fields.List(fields.Str(allow_none=True), data_key="name")
     cover_date = fields.Date()
     store_date = fields.Date(allow_none=True)
-    price = fields.Str(allow_none=True)
+    price = fields.Float(allow_none=True)
     sku = fields.Str()
     upc = fields.Str()
+    page_count = fields.Int(allow_none=True, data_key="page")
     desc = fields.Str(allow_none=True)
     image = fields.URL()
     arcs = fields.Nested(arc.ArcSchema, many=True)

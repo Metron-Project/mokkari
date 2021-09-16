@@ -19,7 +19,7 @@ def test_known_character(talker):
     )
     assert black_bolt.wikipedia == "Black_Bolt"
     assert len(black_bolt.creators) == 2
-    assert len(black_bolt.teams) == 2
+    assert len(black_bolt.teams) == 3
 
 
 def test_characterlist(talker):
