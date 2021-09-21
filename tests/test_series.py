@@ -3,6 +3,8 @@ Test Series module.
 
 This module contains tests for Series objects.
 """
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import requests_mock
 
@@ -21,6 +23,16 @@ def test_known_series(talker):
     assert death.image == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     assert death.series_type.name == "Mini-Series"
     assert death.publisher_id == 1
+    assert death.modified == datetime(
+        2019,
+        7,
+        5,
+        14,
+        32,
+        52,
+        239629,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
+    )
 
 
 def test_series_without_year_end(talker):
