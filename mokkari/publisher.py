@@ -23,7 +23,13 @@ class Publisher:
 
 
 class PublisherSchema(Schema):
-    """Schema for the Publisher API."""
+    """
+    Schema for the Publisher API.
+
+    .. versionchanged:: 1.0.0
+
+        - Added ``modified`` field
+    """
 
     id = fields.Int()
     name = fields.Str()

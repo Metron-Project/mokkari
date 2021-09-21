@@ -23,7 +23,13 @@ class Creator:
 
 
 class CreatorSchema(Schema):
-    """Schema for the Creator API."""
+    """
+    Schema for the Creator API.
+
+    .. versionchanged:: 1.0.0
+
+        - Added ``modified`` field
+    """
 
     id = fields.Int()
     name = fields.Str()

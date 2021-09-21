@@ -116,6 +116,7 @@ class IssueSchema(Schema):
     .. versionchanged:: 1.0.0
 
         - Changed ``price`` field to a decimal type.
+        - Added ``modified`` field
 
     """
 

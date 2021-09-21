@@ -57,7 +57,13 @@ class Series:
 
 
 class SeriesSchema(Schema):
-    """Schema for the Series API."""
+    """
+    Schema for the Series API.
+
+    .. versionchanged:: 1.0.0
+
+        - Added ``modified`` field
+    """
 
     id = fields.Int()
     name = fields.Str()

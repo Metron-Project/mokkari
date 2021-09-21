@@ -25,7 +25,13 @@ class Character:
 
 
 class CharacterSchema(Schema):
-    """Schema for the Character API."""
+    """
+    Schema for the Character API.
+
+    .. versionchanged:: 1.0.0
+
+        - Added ``modified`` field
+    """
 
     id = fields.Int()
     name = fields.Str()

@@ -25,7 +25,13 @@ class Team:
 
 
 class TeamSchema(Schema):
-    """Schema for the Team API."""
+    """
+    Schema for the Team API.
+
+    .. versionchanged:: 1.0.0
+
+        - Added ``modified`` field
+    """
 
     id = fields.Int()
     name = fields.Str()
