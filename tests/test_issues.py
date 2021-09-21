@@ -4,12 +4,12 @@ Test Issues module.
 This module contains tests for Issue objects.
 """
 import datetime
+from decimal import Decimal
 
 import pytest
 import requests_mock
 
 from mokkari import exceptions, issues_list
-from decimal import Decimal
 
 
 def test_known_issue(talker):
