@@ -3,6 +3,8 @@ Test Teams module.
 
 This module contains tests for Team objects.
 """
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import requests_mock
 
@@ -16,6 +18,16 @@ def test_known_team(talker):
     assert inhumans.image == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
     assert inhumans.wikipedia == "Inhumans"
     assert len(inhumans.creators) == 2
+    assert inhumans.modified == datetime(
+        2019,
+        6,
+        23,
+        15,
+        13,
+        23,
+        975156,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
+    )
 
 
 def test_teamlist(talker):

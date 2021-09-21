@@ -33,11 +33,13 @@ class TeamSchema(Schema):
     wikipedia = fields.Str()
     image = fields.Url()
     creators = fields.Nested(creator.CreatorSchema, many=True)
+    modified = fields.DateTime()
 
     class Meta:
         """Any unknown fields will be included."""
 
         unknown = INCLUDE
+        datetime = "%Y-%m-%dT%H:%M:%S%z"
 
     @post_load
     def make_object(self, data, **kwargs):
