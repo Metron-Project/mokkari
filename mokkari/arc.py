@@ -37,7 +37,6 @@ class ArcSchema(Schema):
         unknown = INCLUDE
         datetime = "%Y-%m-%dT%H:%M:%S%z"
 
-
     @post_load
     def make_object(self, data, **kwargs):
         """

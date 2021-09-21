@@ -3,11 +3,12 @@ Test Arcs module.
 
 This module contains tests for Arc objects.
 """
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import requests_mock
 
 from mokkari import arcs_list, exceptions
-from datetime import datetime, timezone, timedelta
 
 
 def test_known_arc(talker):
