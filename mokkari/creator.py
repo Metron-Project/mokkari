@@ -32,12 +32,14 @@ class CreatorSchema(Schema):
     desc = fields.Str()
     wikipedia = fields.Str()
     image = fields.Url()
+    modified = fields.DateTime()
 
     class Meta:
         """Any unknown fields will be included."""
 
         unknown = INCLUDE
         dateformat = "%Y-%m-%d"
+        datetime = "%Y-%m-%dT%H:%M:%S%z"
 
     @post_load
     def make_object(self, data, **kwargs):

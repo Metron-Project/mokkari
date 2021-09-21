@@ -3,7 +3,7 @@ Test Creator module.
 
 This module contains tests for Creator objects.
 """
-import datetime
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import requests_mock
@@ -15,13 +15,23 @@ def test_known_creator(talker):
     """Test for a known creator."""
     jack = talker.creator(3)
     assert jack.name == "Jack Kirby"
-    assert jack.birth == datetime.date(1917, 8, 28)
-    assert jack.death == datetime.date(1994, 2, 6)
+    assert jack.birth == date(1917, 8, 28)
+    assert jack.death == date(1994, 2, 6)
     assert (
         jack.image
         == "https://static.metron.cloud/media/creator/2018/11/11/432124-Jack_Kirby01.jpg"
     )
     assert jack.wikipedia == "Jack_Kirby"
+    assert jack.modified == datetime(
+        2019,
+        6,
+        23,
+        15,
+        13,
+        22,
+        311024,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
+    )
 
 
 def test_comiclist(talker):
