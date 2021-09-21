@@ -3,7 +3,7 @@ Test Issues module.
 
 This module contains tests for Issue objects.
 """
-import datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -19,14 +19,36 @@ def test_known_issue(talker):
     assert death.series.name == "Death of the Inhumans"
     assert death.volume == 1
     assert death.story_titles[0] == "Chapter One: Vox"
-    assert death.cover_date == datetime.date(2018, 9, 1)
-    assert death.store_date == datetime.date(2018, 7, 4)
+    assert death.cover_date == date(2018, 9, 1)
+    assert death.store_date == date(2018, 7, 4)
     assert death.price is None
     assert not death.sku
     assert death.image == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     assert len(death.characters) > 0
     assert len(death.teams) > 0
     assert len(death.credits) > 0
+    assert death.modified == datetime(
+        2019,
+        6,
+        23,
+        15,
+        13,
+        16,
+        899872,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
+    )
+    assert death.teams[0].name == "Inhumans"
+    assert death.teams[0].id == 1
+    assert death.teams[0].modified == datetime(
+        2019,
+        6,
+        23,
+        15,
+        13,
+        23,
+        975156,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
+    )
 
 
 def test_issue_with_price_and_sku(talker):
@@ -34,8 +56,8 @@ def test_issue_with_price_and_sku(talker):
     die_16 = talker.issue(36860)
     assert die_16.price == Decimal("3.99")
     assert die_16.sku == "JUN210207"
-    assert die_16.cover_date == datetime.date(2021, 8, 1)
-    assert die_16.store_date == datetime.date(2021, 8, 25)
+    assert die_16.cover_date == date(2021, 8, 1)
+    assert die_16.store_date == date(2021, 8, 25)
 
 
 def test_issue_without_store_date(talker):
@@ -45,7 +67,7 @@ def test_issue_without_store_date(talker):
     assert spidey.series.name == "The Spectacular Spider-Man"
     assert spidey.volume == 1
     assert spidey.story_titles[0] == "A Night on the Prowl!"
-    assert spidey.cover_date == datetime.date(1980, 10, 1)
+    assert spidey.cover_date == date(1980, 10, 1)
     assert spidey.store_date is None
     assert "Dennis O'Neil" in [c.creator for c in spidey.credits]
     assert "Spider-Man" in [c.name for c in spidey.characters]
@@ -58,8 +80,8 @@ def test_issue_without_story_title(talker):
     assert redemption.series.name == "Redemption"
     assert redemption.volume == 1
     assert len(redemption.story_titles) == 0
-    assert redemption.cover_date == datetime.date(2021, 5, 1)
-    assert redemption.store_date == datetime.date(2021, 5, 19)
+    assert redemption.cover_date == date(2021, 5, 1)
+    assert redemption.store_date == date(2021, 5, 19)
     assert "Christa Faust" in [c.creator for c in redemption.credits]
 
 
@@ -83,7 +105,7 @@ def test_issueslist_with_params(talker):
     issues = talker.issues_list(params=params)
     assert len(issues) == 2
     assert issues[0].issue_name == "Kang The Conqueror #1"
-    assert issues[0].cover_date == datetime.date(2021, 10, 1)
+    assert issues[0].cover_date == date(2021, 10, 1)
 
 
 def test_issue_with_upc_sku_price(talker):
@@ -111,8 +133,8 @@ def test_issue_with_variants(talker):
     assert paprika.series.name == "Mirka Andolfo's Sweet Paprika"
     assert paprika.volume == 1
     assert paprika.number == "2"
-    assert paprika.cover_date == datetime.date(2021, 9, 1)
-    assert paprika.store_date == datetime.date(2021, 9, 1)
+    assert paprika.cover_date == date(2021, 9, 1)
+    assert paprika.store_date == date(2021, 9, 1)
     assert paprika.price == Decimal("3.99")
     assert paprika.sku == "JUN210256"
     assert paprika.page_count is None
@@ -138,8 +160,8 @@ def test_issue_with_page_count(talker):
     assert gr.page_count == 40
     assert gr.number == "1"
     assert gr.upc == "75960609672500111"
-    assert gr.cover_date == datetime.date(2020, 2, 1)
-    assert gr.store_date == datetime.date(2019, 12, 18)
+    assert gr.cover_date == date(2020, 2, 1)
+    assert gr.store_date == date(2019, 12, 18)
     assert gr.series.name == "Revenge of the Cosmic Ghost Rider"
     assert gr.volume == 1
 

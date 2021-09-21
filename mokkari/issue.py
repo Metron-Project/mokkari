@@ -139,11 +139,13 @@ class IssueSchema(Schema):
     teams = fields.Nested(team.TeamSchema, many=True)
     issue_name = fields.Str(data_key="__str__")
     variants = fields.Nested(variant.VariantSchema, many=True)
+    modified = fields.DateTime()
 
     class Meta:
         """Any unknown fields will be included."""
 
         unknown = INCLUDE
+        datetime = "%Y-%m-%dT%H:%M:%S%z"
 
     @post_load
     def make_object(self, data, **kwargs):
