@@ -3,6 +3,8 @@ Test Characters module.
 
 This module contains tests for Character objects.
 """
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import requests_mock
 
@@ -20,6 +22,16 @@ def test_known_character(talker):
     assert black_bolt.wikipedia == "Black_Bolt"
     assert len(black_bolt.creators) == 2
     assert len(black_bolt.teams) == 3
+    assert black_bolt.modified == datetime(
+        2021,
+        9,
+        9,
+        15,
+        52,
+        49,
+        90281,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
+    )
 
 
 def test_characterlist(talker):
