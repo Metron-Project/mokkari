@@ -3,6 +3,8 @@ Test Publishers module.
 
 This module contains tests for Publisher objects.
 """
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import requests_mock
 
@@ -16,6 +18,16 @@ def test_known_publishers(talker):
     assert marvel.image == "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg"
     assert marvel.wikipedia == "Marvel_Comics"
     assert marvel.founded == 1939
+    assert marvel.modified == datetime(
+        2019,
+        6,
+        23,
+        15,
+        13,
+        23,
+        591390,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
+    )
 
 
 def test_publisherlist(talker):
