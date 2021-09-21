@@ -113,6 +113,10 @@ class IssueSchema(Schema):
         - Added ``page_count`` field
         - Changed ``price`` field from a string to float value.
 
+    .. versionchanged:: 1.0.0
+
+        - Changed ``price`` field to a decimal type.
+
     """
 
     id = fields.Int()
@@ -123,7 +127,7 @@ class IssueSchema(Schema):
     story_titles = fields.List(fields.Str(allow_none=True), data_key="name")
     cover_date = fields.Date()
     store_date = fields.Date(allow_none=True)
-    price = fields.Float(allow_none=True)
+    price = fields.Decimal(places=2, allow_none=True)
     sku = fields.Str()
     upc = fields.Str()
     page_count = fields.Int(allow_none=True, data_key="page")

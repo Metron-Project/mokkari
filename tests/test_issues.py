@@ -9,6 +9,7 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions, issues_list
+from decimal import Decimal
 
 
 def test_known_issue(talker):
@@ -31,7 +32,7 @@ def test_known_issue(talker):
 def test_issue_with_price_and_sku(talker):
     """Test issue with price & sku values."""
     die_16 = talker.issue(36860)
-    assert die_16.price == 3.99
+    assert die_16.price == Decimal("3.99")
     assert die_16.sku == "JUN210207"
     assert die_16.cover_date == datetime.date(2021, 8, 1)
     assert die_16.store_date == datetime.date(2021, 8, 25)
@@ -90,7 +91,7 @@ def test_issue_with_upc_sku_price(talker):
     usca_3 = talker.issue(36812)
     assert usca_3.series.name == "The United States of Captain America"
     assert usca_3.number == "3"
-    assert usca_3.price == 4.99
+    assert usca_3.price == Decimal("4.99")
     assert usca_3.sku == "JUN210696"
     assert usca_3.upc == "75960620100600311"
 
@@ -112,7 +113,7 @@ def test_issue_with_variants(talker):
     assert paprika.number == "2"
     assert paprika.cover_date == datetime.date(2021, 9, 1)
     assert paprika.store_date == datetime.date(2021, 9, 1)
-    assert paprika.price == 3.99
+    assert paprika.price == Decimal("3.99")
     assert paprika.sku == "JUN210256"
     assert paprika.page_count is None
     assert len(paprika.credits) == 9
