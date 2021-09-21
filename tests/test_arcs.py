@@ -7,6 +7,7 @@ import pytest
 import requests_mock
 
 from mokkari import arcs_list, exceptions
+from datetime import datetime, timezone, timedelta
 
 
 def test_known_arc(talker):
@@ -16,6 +17,16 @@ def test_known_arc(talker):
     assert (
         heroes.image
         == "https://static.metron.cloud/media/arc/2018/11/12/heroes-in-crisis.jpeg"
+    )
+    assert heroes.modified == datetime(
+        2019,
+        6,
+        23,
+        15,
+        13,
+        19,
+        456634,
+        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
 
 
