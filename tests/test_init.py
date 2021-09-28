@@ -23,6 +23,6 @@ def test_api():
     try:
         m = api(username="Something", passwd="Else")
     except Exception as exc:
-        print("mokkari.api() raised {} unexpectedly!".format(exc))
+        print(f"mokkari.api() raised {exc} unexpectedly!")
 
     assert m.__class__.__name__ == session.Session.__name__

@@ -76,7 +76,7 @@ class Session:
         cache_params = ""
         if params:
             ordered_params = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
-            cache_params = "?{}".format(urlencode(ordered_params))
+            cache_params = f"?{urlencode(ordered_params)}"
 
         url = self.api_url.format("/".join(str(e) for e in endpoint))
         cache_key = f"{url}{cache_params}"
@@ -381,7 +381,7 @@ class Session:
                 headers=self.header,
             ).json()
         except requests.exceptions.ConnectionError as e:
-            raise exceptions.ApiError("Connection error: {}".format(repr(e)))
+            raise exceptions.ApiError(f"Connection error: {repr(e)}")
 
         return response
 
@@ -393,7 +393,7 @@ class Session:
                 cached_response = self.cache.get(key)
             except AttributeError as e:
                 raise exceptions.CacheError(
-                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                    f"Cache object passed in is missing attribute: {repr(e)}"
                 )
 
         return cached_response
@@ -404,5 +404,5 @@ class Session:
                 self.cache.store(key, data)
             except AttributeError as e:
                 raise exceptions.CacheError(
-                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                    f"Cache object passed in is missing attribute: {repr(e)}"
                 )
