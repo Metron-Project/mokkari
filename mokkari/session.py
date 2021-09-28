@@ -272,7 +272,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return series_list.SeriesList(self.call(["series"], params=params))
+
+        res = self.call(["series"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return series_list.SeriesList(res)
 
     def issue(self, _id: int) -> issue.Issue:
         """
