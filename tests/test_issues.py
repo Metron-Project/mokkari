@@ -87,14 +87,14 @@ def test_issue_without_story_title(talker):
 
 def test_issueslist(talker):
     """Test the IssueList."""
-    issues = talker.issues_list()
+    issues = talker.issues_list({"series_name": "action comics", "series_year_began": 2011})
     issue_iter = iter(issues)
-    assert next(issue_iter).id == 32656
-    assert next(issue_iter).id == 32657
-    assert next(issue_iter).id == 32658
-    assert len(issues) == 28
-    assert issues[2].id == 32658
-    assert issues[1].issue_name == "100 Bullets #2"
+    assert next(issue_iter).id == 6730
+    assert next(issue_iter).id == 6731
+    assert next(issue_iter).id == 6732
+    assert len(issues) == 57
+    assert issues[2].id == 6732
+    assert issues[56].issue_name == "Action Comics #52"
 
 
 def test_issueslist_with_params(talker):
@@ -181,3 +181,13 @@ def test_bad_response_data():
     """Test for bad issue response."""
     with pytest.raises(exceptions.ApiError):
         issues_list.IssuesList({"results": {"volume": "1"}})
+
+
+def test_multi_page_results(talker):
+    """Test for multi page results."""
+    issues = talker.issues_list({"series_name": "action comics", "series_year_began": 1938})
+    assert len(issues) == 864
+    assert issues[0].issue_name == "Action Comics #1"
+    assert issues[0].cover_date == date(1938, 6, 1)
+    assert issues[863].issue_name == "Action Comics #904"
+    assert issues[863].cover_date == date(2011, 10, 1)

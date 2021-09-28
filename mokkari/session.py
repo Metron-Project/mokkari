@@ -61,8 +61,6 @@ class Session:
         self.api_url = "https://metron.cloud/api/{}/"
         self.cache = cache
 
-    @sleep_and_retry
-    @limits(calls=20, period=ONE_MINUTE)
     def call(
         self, endpoint: List[Union[str, int]], params: Dict[str, Union[str, int]] = None
     ) -> Dict[str, Any]:
@@ -83,39 +81,16 @@ class Session:
         url = self.api_url.format("/".join(str(e) for e in endpoint))
         cache_key = f"{url}{cache_params}"
 
-        if self.cache:
-            try:
-                cached_response = self.cache.get(cache_key)
+        cached_response = self._get_results_from_cache(cache_key)
+        if cached_response is not None:
+            return cached_response
 
-                if cached_response is not None:
-                    return cached_response
-            except AttributeError as e:
-                raise exceptions.CacheError(
-                    "Cache object passed in is missing attribute: {}".format(repr(e))
-                )
-
-        try:
-            response = requests.get(
-                url,
-                params=params,
-                auth=(self.username, self.passwd),
-                headers=self.header,
-            )
-        except requests.exceptions.ConnectionError as e:
-            raise exceptions.ApiError("Connection error: {}".format(repr(e)))
-
-        data = response.json()
+        data = self._request_data(url, params)
 
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
 
-        if self.cache:
-            try:
-                self.cache.store(cache_key, data)
-            except AttributeError as e:
-                raise exceptions.CacheError(
-                    "Cache object passed in is missing attribute: {}".format(repr(e))
-                )
+        self._save_results_to_cache(cache_key, data)
 
         return data
 
@@ -147,7 +122,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return creators_list.CreatorsList(self.call(["creator"], params=params))
+
+        res = self.call(["creator"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return creators_list.CreatorsList(res)
 
     def character(self, _id: int) -> character.Character:
         """
@@ -177,7 +157,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return characters_list.CharactersList(self.call(["character"], params=params))
+
+        res = self.call(["character"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return characters_list.CharactersList(res)
 
     def publisher(self, _id: int) -> publisher.Publisher:
         """
@@ -207,7 +192,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return publishers_list.PublishersList(self.call(["publisher"], params=params))
+
+        res = self.call(["publisher"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return publishers_list.PublishersList(res)
 
     def team(self, _id: int) -> team.Team:
         """
@@ -237,7 +227,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return teams_list.TeamsList(self.call(["team"], params=params))
+
+        res = self.call(["team"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return teams_list.TeamsList(res)
 
     def arc(self, _id: int) -> arc.Arc:
         """
@@ -267,7 +262,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return arcs_list.ArcsList(self.call(["arc"], params=params))
+
+        res = self.call(["arc"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return arcs_list.ArcsList(res)
 
     def series(self, _id: int) -> series.Series:
         """
@@ -297,7 +297,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return series_list.SeriesList(self.call(["series"], params=params))
+
+        res = self.call(["series"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return series_list.SeriesList(res)
 
     def issue(self, _id: int) -> issue.Issue:
         """
@@ -327,4 +332,77 @@ class Session:
         """
         if params is None:
             params = {}
-        return issues_list.IssuesList(self.call(["issue"], params=params))
+
+        res = self.call(["issue"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return issues_list.IssuesList(res)
+
+    def _retrieve_all_results(self, data):
+        has_next_page = True
+        next_page = data["next"]
+
+        while has_next_page:
+            cached_response = self._get_results_from_cache(next_page)
+            if cached_response:
+                data["results"].extend(cached_response["results"])
+                if cached_response["next"]:
+                    next_page = cached_response["next"]
+                else:
+                    has_next_page = False
+                continue
+
+            response = self._request_data(next_page)
+            data["results"].extend(response["results"])
+
+            self._save_results_to_cache(next_page, response)
+
+            if response["next"]:
+                next_page = response["next"]
+            else:
+                has_next_page = False
+
+        return data
+
+    @sleep_and_retry
+    @limits(calls=20, period=ONE_MINUTE)
+    def _request_data(
+        self, url: str, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> Any:
+        if params is None:
+            params = {}
+
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                auth=(self.username, self.passwd),
+                headers=self.header,
+            ).json()
+        except requests.exceptions.ConnectionError as e:
+            raise exceptions.ApiError("Connection error: {}".format(repr(e)))
+
+        return response
+
+    def _get_results_from_cache(self, key) -> Optional[Any]:
+        cached_response = None
+
+        if self.cache:
+            try:
+                cached_response = self.cache.get(key)
+            except AttributeError as e:
+                raise exceptions.CacheError(
+                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                )
+
+        return cached_response
+
+    def _save_results_to_cache(self, key: str, data: str) -> None:
+        if self.cache:
+            try:
+                self.cache.store(key, data)
+            except AttributeError as e:
+                raise exceptions.CacheError(
+                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                )

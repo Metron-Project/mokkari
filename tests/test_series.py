@@ -50,17 +50,15 @@ def test_series_without_year_end(talker):
 
 def test_serieslist(talker):
     """Test the SeriesList."""
-    series = talker.series_list()
+    series = talker.series_list({"name": "batman"})
     series_iter = iter(series)
-    assert next(series_iter).id == 2354
-    assert next(series_iter).id == 1530
-    assert next(series_iter).id == 1531
-    assert next(series_iter).id == 1532
-    assert len(series) == 28
-    assert series[3].id == 1532
-    assert (
-        series[3].display_name == "100ᵗʰ Anniversary Special: Guardians of the Galaxy (2014)"
-    )
+    assert next(series_iter).id == 2547
+    assert next(series_iter).id == 2481
+    assert next(series_iter).id == 763
+    assert next(series_iter).id == 93
+    assert len(series) == 115
+    assert series[3].id == 93
+    assert series[3].display_name == "Batman (2016)"
 
 
 def test_bad_series(talker):

@@ -36,14 +36,14 @@ def test_known_creator(talker):
 
 def test_comiclist(talker):
     """Test the CreatorsList."""
-    creators = talker.creators_list()
+    creators = talker.creators_list({"name": "man"})
     creator_iter = iter(creators)
-    assert next(creator_iter).name == "A. J. Jothikumar"
     assert next(creator_iter).name == "A. J. Lieberman"
-    assert next(creator_iter).name == "A.J. Fierro"
-    assert next(creator_iter).name == "A.J. Mendez"
-    assert len(creators) == 28
-    assert creators[3].name == "A.J. Mendez"
+    assert next(creator_iter).name == "Adam Freeman"
+    assert next(creator_iter).name == "Adam Schlagman"
+    assert next(creator_iter).name == "Al Sulman"
+    assert len(creators) == 177
+    assert creators[3].name == "Al Sulman"
 
 
 def test_bad_creator(talker):
