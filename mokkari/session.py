@@ -212,7 +212,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return teams_list.TeamsList(self.call(["team"], params=params))
+
+        res = self.call(["team"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return teams_list.TeamsList(res)
 
     def arc(self, _id: int) -> arc.Arc:
         """
