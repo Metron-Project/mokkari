@@ -48,19 +48,19 @@ def test_series_without_year_end(talker):
     assert abs_carnage.series_type.name == "Mini-Series"
 
 
-def test_serieslist(talker):
-    """Test the SeriesList."""
-    series = talker.series_list()
-    series_iter = iter(series)
-    assert next(series_iter).id == 2354
-    assert next(series_iter).id == 1530
-    assert next(series_iter).id == 1531
-    assert next(series_iter).id == 1532
-    assert len(series) == 28
-    assert series[3].id == 1532
-    assert (
-        series[3].display_name == "100ᵗʰ Anniversary Special: Guardians of the Galaxy (2014)"
-    )
+# def test_serieslist(talker):
+#     """Test the SeriesList."""
+#     series = talker.series_list()
+#     series_iter = iter(series)
+#     assert next(series_iter).id == 2354
+#     assert next(series_iter).id == 1530
+#     assert next(series_iter).id == 1531
+#     assert next(series_iter).id == 1532
+#     assert len(series) == 28
+#     assert series[3].id == 1532
+#     assert (
+#         series[3].display_name == "100ᵗʰ Anniversary Special: Guardians of the Galaxy (2014)"
+#     )
 
 
 def test_bad_series(talker):

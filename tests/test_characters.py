@@ -41,7 +41,7 @@ def test_characterlist(talker):
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "0101"
     assert next(character_iter).name == "2 Face 2"
-    assert len(character) == 28
+    assert len(character) == 100
     assert character[2].name == "2 Face 2"
 
 
