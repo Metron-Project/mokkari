@@ -554,6 +554,17 @@ optional = true
 python-versions = "*"
 
 [[package]]
+name = "pyupgrade"
+version = "2.29.0"
+description = "A tool to automatically upgrade syntax for newer versions."
+category = "dev"
+optional = false
+python-versions = ">=3.6.1"
+
+[package.dependencies]
+tokenize-rt = ">=3.2.0"
+
+[[package]]
 name = "pyyaml"
 version = "5.4.1"
 description = "YAML parser and emitter for Python"
@@ -779,6 +790,14 @@ lint = ["flake8", "mypy", "docutils-stubs"]
 test = ["pytest"]
 
 [[package]]
+name = "tokenize-rt"
+version = "4.1.0"
+description = "A wrapper around the stdlib `tokenize` which roundtrips."
+category = "dev"
+optional = false
+python-versions = ">=3.6.1"
+
+[[package]]
 name = "toml"
 version = "0.10.2"
 description = "Python Library for Tom's Obvious, Minimal Language"
@@ -862,7 +881,7 @@ docs = ["sphinx-rtd-theme", "sphinxcontrib-napoleon"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "d7cabb6f81fd7b5f9cd30bd7019de9b45ec1520f4ce90084e71d33e4a55030da"
+content-hash = "a58f4598fe4feb5f5f9afb0cfc6fa093f4889c6b8ada54b0ca5427db57c62b41"
 
 [metadata.files]
 alabaster = [
@@ -1167,6 +1186,10 @@ pytz = [
     {file = "pytz-2021.1-py2.py3-none-any.whl", hash = "sha256:eb10ce3e7736052ed3623d49975ce333bcd712c7bb19a58b9e2089d4057d0798"},
     {file = "pytz-2021.1.tar.gz", hash = "sha256:83a4a90894bf38e243cf052c8b58f381bfe9a7a483f6a9cab140bc7f702ac4da"},
 ]
+pyupgrade = [
+    {file = "pyupgrade-2.29.0-py2.py3-none-any.whl", hash = "sha256:04938c7e8e4e8b476ae2b727306ecfaea95a83b707acbe6929864100dd6d9701"},
+    {file = "pyupgrade-2.29.0.tar.gz", hash = "sha256:27bfbc38854a40a70767ef6cbf3bf133c5472557905f0f9fe7ba5f58975701e4"},
+]
 pyyaml = [
     {file = "PyYAML-5.4.1-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:3b2b1824fe7112845700f815ff6a489360226a5609b96ec2190a45e62a9fc922"},
     {file = "PyYAML-5.4.1-cp27-cp27m-win32.whl", hash = "sha256:129def1b7c1bf22faffd67b8f3724645203b79d8f4cc81f674654d9902cb4393"},
@@ -1302,6 +1325,10 @@ sphinxcontrib-qthelp = [
 sphinxcontrib-serializinghtml = [
     {file = "sphinxcontrib-serializinghtml-1.1.5.tar.gz", hash = "sha256:aa5f6de5dfdf809ef505c4895e51ef5c9eac17d0f287933eb49ec495280b6952"},
     {file = "sphinxcontrib_serializinghtml-1.1.5-py2.py3-none-any.whl", hash = "sha256:352a9a00ae864471d3a7ead8d7d79f5fc0b57e8b3f95e9867eb9eb28999b92fd"},
+]
+tokenize-rt = [
+    {file = "tokenize_rt-4.1.0-py2.py3-none-any.whl", hash = "sha256:b37251fa28c21e8cce2e42f7769a35fba2dd2ecafb297208f9a9a8add3ca7793"},
+    {file = "tokenize_rt-4.1.0.tar.gz", hash = "sha256:ab339b5ff829eb5e198590477f9c03c84e762b3e455e74c018956e7e326cbc70"},
 ]
 toml = [
     {file = "toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b"},
