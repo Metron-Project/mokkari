@@ -61,8 +61,6 @@ class Session:
         self.api_url = "https://metron.cloud/api/{}/"
         self.cache = cache
 
-    @sleep_and_retry
-    @limits(calls=20, period=ONE_MINUTE)
     def call(
         self, endpoint: List[Union[str, int]], params: Dict[str, Union[str, int]] = None
     ) -> Dict[str, Any]:
@@ -311,8 +309,6 @@ class Session:
 
         return issues_list.IssuesList(res)
 
-    @sleep_and_retry
-    @limits(calls=20, period=ONE_MINUTE)
     def _retrieve_all_results(self, data):
         has_next_page = True
         next_page = data["next"]
@@ -325,7 +321,7 @@ class Session:
                     next_page = cached_response["next"]
                 else:
                     has_next_page = False
-                    continue
+                continue
 
             response = self._request_data(next_page)
             data["results"].extend(response["results"])
@@ -339,6 +335,8 @@ class Session:
 
         return data
 
+    @sleep_and_retry
+    @limits(calls=20, period=ONE_MINUTE)
     def _request_data(
         self, url: str, params: Optional[Dict[str, Union[str, int]]] = None
     ) -> Any:
