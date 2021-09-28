@@ -109,13 +109,7 @@ class Session:
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
 
-        if self.cache:
-            try:
-                self.cache.store(cache_key, data)
-            except AttributeError as e:
-                raise exceptions.CacheError(
-                    "Cache object passed in is missing attribute: {}".format(repr(e))
-                )
+        self._save_results_to_cache(cache_key, data)
 
         return data
 
@@ -368,13 +362,7 @@ class Session:
 
             data["results"].extend(response["results"])
 
-            if self.cache:
-                try:
-                    self.cache.store(next_page, response)
-                except AttributeError as e:
-                    raise exceptions.CacheError(
-                        "Cache object passed in is missing attribute: {}".format(repr(e))
-                    )
+            self._save_results_to_cache(next_page, response)
 
             if response["next"]:
                 next_page = response["next"]
@@ -382,3 +370,12 @@ class Session:
                 has_next_page = False
 
         return data
+
+    def _save_results_to_cache(self, key: str, data: str) -> None:
+        if self.cache:
+            try:
+                self.cache.store(key, data)
+            except AttributeError as e:
+                raise exceptions.CacheError(
+                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                )
