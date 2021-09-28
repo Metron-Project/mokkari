@@ -181,3 +181,11 @@ def test_bad_response_data():
     """Test for bad issue response."""
     with pytest.raises(exceptions.ApiError):
         issues_list.IssuesList({"results": {"volume": "1"}})
+
+
+def test_multi_page_results(talker):
+    """Test for multi page results."""
+    superman = talker.issues_list({"series_name": "action comics", "series_year_began": 2011})
+    assert superman is not None
+    assert len(superman) == 57
+    assert superman[56].issue_name == "Action Comics #52"

@@ -327,4 +327,58 @@ class Session:
         """
         if params is None:
             params = {}
-        return issues_list.IssuesList(self.call(["issue"], params=params))
+
+        res = self.call(["issue"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return issues_list.IssuesList(res)
+
+    @sleep_and_retry
+    @limits(calls=20, period=ONE_MINUTE)
+    def _retrieve_all_results(self, data):
+        has_next_page = True
+        next_page = data["next"]
+
+        while has_next_page:
+            if self.cache:
+                try:
+                    cached_response = self.cache.get(next_page)
+                    if cached_response:
+                        data["results"].extend(cached_response["results"])
+                        if cached_response["next"]:
+                            next_page = cached_response["next"]
+                        else:
+                            has_next_page = False
+                        continue
+                except AttributeError as e:
+                    raise exceptions.CacheError(
+                        "Cache object passed in is missing attribute: {}".format(repr(e))
+                    )
+
+            try:
+                response = requests.get(
+                    next_page,
+                    params={},
+                    auth=(self.username, self.passwd),
+                    headers=self.header,
+                ).json()
+            except requests.exceptions.ConnectionError as e:
+                raise exceptions.ApiError("Connection error: {}".format(repr(e)))
+
+            data["results"].extend(response["results"])
+
+            if self.cache:
+                try:
+                    self.cache.store(next_page, response)
+                except AttributeError as e:
+                    raise exceptions.CacheError(
+                        "Cache object passed in is missing attribute: {}".format(repr(e))
+                    )
+
+            if response["next"]:
+                next_page = response["next"]
+            else:
+                has_next_page = False
+
+        return data
