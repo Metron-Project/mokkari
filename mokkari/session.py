@@ -242,7 +242,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return arcs_list.ArcsList(self.call(["arc"], params=params))
+
+        res = self.call(["arc"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return arcs_list.ArcsList(res)
 
     def series(self, _id: int) -> series.Series:
         """
