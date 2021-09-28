@@ -36,13 +36,13 @@ def test_known_character(talker):
 
 def test_characterlist(talker):
     """Test the CharactersList."""
-    character = talker.characters_list()
+    character = talker.characters_list({"name": "man"})
     character_iter = iter(character)
     assert next(character_iter).name == "'Mazing Man"
-    assert next(character_iter).name == "0101"
-    assert next(character_iter).name == "2 Face 2"
-    assert len(character) == 100
-    assert character[2].name == "2 Face 2"
+    assert next(character_iter).name == "3-D Man (Chandler)"
+    assert next(character_iter).name == "3-D Man (Garrett)"
+    assert len(character) == 435
+    assert character[2].name == "3-D Man (Garrett)"
 
 
 def test_bad_character(talker):

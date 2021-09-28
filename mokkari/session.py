@@ -152,7 +152,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return characters_list.CharactersList(self.call(["character"], params=params))
+
+        res = self.call(["character"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return characters_list.CharactersList(res)
 
     def publisher(self, _id: int) -> publisher.Publisher:
         """
