@@ -122,7 +122,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return creators_list.CreatorsList(self.call(["creator"], params=params))
+
+        res = self.call(["creator"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return creators_list.CreatorsList(res)
 
     def character(self, _id: int) -> character.Character:
         """
