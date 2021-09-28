@@ -94,17 +94,7 @@ class Session:
                     "Cache object passed in is missing attribute: {}".format(repr(e))
                 )
 
-        try:
-            response = requests.get(
-                url,
-                params=params,
-                auth=(self.username, self.passwd),
-                headers=self.header,
-            )
-        except requests.exceptions.ConnectionError as e:
-            raise exceptions.ApiError("Connection error: {}".format(repr(e)))
-
-        data = response.json()
+        data = self._request_data(url, params)
 
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
@@ -350,16 +340,7 @@ class Session:
                         "Cache object passed in is missing attribute: {}".format(repr(e))
                     )
 
-            try:
-                response = requests.get(
-                    next_page,
-                    params={},
-                    auth=(self.username, self.passwd),
-                    headers=self.header,
-                ).json()
-            except requests.exceptions.ConnectionError as e:
-                raise exceptions.ApiError("Connection error: {}".format(repr(e)))
-
+            response = self._request_data(next_page)
             data["results"].extend(response["results"])
 
             self._save_results_to_cache(next_page, response)
@@ -370,6 +351,24 @@ class Session:
                 has_next_page = False
 
         return data
+
+    def _request_data(
+        self, url: str, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> Any:
+        if params is None:
+            params = {}
+
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                auth=(self.username, self.passwd),
+                headers=self.header,
+            ).json()
+        except requests.exceptions.ConnectionError as e:
+            raise exceptions.ApiError("Connection error: {}".format(repr(e)))
+
+        return response
 
     def _save_results_to_cache(self, key: str, data: str) -> None:
         if self.cache:
