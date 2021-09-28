@@ -182,7 +182,12 @@ class Session:
         """
         if params is None:
             params = {}
-        return publishers_list.PublishersList(self.call(["publisher"], params=params))
+
+        res = self.call(["publisher"], params=params)
+        if res["next"]:
+            res = self._retrieve_all_results(res)
+
+        return publishers_list.PublishersList(res)
 
     def team(self, _id: int) -> team.Team:
         """
