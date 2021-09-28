@@ -83,16 +83,9 @@ class Session:
         url = self.api_url.format("/".join(str(e) for e in endpoint))
         cache_key = f"{url}{cache_params}"
 
-        if self.cache:
-            try:
-                cached_response = self.cache.get(cache_key)
-
-                if cached_response is not None:
-                    return cached_response
-            except AttributeError as e:
-                raise exceptions.CacheError(
-                    "Cache object passed in is missing attribute: {}".format(repr(e))
-                )
+        cached_response = self._get_results_from_cache(cache_key)
+        if cached_response is not None:
+            return cached_response
 
         data = self._request_data(url, params)
 
@@ -325,20 +318,14 @@ class Session:
         next_page = data["next"]
 
         while has_next_page:
-            if self.cache:
-                try:
-                    cached_response = self.cache.get(next_page)
-                    if cached_response:
-                        data["results"].extend(cached_response["results"])
-                        if cached_response["next"]:
-                            next_page = cached_response["next"]
-                        else:
-                            has_next_page = False
-                        continue
-                except AttributeError as e:
-                    raise exceptions.CacheError(
-                        "Cache object passed in is missing attribute: {}".format(repr(e))
-                    )
+            cached_response = self._get_results_from_cache(next_page)
+            if cached_response:
+                data["results"].extend(cached_response["results"])
+                if cached_response["next"]:
+                    next_page = cached_response["next"]
+                else:
+                    has_next_page = False
+                    continue
 
             response = self._request_data(next_page)
             data["results"].extend(response["results"])
@@ -369,6 +356,19 @@ class Session:
             raise exceptions.ApiError("Connection error: {}".format(repr(e)))
 
         return response
+
+    def _get_results_from_cache(self, key) -> Optional[Any]:
+        cached_response = None
+
+        if self.cache:
+            try:
+                cached_response = self.cache.get(key)
+            except AttributeError as e:
+                raise exceptions.CacheError(
+                    "Cache object passed in is missing attribute: {}".format(repr(e))
+                )
+
+        return cached_response
 
     def _save_results_to_cache(self, key: str, data: str) -> None:
         if self.cache:
