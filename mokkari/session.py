@@ -120,13 +120,7 @@ class Session:
         :return: A list of :class:`Creator` objects containing their id and name.
         :rtype: CreatorsList
         """
-        if params is None:
-            params = {}
-
-        res = self.call(["creator"], params=params)
-        if res["next"]:
-            res = self._retrieve_all_results(res)
-
+        res = self._get_results("creator", params)
         return creators_list.CreatorsList(res)
 
     def character(self, _id: int) -> character.Character:
@@ -155,13 +149,7 @@ class Session:
         :return: A list of :class:`Character` objects containing their id and name.
         :rtype: CharactersList
         """
-        if params is None:
-            params = {}
-
-        res = self.call(["character"], params=params)
-        if res["next"]:
-            res = self._retrieve_all_results(res)
-
+        res = self._get_results("character", params)
         return characters_list.CharactersList(res)
 
     def publisher(self, _id: int) -> publisher.Publisher:
@@ -190,13 +178,7 @@ class Session:
         :return: A list of :class:`Publisher` objects containing their id and name.
         :rtype: PublishersList
         """
-        if params is None:
-            params = {}
-
-        res = self.call(["publisher"], params=params)
-        if res["next"]:
-            res = self._retrieve_all_results(res)
-
+        res = self._get_results("publisher", params)
         return publishers_list.PublishersList(res)
 
     def team(self, _id: int) -> team.Team:
@@ -225,13 +207,7 @@ class Session:
         :return: A list of :class:`Team` objects containing their id and name.
         :rtype: TeamsList
         """
-        if params is None:
-            params = {}
-
-        res = self.call(["team"], params=params)
-        if res["next"]:
-            res = self._retrieve_all_results(res)
-
+        res = self._get_results("team", params)
         return teams_list.TeamsList(res)
 
     def arc(self, _id: int) -> arc.Arc:
@@ -260,13 +236,7 @@ class Session:
         :return: A list of :class:`Arc` objects containing their id and name.
         :rtype: ArcsList
         """
-        if params is None:
-            params = {}
-
-        res = self.call(["arc"], params=params)
-        if res["next"]:
-            res = self._retrieve_all_results(res)
-
+        res = self._get_results("arc", params)
         return arcs_list.ArcsList(res)
 
     def series(self, _id: int) -> series.Series:
@@ -295,13 +265,7 @@ class Session:
         :return: A list of :class:`Series` objects containing their id and name.
         :rtype: SeriesList
         """
-        if params is None:
-            params = {}
-
-        res = self.call(["series"], params=params)
-        if res["next"]:
-            res = self._retrieve_all_results(res)
-
+        res = self._get_results("series", params)
         return series_list.SeriesList(res)
 
     def issue(self, _id: int) -> issue.Issue:
@@ -330,14 +294,17 @@ class Session:
         :return: A list of :class:`Issue` objects containing their id and name.
         :rtype: IssuesList
         """
+        res = self._get_results("issue", params)
+        return issues_list.IssuesList(res)
+
+    def _get_results(self, resource, params):
         if params is None:
             params = {}
 
-        res = self.call(["issue"], params=params)
-        if res["next"]:
-            res = self._retrieve_all_results(res)
-
-        return issues_list.IssuesList(res)
+        result = self.call([resource], params=params)
+        if result["next"]:
+            result = self._retrieve_all_results(result)
+        return result
 
     def _retrieve_all_results(self, data):
         has_next_page = True
