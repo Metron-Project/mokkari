@@ -41,7 +41,7 @@ Example Usage
     m = mokkari.api(username, password)
 
     # Get all Marvel comics for the week of 2021-06-07
-    this_week = m.issues_list({"store_date_range_after": "2021-06-07", "store_date_range_before": "2021-06-13", "publisher": "marvel"})
+    this_week = m.issues_list({"store_date_range_after": "2021-06-07", "store_date_range_before": "2021-06-13", "publisher_name": "marvel"})
 
     # Print the results
     for i in this_week:
