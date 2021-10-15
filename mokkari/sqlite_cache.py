@@ -7,6 +7,7 @@ This module provides the following classes:
 """
 import json
 import sqlite3
+from typing import Any, Optional
 
 
 class SqliteCache:
@@ -16,13 +17,13 @@ class SqliteCache:
     :param str db_name: Path and database name to use.
     """
 
-    def __init__(self, db_name: str = "mokkari_cache.db"):
+    def __init__(self, db_name: str = "mokkari_cache.db") -> None:
         """Intialize a new SqliteCache."""
         self.con = sqlite3.connect(db_name)
         self.cur = self.con.cursor()
         self.cur.execute("CREATE TABLE IF NOT EXISTS responses (key, json)")
 
-    def get(self, key: str):
+    def get(self, key: str) -> Optional[Any]:
         """
         Retrieve data from the cache database.
 
@@ -36,7 +37,7 @@ class SqliteCache:
 
         return None
 
-    def store(self, key: str, value: str):
+    def store(self, key: str, value: str) -> None:
         """
         Save data to the cache database.
 

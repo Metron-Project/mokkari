@@ -297,7 +297,9 @@ class Session:
         res = self._get_results("issue", params)
         return issues_list.IssuesList(res)
 
-    def _get_results(self, resource, params):
+    def _get_results(
+        self, resource: str, params: Optional[Dict[str, Union[str, int]]]
+    ) -> Dict[str, Any]:
         if params is None:
             params = {}
 
@@ -352,7 +354,7 @@ class Session:
 
         return response
 
-    def _get_results_from_cache(self, key) -> Optional[Any]:
+    def _get_results_from_cache(self, key: str) -> Optional[Any]:
         cached_response = None
 
         if self.cache:
