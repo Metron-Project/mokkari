@@ -103,7 +103,7 @@ def test_issueslist_with_params(talker):
         "series_name": "Kang",
     }
     issues = talker.issues_list(params=params)
-    assert len(issues) == 2
+    assert len(issues) == 3
     assert issues[0].issue_name == "Kang The Conqueror #1"
     assert issues[0].cover_date == date(2021, 10, 1)
 
