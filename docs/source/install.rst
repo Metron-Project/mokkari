@@ -3,7 +3,7 @@
 Installation
 ============
 
-**mokkari** requires Python >= 3.8. It has no external dependencies.
+**mokkari** requires Python >= 3.8.
 
 Installing/Upgrading from the PyPI
 ----------------------------------
