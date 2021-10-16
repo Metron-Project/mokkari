@@ -41,7 +41,7 @@ def test_characterlist(talker):
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "3-D Man (Chandler)"
     assert next(character_iter).name == "3-D Man (Garrett)"
-    assert len(character) == 435
+    assert len(character) == 439
     assert character[2].name == "3-D Man (Garrett)"
 
 

@@ -56,7 +56,7 @@ def test_serieslist(talker):
     assert next(series_iter).id == 2481
     assert next(series_iter).id == 763
     assert next(series_iter).id == 93
-    assert len(series) == 115
+    assert len(series) == 119
     assert series[3].id == 93
     assert series[3].display_name == "Batman (2016)"
 
