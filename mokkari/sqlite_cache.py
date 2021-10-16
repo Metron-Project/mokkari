@@ -16,7 +16,7 @@ class SqliteCache:
     The SqliteCache object to cache search results from Metron.
 
     :param str db_name: Path and database name to use.
-    :param expire: The number of days to keep the cache results before the expire.
+    :param expire: The number of days to keep the cache results before they expire.
     :type expire: int, optional
     """
 
