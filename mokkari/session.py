@@ -184,16 +184,24 @@ class Session:
 
         return result
 
-    def publishers_list(self, params: Dict[str, Union[str, int]] = None):
+    def publishers_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of publishers.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of the publisher to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Publisher` objects containing their id and name.
         :rtype: PublishersList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("publisher", params)
         return publishers_list.PublishersList(res)
 
