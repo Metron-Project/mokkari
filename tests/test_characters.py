@@ -36,7 +36,7 @@ def test_known_character(talker):
 
 def test_characterlist(talker):
     """Test the CharactersList."""
-    character = talker.characters_list({"name": "man"})
+    character = talker.characters_list(name="man")
     character_iter = iter(character)
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "3-D Man (Chandler)"

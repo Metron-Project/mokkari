@@ -147,16 +147,24 @@ class Session:
 
         return result
 
-    def characters_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
+    def characters_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of characters.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of character to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Character` objects containing their id and name.
         :rtype: CharactersList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("character", params)
         return characters_list.CharactersList(res)
 
