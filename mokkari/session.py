@@ -221,16 +221,24 @@ class Session:
 
         return result
 
-    def teams_list(self, params: Dict[str, Union[str, int]] = None):
+    def teams_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of teams.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of the team to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Team` objects containing their id and name.
         :rtype: TeamsList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("team", params)
         return teams_list.TeamsList(res)
 
