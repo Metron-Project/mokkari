@@ -295,16 +295,58 @@ class Session:
 
         return result
 
-    def series_list(self, params: Dict[str, Union[str, int]] = None):
+    def series_list(
+        self,
+        name: Optional[str] = None,
+        page: Optional[int] = None,
+        publisher_id: Optional[int] = None,
+        publisher_name: Optional[str] = None,
+        volume: Optional[int] = None,
+        year_began: Optional[int] = None,
+        year_end: Optional[int] = None,
+    ):
         """
         Request a list of series.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of the series to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
+
+        :param publisher_id: The Metron id number for a publisher.
+        :type publisher_id: int, optional
+
+        :param publisher_name: The name of the publisher to filter results.
+        :type publisher_name: str, optional
+
+        :param volume: The volume number to filter by.
+        :type volume: int, optional
+
+        :param year_began: The cover year that the series started publishing.
+        :type year_began: int, optional
+
+        :param year_end: The cover year that the series ended.
+        :type year_end: int, optional
 
         :return: A list of :class:`Series` objects containing their id and name.
         :rtype: SeriesList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
+        if publisher_id:
+            params["publisher_id"] = publisher_id
+        if publisher_name:
+            params["publisher_name"] = publisher_name
+        if volume:
+            params["volume"] = volume
+        if year_began:
+            params["year_began"] = year_began
+        if year_end:
+            params["year_end"] = year_end
         res = self._get_results("series", params)
         return series_list.SeriesList(res)
 
