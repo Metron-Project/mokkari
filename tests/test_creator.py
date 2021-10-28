@@ -36,7 +36,7 @@ def test_known_creator(talker):
 
 def test_comiclist(talker):
     """Test the CreatorsList."""
-    creators = talker.creators_list({"name": "man"})
+    creators = talker.creators_list(name="man")
     creator_iter = iter(creators)
     assert next(creator_iter).name == "A. J. Lieberman"
     assert next(creator_iter).name == "Adam Freeman"

@@ -110,16 +110,24 @@ class Session:
 
         return result
 
-    def creators_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
+    def creators_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of creators.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of creator to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Creator` objects containing their id and name.
         :rtype: CreatorsList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("creator", params)
         return creators_list.CreatorsList(res)
 
@@ -139,16 +147,24 @@ class Session:
 
         return result
 
-    def characters_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
+    def characters_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of characters.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of character to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Character` objects containing their id and name.
         :rtype: CharactersList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("character", params)
         return characters_list.CharactersList(res)
 
@@ -168,16 +184,24 @@ class Session:
 
         return result
 
-    def publishers_list(self, params: Dict[str, Union[str, int]] = None):
+    def publishers_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of publishers.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of the publisher to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Publisher` objects containing their id and name.
         :rtype: PublishersList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("publisher", params)
         return publishers_list.PublishersList(res)
 
@@ -197,16 +221,24 @@ class Session:
 
         return result
 
-    def teams_list(self, params: Dict[str, Union[str, int]] = None):
+    def teams_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of teams.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of the team to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Team` objects containing their id and name.
         :rtype: TeamsList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("team", params)
         return teams_list.TeamsList(res)
 
@@ -226,16 +258,24 @@ class Session:
 
         return result
 
-    def arcs_list(self, params: Dict[str, Union[str, int]] = None):
+    def arcs_list(self, name: Optional[str] = None, page: Optional[int] = None):
         """
         Request a list of story arcs.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of the arc to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
 
         :return: A list of :class:`Arc` objects containing their id and name.
         :rtype: ArcsList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
         res = self._get_results("arc", params)
         return arcs_list.ArcsList(res)
 
@@ -255,16 +295,58 @@ class Session:
 
         return result
 
-    def series_list(self, params: Dict[str, Union[str, int]] = None):
+    def series_list(
+        self,
+        name: Optional[str] = None,
+        page: Optional[int] = None,
+        publisher_id: Optional[int] = None,
+        publisher_name: Optional[str] = None,
+        volume: Optional[int] = None,
+        year_began: Optional[int] = None,
+        year_end: Optional[int] = None,
+    ):
         """
         Request a list of series.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param name: Name of the series to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
+
+        :param publisher_id: The Metron id number for a publisher.
+        :type publisher_id: int, optional
+
+        :param publisher_name: The name of the publisher to filter results.
+        :type publisher_name: str, optional
+
+        :param volume: The volume number to filter by.
+        :type volume: int, optional
+
+        :param year_began: The cover year that the series started publishing.
+        :type year_began: int, optional
+
+        :param year_end: The cover year that the series ended.
+        :type year_end: int, optional
 
         :return: A list of :class:`Series` objects containing their id and name.
         :rtype: SeriesList
         """
+        params = {}
+        if name:
+            params["name"] = name
+        if page:
+            params["page"] = page
+        if publisher_id:
+            params["publisher_id"] = publisher_id
+        if publisher_name:
+            params["publisher_name"] = publisher_name
+        if volume:
+            params["volume"] = volume
+        if year_began:
+            params["year_began"] = year_began
+        if year_end:
+            params["year_end"] = year_end
         res = self._get_results("series", params)
         return series_list.SeriesList(res)
 
@@ -284,16 +366,88 @@ class Session:
 
         return result
 
-    def issues_list(self, params: Dict[str, Union[str, int]] = None):
+    def issues_list(
+        self,
+        cover_month: Optional[int] = None,
+        cover_year: Optional[int] = None,
+        number: Optional[str] = None,
+        page: Optional[int] = None,
+        publisher_id: Optional[int] = None,
+        publisher_name: Optional[str] = None,
+        series_id: Optional[int] = None,
+        series_name: Optional[str] = None,
+        series_volume: Optional[int] = None,
+        series_year_began: Optional[int] = None,
+        store_date_range_after: Optional[str] = None,
+        store_date_range_before: Optional[str] = None,
+    ):
         """
         Request a list of issues.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        :param cover_month: The cover month to filter by.
+        :type cover_month: int, optional
+
+        :param cover_year: The cover year to filter by.
+        :type cover_year: int, optional
+
+        :param number: Number of the issue to search for.
+        :type name: str, optional
+
+        :param page: A page number within the paginated result set.
+        :type page: int, optional
+
+        :param publisher_id: The Metron id number for a publisher.
+        :type publisher_id: int, optional
+
+        :param publisher_name: The name of the publisher to filter results.
+        :type publisher_name: str, optional
+
+        :param series_id: The Metron id number for a series.
+        :type series_id: int, optional
+
+        :param series_name: The name of the series to filter by.
+        :type series_name: str, optional
+
+        :param seris_volume: The series volume number to filter by.
+        :type series_volume: int, optional
+
+        :param series_year_began: Filter by the year the series began.
+        :type series_year_began: int, optionals
+
+        :param store_date_range_after: Filter for issues after the store date. Should be formatted as 'YYYY-mm-dd'. # noqa #E501
+        :type store_date_range_after: str, optional
+
+        :param store_date_range_before: Filter for issues before the store date. Should be formatted as 'YYYY-mm-dd'. # noqa #E501
+        :type store_date_range_before: str, optional
 
         :return: A list of :class:`Issue` objects containing their id and name.
         :rtype: IssuesList
         """
+        params = {}
+        if cover_month:
+            params["cover_month"] = cover_month
+        if cover_year:
+            params["cover_year"] = cover_year
+        if number:
+            params["number"] = number
+        if page:
+            params["page"] = page
+        if publisher_id:
+            params["publisher_id"] = publisher_id
+        if publisher_name:
+            params["publisher_name"] = publisher_name
+        if series_id:
+            params["series_id"] = series_id
+        if series_name:
+            params["series_name"] = series_name
+        if series_volume:
+            params["series_volume"] = series_volume
+        if series_year_began:
+            params["series_year_began"] = series_year_began
+        if store_date_range_after:
+            params["store_date_range_after"] = store_date_range_after
+        if store_date_range_before:
+            params["store_date_range_before"] = store_date_range_before
         res = self._get_results("issue", params)
         return issues_list.IssuesList(res)
 
