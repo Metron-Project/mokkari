@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 import requests_mock
 
-from mokkari import exceptions, issues_list
+from mokkari import exceptions, issue
 
 
 def test_known_issue(talker):
@@ -180,7 +180,7 @@ def test_bad_issue(talker):
 def test_bad_response_data():
     """Test for bad issue response."""
     with pytest.raises(exceptions.ApiError):
-        issues_list.IssuesList({"results": {"volume": "1"}})
+        issue.IssuesList({"results": {"volume": "1"}})
 
 
 def test_multi_page_results(talker):

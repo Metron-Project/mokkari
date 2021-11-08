@@ -18,10 +18,9 @@ from mokkari import __version__
 from mokkari import arc as arcs
 from mokkari import character as characters
 from mokkari import creator as creators
+from mokkari import exceptions
+from mokkari import issue as issues
 from mokkari import (
-    exceptions,
-    issue,
-    issues_list,
     publisher,
     publishers_list,
     series,
@@ -269,7 +268,7 @@ class Session:
         res = self._get_results("series", params)
         return series_list.SeriesList(res)
 
-    def issue(self, _id: int) -> issue.Issue:
+    def issue(self, _id: int) -> issues.Issue:
         """
         Request data for an issue based on it's ``_id``.
 
@@ -279,13 +278,13 @@ class Session:
         :rtype: Issue
         """
         try:
-            result = issue.IssueSchema().load(self.call(["issue", _id]))
+            result = issues.IssueSchema().load(self.call(["issue", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def issues_list(self, params: Dict[str, Union[str, int]] = None):
+    def issues_list(self, params: Dict[str, Union[str, int]] = None) -> issues.IssuesList:
         """
         Request a list of issues.
 
@@ -296,7 +295,7 @@ class Session:
         :rtype: IssuesList
         """
         res = self._get_results("issue", params)
-        return issues_list.IssuesList(res)
+        return issues.IssuesList(res)
 
     def _get_results(
         self, resource: str, params: Optional[Dict[str, Union[str, int]]]
