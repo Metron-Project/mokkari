@@ -3,30 +3,27 @@ Conftest module.
 
 This module contains pytest fixtures.
 """
-import os
+
+from pathlib import Path
 
 import pytest
 
-from mokkari import api, sqlite_cache
+from mokkari import api
 
 
 @pytest.fixture(scope="session")
-def dummy_username():
-    """Username fixture."""
-    return os.getenv("METRON_USERNAME", "username")
-
-
-@pytest.fixture(scope="session")
-def dummy_password():
-    """Password fixture."""
-    return os.getenv("METRON_PASSWD", "passwd")
-
-
-@pytest.fixture(scope="session")
-def talker(dummy_username, dummy_password):
+def talker():
     """Mokkari api fixture."""
-    return api(
-        username=dummy_username,
-        passwd=dummy_password,
-        cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
-    )
+    return api(username="dummy_username", passwd="dummy_password")
+
+
+@pytest.fixture(scope="session")
+def arc_resp():
+    """Single arc fixture."""
+    return (Path(__file__).parent / "data/arc.json").read_text()
+
+
+@pytest.fixture(scope="session")
+def arc_list_resp():
+    """Arc list fixture."""
+    return (Path(__file__).parent / "data/arc_list.json").read_text()
