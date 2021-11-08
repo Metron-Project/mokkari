@@ -14,10 +14,9 @@ import requests
 from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
 
+from mokkari import __version__
+from mokkari import arc as arcs
 from mokkari import (
-    __version__,
-    arc,
-    arcs_list,
     character,
     characters_list,
     creator,
@@ -210,7 +209,7 @@ class Session:
         res = self._get_results("team", params)
         return teams_list.TeamsList(res)
 
-    def arc(self, _id: int) -> arc.Arc:
+    def arc(self, _id: int) -> arcs.Arc:
         """
         Request data for a story arc based on its ``_id``.
 
@@ -220,13 +219,13 @@ class Session:
         :rtype: Arc
         """
         try:
-            result = arc.ArcSchema().load(self.call(["arc", _id]))
+            result = arcs.ArcSchema().load(self.call(["arc", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def arcs_list(self, params: Dict[str, Union[str, int]] = None):
+    def arcs_list(self, params: Dict[str, Union[str, int]] = None) -> arcs.ArcsList:
         """
         Request a list of story arcs.
 
@@ -237,7 +236,7 @@ class Session:
         :rtype: ArcsList
         """
         res = self._get_results("arc", params)
-        return arcs_list.ArcsList(res)
+        return arcs.ArcsList(res)
 
     def series(self, _id: int) -> series.Series:
         """
