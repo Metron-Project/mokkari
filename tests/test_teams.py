@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import exceptions, teams_list
+from mokkari import exceptions, team
 
 
 def test_known_team(talker):
@@ -55,4 +55,4 @@ def test_bad_team(talker):
 def test_bad_response_data():
     """Test for a bad team response."""
     with pytest.raises(exceptions.ApiError):
-        teams_list.TeamsList({"results": {"name": 1}})
+        team.TeamsList({"results": {"name": 1}})

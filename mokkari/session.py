@@ -14,6 +14,7 @@ import requests
 from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
 
+# Alias these modules to prevent namespace collision with methods.
 from mokkari import __version__
 from mokkari import arc as arcs
 from mokkari import character as characters
@@ -22,7 +23,8 @@ from mokkari import exceptions
 from mokkari import issue as issues
 from mokkari import publisher as publishers
 from mokkari import series as ser
-from mokkari import sqlite_cache, team, teams_list
+from mokkari import sqlite_cache
+from mokkari import team as teams
 
 ONE_MINUTE = 60
 
@@ -177,7 +179,7 @@ class Session:
         res = self._get_results("publisher", params)
         return publishers.PublishersList(res)
 
-    def team(self, _id: int) -> team.Team:
+    def team(self, _id: int) -> teams.Team:
         """
         Request data for a team based on its ``_id``.
 
@@ -187,13 +189,13 @@ class Session:
         :rtype: Team
         """
         try:
-            result = team.TeamSchema().load(self.call(["team", _id]))
+            result = teams.TeamSchema().load(self.call(["team", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def teams_list(self, params: Dict[str, Union[str, int]] = None):
+    def teams_list(self, params: Dict[str, Union[str, int]] = None) -> teams.TeamsList:
         """
         Request a list of teams.
 
@@ -204,7 +206,7 @@ class Session:
         :rtype: TeamsList
         """
         res = self._get_results("team", params)
-        return teams_list.TeamsList(res)
+        return teams.TeamsList(res)
 
     def arc(self, _id: int) -> arcs.Arc:
         """
