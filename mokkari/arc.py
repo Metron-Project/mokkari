@@ -9,7 +9,7 @@ This module provides the following classes:
 """
 from marshmallow import INCLUDE, Schema, ValidationError, fields, post_load
 
-from mokkari import arc, exceptions
+from mokkari import exceptions
 
 
 class Arc:
@@ -66,7 +66,7 @@ class ArcsList:
         """Initialize a new ArcsList."""
         self.arcs = []
 
-        schema = arc.ArcSchema()
+        schema = ArcSchema()
         for arc_dict in response["results"]:
             try:
                 result = schema.load(arc_dict)
