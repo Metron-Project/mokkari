@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mokkari"
-version = "1.0.4"
+version = "1.0.5"
 description = "Python wrapper for Metron API"
 authors = ["Brian Pepple <bdpepple@gmail.com>"]
 license = "GPL-3.0-or-later"
@@ -19,6 +19,8 @@ classifiers = [
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Natural Language :: English",
     "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Topic :: Internet",
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: POSIX",

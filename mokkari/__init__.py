@@ -1,7 +1,7 @@
 """Project entry file."""
 
 # Keep this at beginning of file to prevent circular import with session
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 from typing import Optional
 
