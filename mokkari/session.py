@@ -16,9 +16,8 @@ from ratelimit import limits, sleep_and_retry
 
 from mokkari import __version__
 from mokkari import arc as arcs
+from mokkari import character as characters
 from mokkari import (
-    character,
-    characters_list,
     creator,
     creators_list,
     exceptions,
@@ -122,7 +121,7 @@ class Session:
         res = self._get_results("creator", params)
         return creators_list.CreatorsList(res)
 
-    def character(self, _id: int) -> character.Character:
+    def character(self, _id: int) -> characters.Character:
         """
         Request data for a character based on its ``_id``.
 
@@ -132,13 +131,15 @@ class Session:
         :rtype: Character
         """
         try:
-            result = character.CharacterSchema().load(self.call(["character", _id]))
+            result = characters.CharacterSchema().load(self.call(["character", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def characters_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
+    def characters_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> characters.CharactersList:
         """
         Request a list of characters.
 
@@ -149,7 +150,7 @@ class Session:
         :rtype: CharactersList
         """
         res = self._get_results("character", params)
-        return characters_list.CharactersList(res)
+        return characters.CharactersList(res)
 
     def publisher(self, _id: int) -> publisher.Publisher:
         """
