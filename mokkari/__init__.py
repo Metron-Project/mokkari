@@ -19,7 +19,7 @@ def api(
     :param str passwd: The password used for metron.cloud.
     :param SqliteCache optional: SqliteCache to use
 
-    :return: :class:`Session`
+    :return: :class:`Session` object
     :rtype: Session
 
     :raises: :class:`AuthenticationError`
