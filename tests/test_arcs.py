@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import arcs_list, exceptions
+from mokkari import arc, exceptions
 
 
 def test_known_arc(talker):
@@ -57,4 +57,4 @@ def test_bad_arc(talker):
 def test_bad_response_data():
     """Test for bad arc response."""
     with pytest.raises(exceptions.ApiError):
-        arcs_list.ArcsList({"results": {"name": 1}})
+        arc.ArcsList({"results": {"name": 1}})

@@ -5,8 +5,11 @@ This module provides the following classes:
 
 - Arc
 - ArcSchema
+- ArcsList
 """
-from marshmallow import INCLUDE, Schema, fields, post_load
+from marshmallow import INCLUDE, Schema, ValidationError, fields, post_load
+
+from mokkari import exceptions
 
 
 class Arc:
@@ -54,3 +57,32 @@ class ArcSchema(Schema):
         :rtype: Arc
         """
         return Arc(**data)
+
+
+class ArcsList:
+    """The ArcsList object contains a list of `Arc` objects."""
+
+    def __init__(self, response):
+        """Initialize a new ArcsList."""
+        self.arcs = []
+
+        schema = ArcSchema()
+        for arc_dict in response["results"]:
+            try:
+                result = schema.load(arc_dict)
+            except ValidationError as error:
+                raise exceptions.ApiError(error)
+
+            self.arcs.append(result)
+
+    def __iter__(self):
+        """Return an iterator object."""
+        return iter(self.arcs)
+
+    def __len__(self):
+        """Return the length of the object."""
+        return len(self.arcs)
+
+    def __getitem__(self, index: int):
+        """Return the object of a at index."""
+        return self.arcs[index]

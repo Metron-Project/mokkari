@@ -14,25 +14,17 @@ import requests
 from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
 
-from mokkari import (
-    __version__,
-    arc,
-    arcs_list,
-    character,
-    characters_list,
-    creator,
-    creators_list,
-    exceptions,
-    issue,
-    issues_list,
-    publisher,
-    publishers_list,
-    series,
-    series_list,
-    sqlite_cache,
-    team,
-    teams_list,
-)
+# Alias these modules to prevent namespace collision with methods.
+from mokkari import __version__
+from mokkari import arc as arcs
+from mokkari import character as characters
+from mokkari import creator as creators
+from mokkari import exceptions
+from mokkari import issue as issues
+from mokkari import publisher as publishers
+from mokkari import series as ser
+from mokkari import sqlite_cache
+from mokkari import team as teams
 
 ONE_MINUTE = 60
 
@@ -94,7 +86,7 @@ class Session:
 
         return data
 
-    def creator(self, _id: int) -> creator.Creator:
+    def creator(self, _id: int) -> creators.Creator:
         """
         Request data for a creator based on its ``_id``.
 
@@ -104,13 +96,15 @@ class Session:
         :rtype: Creator
         """
         try:
-            result = creator.CreatorSchema().load(self.call(["creator", _id]))
+            result = creators.CreatorSchema().load(self.call(["creator", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def creators_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
+    def creators_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> creators.CreatorsList:
         """
         Request a list of creators.
 
@@ -121,9 +115,9 @@ class Session:
         :rtype: CreatorsList
         """
         res = self._get_results("creator", params)
-        return creators_list.CreatorsList(res)
+        return creators.CreatorsList(res)
 
-    def character(self, _id: int) -> character.Character:
+    def character(self, _id: int) -> characters.Character:
         """
         Request data for a character based on its ``_id``.
 
@@ -133,13 +127,15 @@ class Session:
         :rtype: Character
         """
         try:
-            result = character.CharacterSchema().load(self.call(["character", _id]))
+            result = characters.CharacterSchema().load(self.call(["character", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def characters_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
+    def characters_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> characters.CharactersList:
         """
         Request a list of characters.
 
@@ -150,9 +146,9 @@ class Session:
         :rtype: CharactersList
         """
         res = self._get_results("character", params)
-        return characters_list.CharactersList(res)
+        return characters.CharactersList(res)
 
-    def publisher(self, _id: int) -> publisher.Publisher:
+    def publisher(self, _id: int) -> publishers.Publisher:
         """
         Request data for a publisher based on its ``_id``.
 
@@ -162,13 +158,15 @@ class Session:
         :rtype: Publisher
         """
         try:
-            result = publisher.PublisherSchema().load(self.call(["publisher", _id]))
+            result = publishers.PublisherSchema().load(self.call(["publisher", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def publishers_list(self, params: Dict[str, Union[str, int]] = None):
+    def publishers_list(
+        self, params: Dict[str, Union[str, int]] = None
+    ) -> publishers.PublishersList:
         """
         Request a list of publishers.
 
@@ -179,9 +177,9 @@ class Session:
         :rtype: PublishersList
         """
         res = self._get_results("publisher", params)
-        return publishers_list.PublishersList(res)
+        return publishers.PublishersList(res)
 
-    def team(self, _id: int) -> team.Team:
+    def team(self, _id: int) -> teams.Team:
         """
         Request data for a team based on its ``_id``.
 
@@ -191,13 +189,13 @@ class Session:
         :rtype: Team
         """
         try:
-            result = team.TeamSchema().load(self.call(["team", _id]))
+            result = teams.TeamSchema().load(self.call(["team", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def teams_list(self, params: Dict[str, Union[str, int]] = None):
+    def teams_list(self, params: Dict[str, Union[str, int]] = None) -> teams.TeamsList:
         """
         Request a list of teams.
 
@@ -208,9 +206,9 @@ class Session:
         :rtype: TeamsList
         """
         res = self._get_results("team", params)
-        return teams_list.TeamsList(res)
+        return teams.TeamsList(res)
 
-    def arc(self, _id: int) -> arc.Arc:
+    def arc(self, _id: int) -> arcs.Arc:
         """
         Request data for a story arc based on its ``_id``.
 
@@ -220,13 +218,13 @@ class Session:
         :rtype: Arc
         """
         try:
-            result = arc.ArcSchema().load(self.call(["arc", _id]))
+            result = arcs.ArcSchema().load(self.call(["arc", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def arcs_list(self, params: Dict[str, Union[str, int]] = None):
+    def arcs_list(self, params: Dict[str, Union[str, int]] = None) -> arcs.ArcsList:
         """
         Request a list of story arcs.
 
@@ -237,9 +235,9 @@ class Session:
         :rtype: ArcsList
         """
         res = self._get_results("arc", params)
-        return arcs_list.ArcsList(res)
+        return arcs.ArcsList(res)
 
-    def series(self, _id: int) -> series.Series:
+    def series(self, _id: int) -> ser.Series:
         """
         Request data for a series based on its ``_id``.
 
@@ -249,13 +247,13 @@ class Session:
         :rtype: Series
         """
         try:
-            result = series.SeriesSchema().load(self.call(["series", _id]))
+            result = ser.SeriesSchema().load(self.call(["series", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def series_list(self, params: Dict[str, Union[str, int]] = None):
+    def series_list(self, params: Dict[str, Union[str, int]] = None) -> ser.SeriesList:
         """
         Request a list of series.
 
@@ -266,9 +264,9 @@ class Session:
         :rtype: SeriesList
         """
         res = self._get_results("series", params)
-        return series_list.SeriesList(res)
+        return ser.SeriesList(res)
 
-    def issue(self, _id: int) -> issue.Issue:
+    def issue(self, _id: int) -> issues.Issue:
         """
         Request data for an issue based on it's ``_id``.
 
@@ -278,13 +276,13 @@ class Session:
         :rtype: Issue
         """
         try:
-            result = issue.IssueSchema().load(self.call(["issue", _id]))
+            result = issues.IssueSchema().load(self.call(["issue", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def issues_list(self, params: Dict[str, Union[str, int]] = None):
+    def issues_list(self, params: Dict[str, Union[str, int]] = None) -> issues.IssuesList:
         """
         Request a list of issues.
 
@@ -295,7 +293,7 @@ class Session:
         :rtype: IssuesList
         """
         res = self._get_results("issue", params)
-        return issues_list.IssuesList(res)
+        return issues.IssuesList(res)
 
     def _get_results(
         self, resource: str, params: Optional[Dict[str, Union[str, int]]]

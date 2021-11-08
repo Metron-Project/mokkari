@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import characters_list, exceptions
+from mokkari import character, exceptions
 
 
 def test_known_character(talker):
@@ -59,4 +59,4 @@ def test_bad_character(talker):
 def test_bad_response_data(talker):
     """Teset for a bad character response."""
     with pytest.raises(exceptions.ApiError):
-        characters_list.CharactersList({"results": {"name": 1}})
+        character.CharactersList({"results": {"name": 1}})

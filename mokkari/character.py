@@ -5,10 +5,11 @@ This module provides the following classes:
 
 - Character
 - CharacterSchema
+- CharactersList
 """
-from marshmallow import INCLUDE, Schema, fields, post_load
+from marshmallow import INCLUDE, Schema, ValidationError, fields, post_load
 
-from mokkari import creator, team
+from mokkari import creator, exceptions, team
 
 
 class Character:
@@ -60,3 +61,32 @@ class CharacterSchema(Schema):
         :rtype: Character
         """
         return Character(**data)
+
+
+class CharactersList:
+    """The CharactersList object contains a list of `Character` objects."""
+
+    def __init__(self, response):
+        """Initialize a new CharactersList."""
+        self.characters = []
+
+        schema = CharacterSchema()
+        for character_dict in response["results"]:
+            try:
+                result = schema.load(character_dict)
+            except ValidationError as error:
+                raise exceptions.ApiError(error)
+
+            self.characters.append(result)
+
+    def __iter__(self):
+        """Return an iterator object."""
+        return iter(self.characters)
+
+    def __len__(self):
+        """Return the length of the object."""
+        return len(self.characters)
+
+    def __getitem__(self, index: int):
+        """Return the object of a at index."""
+        return self.characters[index]
