@@ -21,7 +21,8 @@ from mokkari import creator as creators
 from mokkari import exceptions
 from mokkari import issue as issues
 from mokkari import publisher as publishers
-from mokkari import series, series_list, sqlite_cache, team, teams_list
+from mokkari import series as ser
+from mokkari import sqlite_cache, team, teams_list
 
 ONE_MINUTE = 60
 
@@ -234,7 +235,7 @@ class Session:
         res = self._get_results("arc", params)
         return arcs.ArcsList(res)
 
-    def series(self, _id: int) -> series.Series:
+    def series(self, _id: int) -> ser.Series:
         """
         Request data for a series based on its ``_id``.
 
@@ -244,13 +245,13 @@ class Session:
         :rtype: Series
         """
         try:
-            result = series.SeriesSchema().load(self.call(["series", _id]))
+            result = ser.SeriesSchema().load(self.call(["series", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def series_list(self, params: Dict[str, Union[str, int]] = None):
+    def series_list(self, params: Dict[str, Union[str, int]] = None) -> ser.SeriesList:
         """
         Request a list of series.
 
@@ -261,7 +262,7 @@ class Session:
         :rtype: SeriesList
         """
         res = self._get_results("series", params)
-        return series_list.SeriesList(res)
+        return ser.SeriesList(res)
 
     def issue(self, _id: int) -> issues.Issue:
         """

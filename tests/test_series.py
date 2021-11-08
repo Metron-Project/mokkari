@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import exceptions, series_list
+from mokkari import exceptions
+from mokkari import series as ser
 
 
 def test_known_series(talker):
@@ -75,4 +76,4 @@ def test_bad_series(talker):
 def test_bad_response_data():
     """Test for a bad series response."""
     with pytest.raises(exceptions.ApiError):
-        series_list.SeriesList({"results": {"name": 1}})
+        ser.SeriesList({"results": {"name": 1}})
