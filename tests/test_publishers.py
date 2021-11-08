@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import exceptions, publishers_list
+from mokkari import exceptions, publisher
 
 
 def test_known_publishers(talker):
@@ -55,4 +55,4 @@ def test_bad_publisher(talker):
 def test_bad_response_data():
     """Test for a bad publisher response."""
     with pytest.raises(exceptions.ApiError):
-        publishers_list.PublishersList({"results": {"name": 1}})
+        publisher.PublishersList({"results": {"name": 1}})

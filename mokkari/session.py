@@ -20,15 +20,8 @@ from mokkari import character as characters
 from mokkari import creator as creators
 from mokkari import exceptions
 from mokkari import issue as issues
-from mokkari import (
-    publisher,
-    publishers_list,
-    series,
-    series_list,
-    sqlite_cache,
-    team,
-    teams_list,
-)
+from mokkari import publisher as publishers
+from mokkari import series, series_list, sqlite_cache, team, teams_list
 
 ONE_MINUTE = 60
 
@@ -152,7 +145,7 @@ class Session:
         res = self._get_results("character", params)
         return characters.CharactersList(res)
 
-    def publisher(self, _id: int) -> publisher.Publisher:
+    def publisher(self, _id: int) -> publishers.Publisher:
         """
         Request data for a publisher based on its ``_id``.
 
@@ -162,13 +155,15 @@ class Session:
         :rtype: Publisher
         """
         try:
-            result = publisher.PublisherSchema().load(self.call(["publisher", _id]))
+            result = publishers.PublisherSchema().load(self.call(["publisher", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def publishers_list(self, params: Dict[str, Union[str, int]] = None):
+    def publishers_list(
+        self, params: Dict[str, Union[str, int]] = None
+    ) -> publishers.PublishersList:
         """
         Request a list of publishers.
 
@@ -179,7 +174,7 @@ class Session:
         :rtype: PublishersList
         """
         res = self._get_results("publisher", params)
-        return publishers_list.PublishersList(res)
+        return publishers.PublishersList(res)
 
     def team(self, _id: int) -> team.Team:
         """
