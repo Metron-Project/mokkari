@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import creators_list, exceptions
+from mokkari import creator, exceptions
 
 
 def test_known_creator(talker):
@@ -60,4 +60,4 @@ def test_bad_creator(talker):
 def test_bad_response_data(talker):
     """Test for a bad creator response."""
     with pytest.raises(exceptions.ApiError):
-        creators_list.CreatorsList({"results": {"name": 1}})
+        creator.CreatorsList({"results": {"name": 1}})

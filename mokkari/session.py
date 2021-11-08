@@ -17,9 +17,8 @@ from ratelimit import limits, sleep_and_retry
 from mokkari import __version__
 from mokkari import arc as arcs
 from mokkari import character as characters
+from mokkari import creator as creators
 from mokkari import (
-    creator,
-    creators_list,
     exceptions,
     issue,
     issues_list,
@@ -92,7 +91,7 @@ class Session:
 
         return data
 
-    def creator(self, _id: int) -> creator.Creator:
+    def creator(self, _id: int) -> creators.Creator:
         """
         Request data for a creator based on its ``_id``.
 
@@ -102,13 +101,15 @@ class Session:
         :rtype: Creator
         """
         try:
-            result = creator.CreatorSchema().load(self.call(["creator", _id]))
+            result = creators.CreatorSchema().load(self.call(["creator", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
         return result
 
-    def creators_list(self, params: Optional[Dict[str, Union[str, int]]] = None):
+    def creators_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> creators.CreatorsList:
         """
         Request a list of creators.
 
@@ -119,7 +120,7 @@ class Session:
         :rtype: CreatorsList
         """
         res = self._get_results("creator", params)
-        return creators_list.CreatorsList(res)
+        return creators.CreatorsList(res)
 
     def character(self, _id: int) -> characters.Character:
         """
