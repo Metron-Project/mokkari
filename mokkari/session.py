@@ -53,7 +53,7 @@ class Session:
         self.api_url = "https://metron.cloud/api/{}/"
         self.cache = cache
 
-    def call(
+    def _call(
         self, endpoint: List[Union[str, int]], params: Dict[str, Union[str, int]] = None
     ) -> Dict[str, Any]:
         """
@@ -96,7 +96,7 @@ class Session:
         :rtype: Creator
         """
         try:
-            result = creators.CreatorSchema().load(self.call(["creator", _id]))
+            result = creators.CreatorSchema().load(self._call(["creator", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
@@ -127,7 +127,7 @@ class Session:
         :rtype: Character
         """
         try:
-            result = characters.CharacterSchema().load(self.call(["character", _id]))
+            result = characters.CharacterSchema().load(self._call(["character", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
@@ -158,7 +158,7 @@ class Session:
         :rtype: Publisher
         """
         try:
-            result = publishers.PublisherSchema().load(self.call(["publisher", _id]))
+            result = publishers.PublisherSchema().load(self._call(["publisher", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
@@ -189,7 +189,7 @@ class Session:
         :rtype: Team
         """
         try:
-            result = teams.TeamSchema().load(self.call(["team", _id]))
+            result = teams.TeamSchema().load(self._call(["team", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
@@ -218,7 +218,7 @@ class Session:
         :rtype: Arc
         """
         try:
-            result = arcs.ArcSchema().load(self.call(["arc", _id]))
+            result = arcs.ArcSchema().load(self._call(["arc", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
@@ -247,7 +247,7 @@ class Session:
         :rtype: Series
         """
         try:
-            result = ser.SeriesSchema().load(self.call(["series", _id]))
+            result = ser.SeriesSchema().load(self._call(["series", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
@@ -276,7 +276,7 @@ class Session:
         :rtype: Issue
         """
         try:
-            result = issues.IssueSchema().load(self.call(["issue", _id]))
+            result = issues.IssueSchema().load(self._call(["issue", _id]))
         except ValidationError as error:
             raise exceptions.ApiError(error)
 
@@ -301,7 +301,7 @@ class Session:
         if params is None:
             params = {}
 
-        result = self.call([resource], params=params)
+        result = self._call([resource], params=params)
         if result["next"]:
             result = self._retrieve_all_results(result)
         return result
