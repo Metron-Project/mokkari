@@ -12,9 +12,11 @@ import requests_mock
 from mokkari import character, exceptions
 
 
-def test_known_character(talker):
+def test_known_character(talker, character_resp):
     """Test for a known character."""
-    black_bolt = talker.character(1)
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/character/1/", text=character_resp)
+        black_bolt = talker.character(1)
     assert black_bolt.name == "Black Bolt"
     assert (
         black_bolt.image
@@ -35,15 +37,17 @@ def test_known_character(talker):
     )
 
 
-def test_characterlist(talker):
+def test_characterlist(talker, character_list_resp):
     """Test the CharactersList."""
-    character = talker.characters_list({"name": "man"})
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/character/?name=superman", text=character_list_resp)
+        character = talker.characters_list({"name": "superman"})
     character_iter = iter(character)
-    assert next(character_iter).name == "'Mazing Man"
-    assert next(character_iter).name == "3-D Man (Chandler)"
-    assert next(character_iter).name == "3-D Man (Garrett)"
-    assert len(character) == 439
-    assert character[2].name == "3-D Man (Garrett)"
+    assert next(character_iter).name == "Composite Superman"
+    assert next(character_iter).name == "Cyborg Superman"
+    assert next(character_iter).name == "Red Son Superman"
+    assert len(character) == 7
+    assert character[2].name == "Red Son Superman"
 
 
 def test_bad_character(talker):

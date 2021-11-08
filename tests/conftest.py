@@ -27,3 +27,15 @@ def arc_resp():
 def arc_list_resp():
     """Arc list fixture."""
     return (Path(__file__).parent / "data/arc_list.json").read_text()
+
+
+@pytest.fixture(scope="session")
+def character_resp():
+    """Character fixture."""
+    return (Path(__file__).parent / "data/character.json").read_text()
+
+
+@pytest.fixture(scope="session")
+def character_list_resp():
+    """Character list fixture."""
+    return (Path(__file__).parent / "data/character_list.json").read_text()
