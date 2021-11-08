@@ -3,6 +3,7 @@ Test Characters module.
 
 This module contains tests for Character objects.
 """
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -57,6 +58,33 @@ def test_bad_character(talker):
 
 
 def test_bad_response_data(talker):
-    """Teset for a bad character response."""
+    """Test for a bad character response."""
     with pytest.raises(exceptions.ApiError):
         character.CharactersList({"results": {"name": 1}})
+
+
+def test_bad_character_validate(talker):
+    """Test data with invalid data."""
+    # Change the 'name' field to an int, when it should be a string.
+    data = {
+        "id": 150,
+        "name": 50,
+        "alias": [],
+        "desc": "Foo",
+        "wikipedia": "Moon_Knight",
+        "image": "https://static.metron.cloud/media/character/2018/11/15/moon-knight.jpg",
+        "creators": [
+            {"id": 146, "name": "Doug Moench", "modified": "2019-06-23T15:13:21.994966-04:00"}
+        ],
+        "teams": [],
+        "modified": "2020-07-29T17:48:36.347982-04:00",
+    }
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/character/150/",
+            text=json.dumps(data),
+        )
+
+        with pytest.raises(exceptions.ApiError):
+            talker.character(150)

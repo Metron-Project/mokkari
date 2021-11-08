@@ -3,6 +3,7 @@ Test Issues module.
 
 This module contains tests for Issue objects.
 """
+import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -191,3 +192,39 @@ def test_multi_page_results(talker):
     assert issues[0].cover_date == date(1938, 6, 1)
     assert issues[863].issue_name == "Action Comics #904"
     assert issues[863].cover_date == date(2011, 10, 1)
+
+
+def test_bad_issue_validate(talker):
+    """Test data with invalid data."""
+    # Change the 'number' field to an int, when it should be a string.
+    data = {
+        "id": 150,
+        "publisher": {"id": 2, "name": "DC Comics"},
+        "series": {"id": 25, "name": "Mister Miracle"},
+        "volume": 1,
+        "number": 20,
+        "name": ["Eclipse"],
+        "cover_date": "1977-10-01",
+        "store_date": None,
+        "price": None,
+        "sku": "",
+        "upc": "",
+        "page": None,
+        "desc": "Scott rescues Barda on the Moon.",
+        "image": "https://static.metron.cloud/media/issue/2018/11/25/mm20.jpg",
+        "arcs": [],
+        "credits": [],
+        "characters": [],
+        "teams": [],
+        "variants": [],
+        "modified": "2019-06-23T15:13:18.212120-04:00",
+    }
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/issue/150/",
+            text=json.dumps(data),
+        )
+
+        with pytest.raises(exceptions.ApiError):
+            talker.issue(150)

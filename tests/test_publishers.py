@@ -3,6 +3,7 @@ Test Publishers module.
 
 This module contains tests for Publisher objects.
 """
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -56,3 +57,26 @@ def test_bad_response_data():
     """Test for a bad publisher response."""
     with pytest.raises(exceptions.ApiError):
         publisher.PublishersList({"results": {"name": 1}})
+
+
+def test_bad_publisher_validate(talker):
+    """Test data with invalid data."""
+    # Change the 'name' field to an int, when it should be a string.
+    data = {
+        "id": 15,
+        "name": 150,
+        "founded": 1993,
+        "desc": "Foo Bar",
+        "wikipedia": "Bongo_Comics",
+        "image": "https://static.metron.cloud/media/publisher/2018/12/02/bongo.png",
+        "modified": "2019-06-23T15:13:23.581612-04:00",
+    }
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/publisher/15/",
+            text=json.dumps(data),
+        )
+
+        with pytest.raises(exceptions.ApiError):
+            talker.publisher(15)

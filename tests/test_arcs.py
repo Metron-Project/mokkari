@@ -3,6 +3,7 @@ Test Arcs module.
 
 This module contains tests for Arc objects.
 """
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -58,3 +59,23 @@ def test_bad_response_data():
     """Test for bad arc response."""
     with pytest.raises(exceptions.ApiError):
         arc.ArcsList({"results": {"name": 1}})
+
+
+def test_bad_arc_validate(talker):
+    """Test data with invalid data."""
+    # Change the 'name' field to an int, when it should be a string.
+    data = {
+        "id": 5,
+        "name": 10,
+        "desc": "Foo Bar",
+        "image": "https://static.metron.cloud/media/arc/2018/11/25/ff-26.jpg",
+        "modified": "2019-06-23T15:13:19.432378-04:00",
+    }
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/arc/500/",
+            text=json.dumps(data),
+        )
+
+        with pytest.raises(exceptions.ApiError):
+            talker.arc(500)

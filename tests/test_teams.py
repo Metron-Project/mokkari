@@ -3,6 +3,7 @@ Test Teams module.
 
 This module contains tests for Team objects.
 """
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -56,3 +57,26 @@ def test_bad_response_data():
     """Test for a bad team response."""
     with pytest.raises(exceptions.ApiError):
         team.TeamsList({"results": {"name": 1}})
+
+
+def test_bad_team_validate(talker):
+    """Test data with invalid data."""
+    # Change the 'name' field to an int, when it should be a string.
+    data = {
+        "id": 150,
+        "name": 50,
+        "desc": "Foo Bat",
+        "wikipedia": "",
+        "image": "https://static.metron.cloud/media/team/2019/06/20/aquamarines.jpg",
+        "creators": [],
+        "modified": "2019-06-23T15:13:23.927059-04:00",
+    }
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/team/150/",
+            text=json.dumps(data),
+        )
+
+        with pytest.raises(exceptions.ApiError):
+            talker.team(150)
