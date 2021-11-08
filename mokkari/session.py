@@ -94,6 +94,8 @@ class Session:
 
         :return: :class:`Creator` object
         :rtype: Creator
+
+        :raises: :class:`ApiError`
         """
         try:
             result = creators.CreatorSchema().load(self._call(["creator", _id]))
@@ -125,6 +127,8 @@ class Session:
 
         :return: :class:`Character` object
         :rtype: Character
+
+        :raises: :class:`ApiError`
         """
         try:
             result = characters.CharacterSchema().load(self._call(["character", _id]))
@@ -156,6 +160,8 @@ class Session:
 
         :return: :class:`Publisher` object
         :rtype: Publisher
+
+        :raises: :class:`ApiError`
         """
         try:
             result = publishers.PublisherSchema().load(self._call(["publisher", _id]))
@@ -187,6 +193,8 @@ class Session:
 
         :return: :class:`Team` object
         :rtype: Team
+
+        :raises: :class:`ApiError`
         """
         try:
             result = teams.TeamSchema().load(self._call(["team", _id]))
@@ -216,6 +224,8 @@ class Session:
 
         :return: :class:`Arc` object
         :rtype: Arc
+
+        :raises: :class:`ApiError`
         """
         try:
             result = arcs.ArcSchema().load(self._call(["arc", _id]))
@@ -245,6 +255,8 @@ class Session:
 
         :return: :class:`Series` object
         :rtype: Series
+
+        :raises: :class:`ApiError`
         """
         try:
             result = ser.SeriesSchema().load(self._call(["series", _id]))
@@ -274,6 +286,8 @@ class Session:
 
         :return: :class:`Issue` object
         :rtype: Issue
+
+        :raises: :class:`ApiError`
         """
         try:
             result = issues.IssueSchema().load(self._call(["issue", _id]))
