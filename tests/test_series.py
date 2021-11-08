@@ -3,6 +3,7 @@ Test Series module.
 
 This module contains tests for Series objects.
 """
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -77,3 +78,30 @@ def test_bad_response_data():
     """Test for a bad series response."""
     with pytest.raises(exceptions.ApiError):
         ser.SeriesList({"results": {"name": 1}})
+
+
+def test_bad_series_validate(talker):
+    """Test data with invalid data."""
+    # Change the 'name' field to an int, when it should be a string.
+    data = {
+        "id": 150,
+        "name": 50,
+        "sort_name": "Gunhawks",
+        "volume": 1,
+        "series_type": {"id": 5, "name": "One-Shot"},
+        "publisher": 1,
+        "year_began": 2019,
+        "year_end": 2019,
+        "desc": "",
+        "issue_count": 1,
+        "modified": "2019-07-05T14:32:52.256872-04:00",
+        "image": "https://static.metron.cloud/media/issue/2019/02/06/gunhawks-1.jpg",
+    }
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/series/150/",
+            text=json.dumps(data),
+        )
+
+        with pytest.raises(exceptions.ApiError):
+            talker.series(150)
