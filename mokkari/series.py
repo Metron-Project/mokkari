@@ -98,6 +98,10 @@ class SeriesSchema(Schema):
     .. versionchanged:: 1.0.0
 
         - Added ``modified`` field
+
+    .. versionchanged:: 1.0.5
+
+        - Added ``associated`` field
     """
 
     id = fields.Int()
