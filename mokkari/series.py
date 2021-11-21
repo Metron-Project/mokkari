@@ -46,6 +46,38 @@ class SeriesTypeSchema(Schema):
         return SeriesType(**data)
 
 
+class AssociatedSeries:
+    """
+    The AssociateSeries objects contains any associated series to the primary series.
+
+    :param `**kwargs`: he keyword arguments is used for setting associated series data.
+    """
+
+    def __init__(self, **kwargs):
+        """Intialize a new AssociatedSeries."""
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class AssociatedSeriesSchema(Schema):
+    """Schema for Associated Series."""
+
+    id = fields.Int()
+    name = fields.Str(data_key="__str__")
+
+    @post_load
+    def make_object(self, data, **kwargs):
+        """
+        Make the AssociatedSeries object.
+
+        :param data: Data from Metron response.
+
+        :returns: :class:`AssociatedSeries` object
+        :rtype: AssociatedSeries
+        """
+        return AssociatedSeries(**data)
+
+
 class Series:
     """
     The Series object contains information for comic series.
@@ -80,6 +112,7 @@ class SeriesSchema(Schema):
     issue_count = fields.Int()
     image = fields.Url()
     display_name = fields.Str(data_key="__str__")
+    associated = fields.Nested(AssociatedSeriesSchema, many=True)
     modified = fields.DateTime()
 
     class Meta:
