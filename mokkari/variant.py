@@ -6,7 +6,7 @@ This module provides the following classes:
 - Variant
 - VariantSchema
 """
-from marshmallow import INCLUDE, Schema, fields, post_load
+from marshmallow import EXCLUDE, Schema, fields, post_load
 
 
 class Variant:
@@ -30,9 +30,9 @@ class VariantSchema(Schema):
     image = fields.Url()
 
     class Meta:
-        """Any unknown fields will be included."""
+        """Any unknown fields will be excluded."""
 
-        unknown = INCLUDE
+        unknown = EXCLUDE
 
     @post_load
     def make_object(self, data, **kwargs):

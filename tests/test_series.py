@@ -105,3 +105,13 @@ def test_bad_series_validate(talker):
 
         with pytest.raises(exceptions.ApiError):
             talker.series(150)
+
+
+def test_series_with_associated_series(talker):
+    """Test series with an associated series link."""
+    ff = talker.series(2818)
+    assert ff.name == "Fantastic Four Annual"
+    assert len(ff.associated) == 1
+    assoc = ff.associated[0]
+    assert assoc.id == 26
+    assert assoc.name == "Fantastic Four (1961)"
