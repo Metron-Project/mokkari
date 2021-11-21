@@ -7,7 +7,7 @@ This module provides the following classes:
 - PublisherSchema
 - PublishersList
 """
-from marshmallow import INCLUDE, Schema, ValidationError, fields, post_load
+from marshmallow import EXCLUDE, Schema, ValidationError, fields, post_load
 
 from mokkari import exceptions
 
@@ -43,9 +43,9 @@ class PublisherSchema(Schema):
     modified = fields.DateTime()
 
     class Meta:
-        """Any unknown fields will be included."""
+        """Any unknown fields will be excluded."""
 
-        unknown = INCLUDE
+        unknown = EXCLUDE
         datetime = "%Y-%m-%dT%H:%M:%S%z"
 
     @post_load
