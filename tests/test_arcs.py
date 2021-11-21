@@ -12,9 +12,11 @@ import requests_mock
 from mokkari import arc, exceptions
 
 
-def test_known_arc(talker):
+def test_known_arc(talker, arc_resp):
     """Test for known arcs."""
-    heroes = talker.arc(1)
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/arc/1/", text=arc_resp)
+        heroes = talker.arc(1)
     assert heroes.name == "Heroes In Crisis"
     assert (
         heroes.image
@@ -32,15 +34,17 @@ def test_known_arc(talker):
     )
 
 
-def test_arcslist(talker):
+def test_arcslist(talker, arc_list_resp):
     """Test for ArcsList."""
-    arcs = talker.arcs_list()
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/arc/?name=crisis", text=arc_list_resp)
+        arcs = talker.arcs_list({"name": "crisis"})
     arc_iter = iter(arcs)
-    assert next(arc_iter).name == "2099"
-    assert next(arc_iter).name == "52"
-    assert next(arc_iter).name == "A Court of Owls"
-    assert len(arcs) == 589
-    assert arcs[2].name == "A Court of Owls"
+    assert next(arc_iter).name == "Countdown to Final Crisis"
+    assert next(arc_iter).name == "Crisis on Earth-Prime"
+    assert next(arc_iter).name == "Crisis on Infinite Earths"
+    assert len(arcs) == 8
+    assert arcs[2].name == "Crisis on Infinite Earths"
 
 
 def test_bad_arc(talker):
