@@ -24,7 +24,8 @@ def test_known_series(talker):
     assert death.issue_count == 5
     assert death.image == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     assert death.series_type.name == "Mini-Series"
-    assert death.publisher_id == 1
+    assert death.publisher.id == 1
+    assert death.publisher.name == "Marvel"
     assert death.modified == datetime(
         2019,
         7,
@@ -46,7 +47,8 @@ def test_series_without_year_end(talker):
     assert abs_carnage.year_began == 2019
     assert abs_carnage.year_end is None
     assert abs_carnage.issue_count == 5
-    assert abs_carnage.publisher_id == 1
+    assert abs_carnage.publisher.id == 1
+    assert abs_carnage.publisher.name == "Marvel"
     assert abs_carnage.series_type.name == "Mini-Series"
 
 
@@ -58,7 +60,7 @@ def test_serieslist(talker):
     assert next(series_iter).id == 2481
     assert next(series_iter).id == 763
     assert next(series_iter).id == 93
-    assert len(series) == 119
+    assert len(series) == 130
     assert series[3].id == 93
     assert series[3].display_name == "Batman (2016)"
 

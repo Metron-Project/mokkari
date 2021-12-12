@@ -12,6 +12,7 @@ This module provides the following classes:
 from marshmallow import EXCLUDE, Schema, ValidationError, fields, post_load
 
 from mokkari import exceptions
+from mokkari.publisher import PublisherSchema
 
 
 class SeriesType:
@@ -102,6 +103,10 @@ class SeriesSchema(Schema):
     .. versionchanged:: 1.0.5
 
         - Added ``associated`` field
+
+    .. versionchanged:: 2.0.0
+
+        - Changed ``publisher`` to a nested field.
     """
 
     id = fields.Int()
@@ -109,7 +114,7 @@ class SeriesSchema(Schema):
     sort_name = fields.Str()
     volume = fields.Int()
     series_type = fields.Nested(SeriesTypeSchema)
-    publisher = fields.Int(attribute="publisher_id")
+    publisher = fields.Nested(PublisherSchema)
     year_began = fields.Int()
     year_end = fields.Int(allow_none=True)
     desc = fields.Str()
