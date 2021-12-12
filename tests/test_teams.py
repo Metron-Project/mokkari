@@ -36,10 +36,10 @@ def test_teamlist(talker):
     teams = talker.teams_list()
     team_iter = iter(teams)
     assert next(team_iter).name == "A-Force"
+    assert next(team_iter).name == "A-Next"
     assert next(team_iter).name == "A.I.M."
-    assert next(team_iter).name == "A.R.G.U.S."
-    assert len(teams) == 459
-    assert teams[2].name == "A.R.G.U.S."
+    assert len(teams) == 486
+    assert teams[2].name == "A.I.M."
 
 
 def test_bad_team(talker):
