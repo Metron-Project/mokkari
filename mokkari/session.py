@@ -309,6 +309,20 @@ class Session:
         res = self._get_results("issue", params)
         return issues.IssuesList(res)
 
+    def role_list(self, params: Dict[str, Union[str, int]] = None) -> issues.RoleList:
+        """
+        Request a list of creator roles.
+
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`Role` objects containing their id and name.
+        :rtype: RoleList
+
+        """
+        res = self._get_results("role", params)
+        return issues.RoleList(res)
+
     def _get_results(
         self, resource: str, params: Optional[Dict[str, Union[str, int]]]
     ) -> Dict[str, Any]:

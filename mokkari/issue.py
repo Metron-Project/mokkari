@@ -5,6 +5,7 @@ This module provides the following classes:
 
 - Role
 - RolesSchema
+- RoleList
 - Credit
 - CreditsSchema
 - Issue
@@ -46,6 +47,35 @@ class RolesSchema(Schema):
         :rtype: Role
         """
         return Role(**data)
+
+
+class RoleList:
+    """The RoleList object contains a list of `Role` objects."""
+
+    def __init__(self, response):
+        """Initialize a new RoleList."""
+        self.roles = []
+
+        schema = RolesSchema()
+        for role_dict in response["results"]:
+            try:
+                result = schema.load(role_dict)
+            except ValidationError as error:
+                raise exceptions.ApiError(error)
+
+            self.roles.append(result)
+
+    def __iter__(self):
+        """Return an iterator object."""
+        return iter(self.roles)
+
+    def __len__(self):
+        """Return the length of the object."""
+        return len(self.roles)
+
+    def __getitem__(self, index: int):
+        """Return the object of a at index."""
+        return self.roles[index]
 
 
 class Credit:
