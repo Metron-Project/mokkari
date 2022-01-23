@@ -13,6 +13,8 @@ from urllib.parse import urlencode
 import requests
 from marshmallow import ValidationError
 from ratelimit import limits, sleep_and_retry
+from requests.adapters import HTTPAdapter
+from urllib3 import Retry
 
 # Alias these modules to prevent namespace collision with methods.
 from mokkari import __version__
@@ -361,7 +363,7 @@ class Session:
         return data
 
     @sleep_and_retry
-    @limits(calls=20, period=ONE_MINUTE)
+    @limits(calls=25, period=ONE_MINUTE)
     def _request_data(
         self, url: str, params: Optional[Dict[str, Union[str, int]]] = None
     ) -> Any:
@@ -369,7 +371,10 @@ class Session:
             params = {}
 
         try:
-            response = requests.get(
+            session = requests.Session()
+            retry = Retry(connect=3, backoff_factor=0.5)
+            session.mount("https://", HTTPAdapter(max_retries=retry))
+            response = session.get(
                 url,
                 params=params,
                 auth=(self.username, self.passwd),
