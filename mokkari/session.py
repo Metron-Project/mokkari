@@ -377,6 +377,7 @@ class Session:
             response = session.get(
                 url,
                 params=params,
+                timeout=2.5,
                 auth=(self.username, self.passwd),
                 headers=self.header,
             ).json()
