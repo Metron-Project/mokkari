@@ -341,8 +341,7 @@ class Session:
         next_page = data["next"]
 
         while has_next_page:
-            cached_response = self._get_results_from_cache(next_page)
-            if cached_response:
+            if cached_response := self._get_results_from_cache(next_page):
                 data["results"].extend(cached_response["results"])
                 if cached_response["next"]:
                     next_page = cached_response["next"]
