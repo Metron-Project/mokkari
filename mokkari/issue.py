@@ -61,7 +61,7 @@ class RoleList:
             try:
                 result = schema.load(role_dict)
             except ValidationError as error:
-                raise exceptions.ApiError(error)
+                raise exceptions.ApiError(error) from error
 
             self.roles.append(result)
 
@@ -204,7 +204,7 @@ class IssuesList:
             try:
                 result = schema.load(issue_dict)
             except ValidationError as error:
-                raise exceptions.ApiError(error)
+                raise exceptions.ApiError(error) from error
 
             self.issues.append(result)
 

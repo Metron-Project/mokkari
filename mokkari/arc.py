@@ -71,7 +71,7 @@ class ArcsList:
             try:
                 result = schema.load(arc_dict)
             except ValidationError as error:
-                raise exceptions.ApiError(error)
+                raise exceptions.ApiError(error) from error
 
             self.arcs.append(result)
 

@@ -73,7 +73,7 @@ class PublishersList:
             try:
                 result = schema.load(pub_dict)
             except ValidationError as error:
-                raise exceptions.ApiError(error)
+                raise exceptions.ApiError(error) from error
 
             self.publishers.append(result)
 

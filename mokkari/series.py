@@ -155,7 +155,7 @@ class SeriesList:
             try:
                 result = schema.load(series_dict)
             except ValidationError as error:
-                raise exceptions.ApiError(error)
+                raise exceptions.ApiError(error) from error
 
             self.series.append(result)
 

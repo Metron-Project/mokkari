@@ -102,7 +102,7 @@ class Session:
         try:
             result = creators.CreatorSchema().load(self._call(["creator", _id]))
         except ValidationError as error:
-            raise exceptions.ApiError(error)
+            raise exceptions.ApiError(error) from error
 
         return result
 
@@ -135,7 +135,7 @@ class Session:
         try:
             result = characters.CharacterSchema().load(self._call(["character", _id]))
         except ValidationError as error:
-            raise exceptions.ApiError(error)
+            raise exceptions.ApiError(error) from error
 
         return result
 
@@ -168,7 +168,7 @@ class Session:
         try:
             result = publishers.PublisherSchema().load(self._call(["publisher", _id]))
         except ValidationError as error:
-            raise exceptions.ApiError(error)
+            raise exceptions.ApiError(error) from error
 
         return result
 
@@ -201,7 +201,7 @@ class Session:
         try:
             result = teams.TeamSchema().load(self._call(["team", _id]))
         except ValidationError as error:
-            raise exceptions.ApiError(error)
+            raise exceptions.ApiError(error) from error
 
         return result
 
@@ -232,7 +232,7 @@ class Session:
         try:
             result = arcs.ArcSchema().load(self._call(["arc", _id]))
         except ValidationError as error:
-            raise exceptions.ApiError(error)
+            raise exceptions.ApiError(error) from error
 
         return result
 
@@ -263,7 +263,7 @@ class Session:
         try:
             result = ser.SeriesSchema().load(self._call(["series", _id]))
         except ValidationError as error:
-            raise exceptions.ApiError(error)
+            raise exceptions.ApiError(error) from error
 
         return result
 
@@ -294,7 +294,7 @@ class Session:
         try:
             result = issues.IssueSchema().load(self._call(["issue", _id]))
         except ValidationError as error:
-            raise exceptions.ApiError(error)
+            raise exceptions.ApiError(error) from error
 
         return result
 
@@ -381,7 +381,7 @@ class Session:
                 headers=self.header,
             ).json()
         except requests.exceptions.ConnectionError as e:
-            raise exceptions.ApiError(f"Connection error: {repr(e)}")
+            raise exceptions.ApiError(f"Connection error: {repr(e)}") from e
 
         return response
 
@@ -394,7 +394,7 @@ class Session:
             except AttributeError as e:
                 raise exceptions.CacheError(
                     f"Cache object passed in is missing attribute: {repr(e)}"
-                )
+                ) from e
 
         return cached_response
 
@@ -405,4 +405,4 @@ class Session:
             except AttributeError as e:
                 raise exceptions.CacheError(
                     f"Cache object passed in is missing attribute: {repr(e)}"
-                )
+                ) from e
