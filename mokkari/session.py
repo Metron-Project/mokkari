@@ -336,7 +336,7 @@ class Session:
             result = self._retrieve_all_results(result)
         return result
 
-    def _retrieve_all_results(self, data):
+    def _retrieve_all_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
         has_next_page = True
         next_page = data["next"]
 
