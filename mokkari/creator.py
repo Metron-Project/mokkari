@@ -75,7 +75,7 @@ class CreatorsList:
             try:
                 result = schema.load(creator_dict)
             except ValidationError as error:
-                raise exceptions.ApiError(error)
+                raise exceptions.ApiError(error) from error
 
             self.creators.append(result)
 

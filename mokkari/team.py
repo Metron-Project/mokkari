@@ -73,7 +73,7 @@ class TeamsList:
             try:
                 result = schema.load(team_dict)
             except ValidationError as error:
-                raise exceptions.ApiError(error)
+                raise exceptions.ApiError(error) from error
 
             self.teams.append(result)
 
