@@ -32,13 +32,15 @@ class CharacterSchema(Schema):
     .. versionchanged:: 1.0.0
 
         - Added ``modified`` field
+
+    .. versionchanged:: 2.0.2
+        - Removed ``wikipedia`` field
     """
 
     id = fields.Int()
     name = fields.Str()
     alias = fields.List(fields.Str)
     desc = fields.Str()
-    wikipedia = fields.Str()
     image = fields.Url()
     creators = fields.Nested(creator.CreatorSchema, many=True)
     teams = fields.Nested(team.TeamSchema, many=True)

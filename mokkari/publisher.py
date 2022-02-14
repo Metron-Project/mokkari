@@ -32,13 +32,15 @@ class PublisherSchema(Schema):
     .. versionchanged:: 1.0.0
 
         - Added ``modified`` field
+
+    .. versionchanged:: 2.0.2
+        - Removed ``wikipedia`` field
     """
 
     id = fields.Int()
     name = fields.Str()
     founded = fields.Int()
     desc = fields.Str()
-    wikipedia = fields.Str()
     image = fields.Url()
     modified = fields.DateTime()
 

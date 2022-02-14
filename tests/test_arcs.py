@@ -36,11 +36,11 @@ def test_arcslist(talker):
     """Test for ArcsList."""
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
+    assert next(arc_iter).name == "'Til Death Do Us..."
     assert next(arc_iter).name == "2099"
     assert next(arc_iter).name == "52"
-    assert next(arc_iter).name == "A Court of Owls"
-    assert len(arcs) == 603
-    assert arcs[2].name == "A Court of Owls"
+    assert len(arcs) == 669
+    assert arcs[2].name == "52"
 
 
 def test_bad_arc(talker):

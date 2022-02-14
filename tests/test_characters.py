@@ -20,7 +20,6 @@ def test_known_character(talker):
         black_bolt.image
         == "https://static.metron.cloud/media/character/2018/11/11/black-bolt.jpg"
     )
-    assert black_bolt.wikipedia == "Black_Bolt"
     assert len(black_bolt.creators) == 2
     assert len(black_bolt.teams) == 3
     assert black_bolt.modified == datetime(
@@ -42,7 +41,7 @@ def test_characterlist(talker):
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "3-D Man (Chandler)"
     assert next(character_iter).name == "3-D Man (Garrett)"
-    assert len(character) == 457
+    assert len(character) == 477
     assert character[2].name == "3-D Man (Garrett)"
 
 
@@ -71,7 +70,6 @@ def test_bad_character_validate(talker):
         "name": 50,
         "alias": [],
         "desc": "Foo",
-        "wikipedia": "Moon_Knight",
         "image": "https://static.metron.cloud/media/character/2018/11/15/moon-knight.jpg",
         "creators": [
             {"id": 146, "name": "Doug Moench", "modified": "2019-06-23T15:13:21.994966-04:00"}

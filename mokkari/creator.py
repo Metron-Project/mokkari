@@ -32,6 +32,9 @@ class CreatorSchema(Schema):
     .. versionchanged:: 1.0.0
 
         - Added ``modified`` field
+
+    .. versionchanged:: 2.0.2
+        - Removed ``wikipedia`` field
     """
 
     id = fields.Int()
@@ -39,7 +42,6 @@ class CreatorSchema(Schema):
     birth = fields.Date(allow_none=True)
     death = fields.Date(allow_none=True)
     desc = fields.Str()
-    wikipedia = fields.Str()
     image = fields.Url()
     modified = fields.DateTime()
 
