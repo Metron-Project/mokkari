@@ -17,7 +17,6 @@ def test_known_team(talker):
     inhumans = talker.team(1)
     assert inhumans.name == "Inhumans"
     assert inhumans.image == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
-    assert inhumans.wikipedia == "Inhumans"
     assert len(inhumans.creators) == 2
     assert inhumans.modified == datetime(
         2019,
@@ -38,7 +37,7 @@ def test_teamlist(talker):
     assert next(team_iter).name == "A-Force"
     assert next(team_iter).name == "A-Next"
     assert next(team_iter).name == "A.I.M."
-    assert len(teams) == 486
+    assert len(teams) == 499
     assert teams[2].name == "A.I.M."
 
 
@@ -66,7 +65,6 @@ def test_bad_team_validate(talker):
         "id": 150,
         "name": 50,
         "desc": "Foo Bat",
-        "wikipedia": "",
         "image": "https://static.metron.cloud/media/team/2019/06/20/aquamarines.jpg",
         "creators": [],
         "modified": "2019-06-23T15:13:23.927059-04:00",

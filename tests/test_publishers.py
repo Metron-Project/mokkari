@@ -17,7 +17,6 @@ def test_known_publishers(talker):
     marvel = talker.publisher(1)
     assert marvel.name == "Marvel"
     assert marvel.image == "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg"
-    assert marvel.wikipedia == "Marvel_Comics"
     assert marvel.founded == 1939
     assert marvel.modified == datetime(
         2019,
@@ -67,7 +66,6 @@ def test_bad_publisher_validate(talker):
         "name": 150,
         "founded": 1993,
         "desc": "Foo Bar",
-        "wikipedia": "Bongo_Comics",
         "image": "https://static.metron.cloud/media/publisher/2018/12/02/bongo.png",
         "modified": "2019-06-23T15:13:23.581612-04:00",
     }

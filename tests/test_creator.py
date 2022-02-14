@@ -22,7 +22,6 @@ def test_known_creator(talker):
         jack.image
         == "https://static.metron.cloud/media/creator/2018/11/11/432124-Jack_Kirby01.jpg"
     )
-    assert jack.wikipedia == "Jack_Kirby"
     assert jack.modified == datetime(
         2019,
         6,
@@ -43,7 +42,7 @@ def test_comiclist(talker):
     assert next(creator_iter).name == "Adam Freeman"
     assert next(creator_iter).name == "Adam Schlagman"
     assert next(creator_iter).name == "Al Sulman"
-    assert len(creators) == 184
+    assert len(creators) == 186
     assert creators[3].name == "Al Sulman"
 
 
@@ -73,7 +72,6 @@ def test_bad_creator_validate(talker):
         "birth": None,
         "death": None,
         "desc": "Foo Bar",
-        "wikipedia": "Jim_Cheung",
         "image": "https://static.metron.cloud/media/creator/2018/11/13/Jim_Cheung.jpg",
         "modified": "2019-06-23T15:13:22.423371-04:00",
     }
