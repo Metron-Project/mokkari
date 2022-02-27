@@ -56,7 +56,9 @@ class Session:
         self.cache = cache
 
     def _call(
-        self, endpoint: List[Union[str, int]], params: Dict[str, Union[str, int]] = None
+        self,
+        endpoint: List[Union[str, int]],
+        params: Optional[Dict[str, Union[str, int]]] = None,
     ) -> Dict[str, Any]:
         """
         Make request for api endpoints.
@@ -173,7 +175,7 @@ class Session:
         return result
 
     def publishers_list(
-        self, params: Dict[str, Union[str, int]] = None
+        self, params: Optional[Dict[str, Union[str, int]]] = None
     ) -> publishers.PublishersList:
         """
         Request a list of publishers.
@@ -205,7 +207,9 @@ class Session:
 
         return result
 
-    def teams_list(self, params: Dict[str, Union[str, int]] = None) -> teams.TeamsList:
+    def teams_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> teams.TeamsList:
         """
         Request a list of teams.
 
@@ -236,7 +240,7 @@ class Session:
 
         return result
 
-    def arcs_list(self, params: Dict[str, Union[str, int]] = None) -> arcs.ArcsList:
+    def arcs_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> arcs.ArcsList:
         """
         Request a list of story arcs.
 
@@ -267,7 +271,9 @@ class Session:
 
         return result
 
-    def series_list(self, params: Dict[str, Union[str, int]] = None) -> ser.SeriesList:
+    def series_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> ser.SeriesList:
         """
         Request a list of series.
 
@@ -298,7 +304,9 @@ class Session:
 
         return result
 
-    def issues_list(self, params: Dict[str, Union[str, int]] = None) -> issues.IssuesList:
+    def issues_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> issues.IssuesList:
         """
         Request a list of issues.
 
@@ -311,7 +319,9 @@ class Session:
         res = self._get_results("issue", params)
         return issues.IssuesList(res)
 
-    def role_list(self, params: Dict[str, Union[str, int]] = None) -> issues.RoleList:
+    def role_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> issues.RoleList:
         """
         Request a list of creator roles.
 
