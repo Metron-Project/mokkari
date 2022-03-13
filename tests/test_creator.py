@@ -42,7 +42,7 @@ def test_comiclist(talker):
     assert next(creator_iter).name == "Adam Freeman"
     assert next(creator_iter).name == "Adam Schlagman"
     assert next(creator_iter).name == "Al Sulman"
-    assert len(creators) == 187
+    assert len(creators) == 186
     assert creators[3].name == "Al Sulman"
 
 

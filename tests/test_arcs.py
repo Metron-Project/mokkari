@@ -39,7 +39,7 @@ def test_arcslist(talker):
     assert next(arc_iter).name == "'Til Death Do Us..."
     assert next(arc_iter).name == "2099"
     assert next(arc_iter).name == "52"
-    assert len(arcs) == 679
+    assert len(arcs) == 669
     assert arcs[2].name == "52"
 
 

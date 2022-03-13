@@ -3,6 +3,8 @@ Series module.
 
 This module provides the following classes:
 
+- SeriesType
+- SeriesTypeSchema
 - Series
 - SeriesSchema
 - SeriesList
@@ -11,6 +13,38 @@ from marshmallow import EXCLUDE, Schema, ValidationError, fields, post_load
 
 from mokkari import exceptions
 from mokkari.publisher import PublisherSchema
+
+
+class SeriesType:
+    """
+    The SeriesType object contains information for type of series.
+
+    :param `**kwargs`: The keyword arguments is used for setting series type data.
+    """
+
+    def __init__(self, **kwargs):
+        """Intialize a new SeriesType."""
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class SeriesTypeSchema(Schema):
+    """Schema for the Series Type."""
+
+    id = fields.Int()
+    name = fields.Str()
+
+    @post_load
+    def make_object(self, data, **kwargs):
+        """
+        Make the SeriesType object.
+
+        :param data: Data from Metron response.
+
+        :returns: :class:`SeriesType` object
+        :rtype: SeriesType
+        """
+        return SeriesType(**data)
 
 
 class AssociatedSeries:
@@ -75,15 +109,17 @@ class SeriesSchema(Schema):
         - Changed ``publisher`` to a nested field.
 
     .. versionchanged:: 2.0.3
-
         - Changed ``series_type`` to a string field.
+
+    .. versionchanged:: 2.0.4
+        - Reverted ``series_type`` back to a nested field.
     """
 
     id = fields.Int()
     name = fields.Str()
     sort_name = fields.Str()
     volume = fields.Int()
-    series_type = fields.Str()
+    series_type = fields.Nested(SeriesTypeSchema)
     publisher = fields.Nested(PublisherSchema)
     year_began = fields.Int()
     year_end = fields.Int(allow_none=True)
