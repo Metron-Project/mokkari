@@ -107,6 +107,12 @@ class SeriesSchema(Schema):
     .. versionchanged:: 2.0.0
 
         - Changed ``publisher`` to a nested field.
+
+    .. versionchanged:: 2.0.3
+        - Changed ``series_type`` to a string field.
+
+    .. versionchanged:: 2.0.4
+        - Reverted ``series_type`` back to a nested field.
     """
 
     id = fields.Int()
