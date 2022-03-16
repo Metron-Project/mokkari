@@ -64,7 +64,7 @@ class AssociatedSeriesSchema(Schema):
     """Schema for Associated Series."""
 
     id = fields.Int()
-    name = fields.Str(data_key="__str__")
+    name = fields.Str(data_key="series")
 
     @post_load
     def make_object(self, data, **kwargs):
@@ -126,7 +126,7 @@ class SeriesSchema(Schema):
     desc = fields.Str()
     issue_count = fields.Int()
     image = fields.Url()
-    display_name = fields.Str(data_key="__str__")
+    display_name = fields.Str(data_key="series")
     associated = fields.Nested(AssociatedSeriesSchema, many=True)
     modified = fields.DateTime()
 
