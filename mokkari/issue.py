@@ -149,6 +149,9 @@ class IssueSchema(Schema):
         - Changed ``price`` field to a decimal type.
         - Added ``modified`` field
 
+    .. versionchanged:: 2.1.0
+
+        - Add ``reprints`` field
     """
 
     id = fields.Int()
