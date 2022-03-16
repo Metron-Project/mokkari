@@ -95,7 +95,7 @@ def test_issueslist(talker):
     assert next(issue_iter).id == 6732
     assert len(issues) == 57
     assert issues[2].id == 6732
-    assert issues[56].issue_name == "Action Comics #52"
+    assert issues[56].issue_name == "Action Comics (2011) #52"
 
 
 def test_issueslist_with_params(talker):
@@ -105,7 +105,7 @@ def test_issueslist_with_params(talker):
     }
     issues = talker.issues_list(params=params)
     assert len(issues) == 5
-    assert issues[0].issue_name == "Kang The Conqueror #1"
+    assert issues[0].issue_name == "Kang The Conqueror (2021) #1"
     assert issues[0].cover_date == date(2021, 10, 1)
 
 
@@ -125,6 +125,22 @@ def test_issue_without_upc_sku_price(talker):
     assert bullets.price is None
     assert bullets.sku == ""
     assert bullets.upc == ""
+
+
+def test_issue_with_reprints(talker):
+    """Test issue with reprint information."""
+    wf = talker.issue(45025)
+    assert wf.series.name == "World's Finest Comics"
+    assert wf.number == "228"
+    assert wf.cover_date == date(1975, 3, 1)
+    assert wf.price == Decimal(".6")
+    assert len(wf.reprints) == 3
+    assert wf.reprints[0].id == 35086
+    assert wf.reprints[0].issue == "Action Comics (1938) #193"
+    assert wf.reprints[1].id == 3645
+    assert wf.reprints[1].issue == "Aquaman (1962) #12"
+    assert wf.reprints[2].id == 43328
+    assert wf.reprints[2].issue == "The Brave and the Bold (1955) #58"
 
 
 def test_issue_with_variants(talker):
@@ -188,9 +204,9 @@ def test_multi_page_results(talker):
     """Test for multi page results."""
     issues = talker.issues_list({"series_name": "action comics", "series_year_began": 1938})
     assert len(issues) == 864
-    assert issues[0].issue_name == "Action Comics #1"
+    assert issues[0].issue_name == "Action Comics (1938) #1"
     assert issues[0].cover_date == date(1938, 6, 1)
-    assert issues[863].issue_name == "Action Comics #904"
+    assert issues[863].issue_name == "Action Comics (1938) #904"
     assert issues[863].cover_date == date(2011, 10, 1)
 
 

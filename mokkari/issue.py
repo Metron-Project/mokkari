@@ -14,7 +14,7 @@ This module provides the following classes:
 """
 from marshmallow import EXCLUDE, Schema, ValidationError, fields, post_load
 
-from mokkari import arc, character, exceptions, publisher, series, team, variant
+from mokkari import arc, character, exceptions, publisher, reprint, series, team, variant
 
 
 class Role:
@@ -169,7 +169,8 @@ class IssueSchema(Schema):
     credits = fields.Nested(CreditsSchema, many=True)
     characters = fields.Nested(character.CharacterSchema, many=True)
     teams = fields.Nested(team.TeamSchema, many=True)
-    issue_name = fields.Str(data_key="__str__")
+    reprints = fields.Nested(reprint.ReprintSchema, many=True)
+    issue_name = fields.Str(data_key="issue")
     variants = fields.Nested(variant.VariantSchema, many=True)
     modified = fields.DateTime()
 
