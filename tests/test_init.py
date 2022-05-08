@@ -8,7 +8,7 @@ import pytest
 from mokkari import api, exceptions, session
 
 
-def test_api():
+def test_api() -> None:
     """Test for api()."""
     with pytest.raises(exceptions.AuthenticationError):
         api()

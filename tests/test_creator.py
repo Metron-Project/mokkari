@@ -10,9 +10,10 @@ import pytest
 import requests_mock
 
 from mokkari import creator, exceptions
+from mokkari.session import Session
 
 
-def test_known_creator(talker):
+def test_known_creator(talker: Session) -> None:
     """Test for a known creator."""
     jack = talker.creator(3)
     assert jack.name == "Jack Kirby"
@@ -34,7 +35,7 @@ def test_known_creator(talker):
     )
 
 
-def test_comiclist(talker):
+def test_comiclist(talker: Session) -> None:
     """Test the CreatorsList."""
     creators = talker.creators_list({"name": "man"})
     creator_iter = iter(creators)
@@ -46,7 +47,7 @@ def test_comiclist(talker):
     assert creators[3].name == "Al Sulman"
 
 
-def test_bad_creator(talker):
+def test_bad_creator(talker: Session) -> None:
     """Test for a non-existant creator."""
     with requests_mock.Mocker() as r:
         r.get(
@@ -57,13 +58,13 @@ def test_bad_creator(talker):
             talker.creator(-1)
 
 
-def test_bad_response_data(talker):
+def test_bad_response_data() -> None:
     """Test for a bad creator response."""
     with pytest.raises(exceptions.ApiError):
         creator.CreatorsList({"results": {"name": 1}})
 
 
-def test_bad_creator_validate(talker):
+def test_bad_creator_validate(talker: Session) -> None:
     """Test data with invalid data."""
     # Change the 'name' field to an int, when it should be a string.
     data = {

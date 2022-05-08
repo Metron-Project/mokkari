@@ -10,9 +10,10 @@ import pytest
 import requests_mock
 
 from mokkari import character, exceptions
+from mokkari.session import Session
 
 
-def test_known_character(talker):
+def test_known_character(talker: Session) -> None:
     """Test for a known character."""
     black_bolt = talker.character(1)
     assert black_bolt.name == "Black Bolt"
@@ -34,7 +35,7 @@ def test_known_character(talker):
     )
 
 
-def test_characterlist(talker):
+def test_characterlist(talker: Session) -> None:
     """Test the CharactersList."""
     character = talker.characters_list({"name": "man"})
     character_iter = iter(character)
@@ -45,7 +46,7 @@ def test_characterlist(talker):
     assert character[2].name == "3-D Man (Garrett)"
 
 
-def test_bad_character(talker):
+def test_bad_character(talker: Session) -> None:
     """Test for a non-existing character."""
     with requests_mock.Mocker() as r:
         r.get(
@@ -56,13 +57,13 @@ def test_bad_character(talker):
             talker.character(-1)
 
 
-def test_bad_response_data(talker):
+def test_bad_response_data() -> None:
     """Test for a bad character response."""
     with pytest.raises(exceptions.ApiError):
         character.CharactersList({"results": {"name": 1}})
 
 
-def test_bad_character_validate(talker):
+def test_bad_character_validate(talker: Session) -> None:
     """Test data with invalid data."""
     # Change the 'name' field to an int, when it should be a string.
     data = {
