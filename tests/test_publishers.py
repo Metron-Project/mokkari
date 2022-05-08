@@ -10,9 +10,10 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions, publisher
+from mokkari.session import Session
 
 
-def test_known_publishers(talker):
+def test_known_publishers(talker: Session) -> None:
     """Test for a known publisher."""
     marvel = talker.publisher(1)
     assert marvel.name == "Marvel"
@@ -30,7 +31,7 @@ def test_known_publishers(talker):
     )
 
 
-def test_publisherlist(talker):
+def test_publisherlist(talker: Session) -> None:
     """Test the PublishersList."""
     publishers = talker.publishers_list()
     publisher_iter = iter(publishers)
@@ -41,7 +42,7 @@ def test_publisherlist(talker):
     assert publishers[2].name == "AfterShock Comics"
 
 
-def test_bad_publisher(talker):
+def test_bad_publisher(talker: Session) -> None:
     """Test for a non-existant publisher."""
     with requests_mock.Mocker() as r:
         r.get(
@@ -52,13 +53,13 @@ def test_bad_publisher(talker):
             talker.publisher(-1)
 
 
-def test_bad_response_data():
+def test_bad_response_data() -> None:
     """Test for a bad publisher response."""
     with pytest.raises(exceptions.ApiError):
         publisher.PublishersList({"results": {"name": 1}})
 
 
-def test_bad_publisher_validate(talker):
+def test_bad_publisher_validate(talker: Session) -> None:
     """Test data with invalid data."""
     # Change the 'name' field to an int, when it should be a string.
     data = {

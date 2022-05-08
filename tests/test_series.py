@@ -11,9 +11,10 @@ import requests_mock
 
 from mokkari import exceptions
 from mokkari import series as ser
+from mokkari.session import Session
 
 
-def test_known_series(talker):
+def test_known_series(talker: Session) -> None:
     """Test for a known series."""
     death = talker.series(1)
     assert death.name == "Death of the Inhumans"
@@ -38,7 +39,7 @@ def test_known_series(talker):
     )
 
 
-def test_series_without_year_end(talker):
+def test_series_without_year_end(talker: Session) -> None:
     """Test for series without a year-end date."""
     abs_carnage = talker.series(2311)
     assert abs_carnage.name == "Absolute Carnage"
@@ -52,7 +53,7 @@ def test_series_without_year_end(talker):
     assert abs_carnage.series_type.name == "Mini-Series"
 
 
-def test_serieslist(talker):
+def test_serieslist(talker: Session) -> None:
     """Test the SeriesList."""
     series = talker.series_list({"name": "batman"})
     series_iter = iter(series)
@@ -65,7 +66,7 @@ def test_serieslist(talker):
     assert series[3].display_name == "Batman (2016)"
 
 
-def test_bad_series(talker):
+def test_bad_series(talker: Session) -> None:
     """Test for a non-existant series."""
     with requests_mock.Mocker() as r:
         r.get(
@@ -76,13 +77,13 @@ def test_bad_series(talker):
             talker.series(-1)
 
 
-def test_bad_response_data():
+def test_bad_response_data() -> None:
     """Test for a bad series response."""
     with pytest.raises(exceptions.ApiError):
         ser.SeriesList({"results": {"name": 1}})
 
 
-def test_bad_series_validate(talker):
+def test_bad_series_validate(talker: Session) -> None:
     """Test data with invalid data."""
     # Change the 'name' field to an int, when it should be a string.
     data = {
@@ -109,7 +110,7 @@ def test_bad_series_validate(talker):
             talker.series(150)
 
 
-def test_series_with_associated_series(talker):
+def test_series_with_associated_series(talker: Session) -> None:
     """Test series with an associated series link."""
     ff = talker.series(2818)
     assert ff.name == "Fantastic Four Annual"

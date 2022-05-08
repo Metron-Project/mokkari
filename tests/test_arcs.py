@@ -10,9 +10,10 @@ import pytest
 import requests_mock
 
 from mokkari import arc, exceptions
+from mokkari.session import Session
 
 
-def test_known_arc(talker):
+def test_known_arc(talker: Session) -> None:
     """Test for known arcs."""
     heroes = talker.arc(1)
     assert heroes.name == "Heroes In Crisis"
@@ -32,7 +33,7 @@ def test_known_arc(talker):
     )
 
 
-def test_arcslist(talker):
+def test_arcslist(talker: Session) -> None:
     """Test for ArcsList."""
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
@@ -43,7 +44,7 @@ def test_arcslist(talker):
     assert arcs[2].name == "52"
 
 
-def test_bad_arc(talker):
+def test_bad_arc(talker: Session) -> None:
     """Test for bad arc requests."""
     with requests_mock.Mocker() as r:
         r.get(
@@ -55,13 +56,13 @@ def test_bad_arc(talker):
             talker.arc(-8)
 
 
-def test_bad_response_data():
+def test_bad_response_data() -> None:
     """Test for bad arc response."""
     with pytest.raises(exceptions.ApiError):
         arc.ArcsList({"results": {"name": 1}})
 
 
-def test_bad_arc_validate(talker):
+def test_bad_arc_validate(talker: Session) -> None:
     """Test data with invalid data."""
     # Change the 'name' field to an int, when it should be a string.
     data = {

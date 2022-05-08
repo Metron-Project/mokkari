@@ -14,7 +14,7 @@ from mokkari import api, exceptions, sqlite_cache
 class NoGet:
     """The NoGet object fakes storing data from the sqlite cache."""
 
-    def store(self, key, value):
+    def store(self, key, value) -> None:
         """Save no data."""
         # This method should store key value pair
         return
@@ -23,12 +23,12 @@ class NoGet:
 class NoStore:
     """The NoStore object fakes getting data from the sqlite cache."""
 
-    def get(self, key):
+    def get(self, key) -> None:
         """Retrieve no data."""
         return None
 
 
-def test_no_get(dummy_username, dummy_password):
+def test_no_get(dummy_username: str, dummy_password: str) -> None:
     """Test for retrieving failure."""
     m = api(username=dummy_username, passwd=dummy_password, cache=NoGet())
 
@@ -36,7 +36,7 @@ def test_no_get(dummy_username, dummy_password):
         m.series(5)
 
 
-def test_no_store(dummy_username, dummy_password):
+def test_no_store(dummy_username: str, dummy_password: str) -> None:
     """Test for saving data error."""
     m = api(username=dummy_username, passwd=dummy_password, cache=NoStore())
 
@@ -50,7 +50,7 @@ def test_no_store(dummy_username, dummy_password):
             m.series(5)
 
 
-def test_sql_store(dummy_username, dummy_password):
+def test_sql_store(dummy_username: str, dummy_password: str) -> None:
     """Test for saving data to the sqlite cache."""
     fresh_cache = sqlite_cache.SqliteCache(":memory:")
     test_cache = sqlite_cache.SqliteCache("tests/testing_mock.sqlite")

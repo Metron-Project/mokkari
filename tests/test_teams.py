@@ -10,9 +10,10 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions, team
+from mokkari.session import Session
 
 
-def test_known_team(talker):
+def test_known_team(talker: Session) -> None:
     """Test for a known team."""
     inhumans = talker.team(1)
     assert inhumans.name == "Inhumans"
@@ -30,7 +31,7 @@ def test_known_team(talker):
     )
 
 
-def test_teamlist(talker):
+def test_teamlist(talker: Session) -> None:
     """Test the TeamsList."""
     teams = talker.teams_list()
     team_iter = iter(teams)
@@ -41,7 +42,7 @@ def test_teamlist(talker):
     assert teams[2].name == "A.I.M."
 
 
-def test_bad_team(talker):
+def test_bad_team(talker: Session) -> None:
     """Test for a non-existant team."""
     with requests_mock.Mocker() as r:
         r.get(
@@ -52,13 +53,13 @@ def test_bad_team(talker):
             talker.team(-1)
 
 
-def test_bad_response_data():
+def test_bad_response_data() -> None:
     """Test for a bad team response."""
     with pytest.raises(exceptions.ApiError):
         team.TeamsList({"results": {"name": 1}})
 
 
-def test_bad_team_validate(talker):
+def test_bad_team_validate(talker: Session) -> None:
     """Test data with invalid data."""
     # Change the 'name' field to an int, when it should be a string.
     data = {

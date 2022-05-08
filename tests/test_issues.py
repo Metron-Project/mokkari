@@ -11,9 +11,10 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions, issue
+from mokkari.session import Session
 
 
-def test_known_issue(talker):
+def test_known_issue(talker: Session) -> None:
     """Test for a known issue."""
     death = talker.issue(1)
     assert death.publisher.name == "Marvel"
@@ -52,7 +53,7 @@ def test_known_issue(talker):
     )
 
 
-def test_issue_with_price_and_sku(talker):
+def test_issue_with_price_and_sku(talker: Session) -> None:
     """Test issue with price & sku values."""
     die_16 = talker.issue(36860)
     assert die_16.price == Decimal("3.99")
@@ -61,7 +62,7 @@ def test_issue_with_price_and_sku(talker):
     assert die_16.store_date == date(2021, 8, 25)
 
 
-def test_issue_without_store_date(talker):
+def test_issue_without_store_date(talker: Session) -> None:
     """Test issue that does not have a store date."""
     spidey = talker.issue(31047)
     assert spidey.publisher.name == "Marvel"
@@ -74,7 +75,7 @@ def test_issue_without_store_date(talker):
     assert "Spider-Man" in [c.name for c in spidey.characters]
 
 
-def test_issue_without_story_title(talker):
+def test_issue_without_story_title(talker: Session) -> None:
     """Test an issue that does not have a story title."""
     redemption = talker.issue(30662)
     assert redemption.publisher.name == "AWA Studios"
@@ -86,7 +87,7 @@ def test_issue_without_story_title(talker):
     assert "Christa Faust" in [c.creator for c in redemption.credits]
 
 
-def test_issueslist(talker):
+def test_issueslist(talker: Session) -> None:
     """Test the IssueList."""
     issues = talker.issues_list({"series_name": "action comics", "series_year_began": 2011})
     issue_iter = iter(issues)
@@ -98,7 +99,7 @@ def test_issueslist(talker):
     assert issues[56].issue_name == "Action Comics (2011) #52"
 
 
-def test_issueslist_with_params(talker):
+def test_issueslist_with_params(talker: Session) -> None:
     """Test the IssueList with params given."""
     params = {
         "series_name": "Kang",
@@ -109,7 +110,7 @@ def test_issueslist_with_params(talker):
     assert issues[0].cover_date == date(2021, 10, 1)
 
 
-def test_issue_with_upc_sku_price(talker):
+def test_issue_with_upc_sku_price(talker: Session) -> None:
     """Test issue with upc, sku, and price values."""
     usca_3 = talker.issue(36812)
     assert usca_3.series.name == "The United States of Captain America"
@@ -119,7 +120,7 @@ def test_issue_with_upc_sku_price(talker):
     assert usca_3.upc == "75960620100600311"
 
 
-def test_issue_without_upc_sku_price(talker):
+def test_issue_without_upc_sku_price(talker: Session) -> None:
     """Test issue without upc, sku, and price values."""
     bullets = talker.issue(32662)
     assert bullets.price is None
@@ -127,7 +128,7 @@ def test_issue_without_upc_sku_price(talker):
     assert bullets.upc == ""
 
 
-def test_issue_with_reprints(talker):
+def test_issue_with_reprints(talker: Session) -> None:
     """Test issue with reprint information."""
     wf = talker.issue(45025)
     assert wf.series.name == "World's Finest Comics"
@@ -143,7 +144,7 @@ def test_issue_with_reprints(talker):
     assert wf.reprints[2].issue == "The Brave and the Bold (1955) #58"
 
 
-def test_issue_with_variants(talker):
+def test_issue_with_variants(talker: Session) -> None:
     """Test issue with variant data."""
     paprika = talker.issue(37094)
     assert paprika.series.id == 2511
@@ -171,7 +172,7 @@ def test_issue_with_variants(talker):
     )
 
 
-def test_issue_with_page_count(talker):
+def test_issue_with_page_count(talker: Session) -> None:
     """Test issue that has a page count."""
     gr = talker.issue(8118)
     assert gr.page_count == 40
@@ -183,7 +184,7 @@ def test_issue_with_page_count(talker):
     assert gr.volume == 1
 
 
-def test_bad_issue(talker):
+def test_bad_issue(talker: Session) -> None:
     """Test for a non-existant issue."""
     with requests_mock.Mocker() as r:
         r.get(
@@ -194,13 +195,13 @@ def test_bad_issue(talker):
             talker.issue(-1)
 
 
-def test_bad_response_data():
+def test_bad_response_data() -> None:
     """Test for bad issue response."""
     with pytest.raises(exceptions.ApiError):
         issue.IssuesList({"results": {"volume": "1"}})
 
 
-def test_multi_page_results(talker):
+def test_multi_page_results(talker: Session) -> None:
     """Test for multi page results."""
     issues = talker.issues_list({"series_name": "action comics", "series_year_began": 1938})
     assert len(issues) == 864
@@ -210,7 +211,7 @@ def test_multi_page_results(talker):
     assert issues[863].cover_date == date(2011, 10, 1)
 
 
-def test_bad_issue_validate(talker):
+def test_bad_issue_validate(talker: Session) -> None:
     """Test data with invalid data."""
     # Change the 'number' field to an int, when it should be a string.
     data = {
