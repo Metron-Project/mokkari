@@ -18,7 +18,7 @@ class Reprint:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Reprint."""
+        """Initialize a new Reprint."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

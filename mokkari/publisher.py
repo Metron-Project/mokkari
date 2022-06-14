@@ -20,7 +20,7 @@ class Publisher:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Publisher."""
+        """Initialize a new Publisher."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

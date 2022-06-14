@@ -20,7 +20,7 @@ class Team:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Team."""
+        """Initialize a new Team."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

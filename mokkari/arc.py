@@ -20,7 +20,7 @@ class Arc:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Arc."""
+        """Initialize a new Arc."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

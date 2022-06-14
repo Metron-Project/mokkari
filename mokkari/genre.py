@@ -16,7 +16,7 @@ class Genre:
     :param `**kwargs`: The keyword arguments is used for setting genre data from Metron.
     """
     def __init__(self, **kwargs):
-        """Intialize a new Genre."""
+        """Initialize a new Genre."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

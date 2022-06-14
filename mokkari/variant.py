@@ -17,7 +17,7 @@ class Variant:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Variant."""
+        """Initialize a new Variant."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

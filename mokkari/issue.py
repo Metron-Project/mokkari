@@ -25,7 +25,7 @@ class Role:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Role."""
+        """Initialize a new Role."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -86,7 +86,7 @@ class Credit:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Credit."""
+        """Initialize a new Credit."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -119,7 +119,7 @@ class Issue:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Issue."""
+        """Initialize a new Issue."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

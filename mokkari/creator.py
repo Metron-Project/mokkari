@@ -20,7 +20,7 @@ class Creator:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Creator."""
+        """Initialize a new Creator."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 

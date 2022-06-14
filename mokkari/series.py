@@ -24,7 +24,7 @@ class SeriesType:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new SeriesType."""
+        """Initialize a new SeriesType."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -56,7 +56,7 @@ class AssociatedSeries:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new AssociatedSeries."""
+        """Initialize a new AssociatedSeries."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -88,7 +88,7 @@ class Series:
     """
 
     def __init__(self, **kwargs):
-        """Intialize a new Series."""
+        """Initialize a new Series."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
