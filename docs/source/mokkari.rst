@@ -36,6 +36,14 @@ mokkari.exceptions module
    :undoc-members:
    :show-inheritance:
 
+mokkari.genre module
+--------------------
+
+.. automodule:: mokkari.genre
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 mokkari.issue module
 --------------------
 
@@ -48,6 +56,14 @@ mokkari.publisher module
 ------------------------
 
 .. automodule:: mokkari.publisher
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+mokkari.reprint module
+----------------------
+
+.. automodule:: mokkari.reprint
    :members:
    :undoc-members:
    :show-inheritance:

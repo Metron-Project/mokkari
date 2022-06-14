@@ -12,6 +12,7 @@ This module provides the following classes:
 from marshmallow import EXCLUDE, Schema, ValidationError, fields, post_load
 
 from mokkari import exceptions
+from mokkari.genre import GenreSchema
 from mokkari.publisher import PublisherSchema
 
 
@@ -127,6 +128,7 @@ class SeriesSchema(Schema):
     issue_count = fields.Int()
     image = fields.Url()
     display_name = fields.Str(data_key="series")
+    genres = fields.Nested(GenreSchema, many=True)
     associated = fields.Nested(AssociatedSeriesSchema, many=True)
     modified = fields.DateTime()
 
