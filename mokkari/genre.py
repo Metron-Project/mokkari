@@ -13,10 +13,10 @@ class Genre:
     The Genre object contains information about a Series or Issue
     genre.
 
-    :param `**kwargs`: The keyword arguments is used for setting reprint data from Metron.
+    :param `**kwargs`: The keyword arguments is used for setting genre data from Metron.
     """
     def __init__(self, **kwargs):
-        """Intialize a new Reprint."""
+        """Intialize a new Genre."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
