@@ -119,7 +119,8 @@ def test_series_with_associated_series(talker: Session) -> None:
     assert assoc.id == 26
     assert assoc.name == "Fantastic Four (1961)"
 
-def test_series_with_genres(talker: Session)-> None:
+
+def test_series_with_genres(talker: Session) -> None:
     """Test series with genres."""
     tt2011 = talker.series(3503)
     assert tt2011.name == "Teen Titans"

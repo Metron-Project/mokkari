@@ -183,13 +183,14 @@ def test_issue_with_page_count(talker: Session) -> None:
     assert gr.series.name == "Revenge of the Cosmic Ghost Rider"
     assert gr.volume == 1
 
-def test_issue_genre(talker: Session)-> None:
+
+def test_issue_genre(talker: Session) -> None:
     """Test issue with genre."""
     tt = talker.issue(49491)
     assert len(tt.series.genres) > 0
     assert tt.series.genres[0].name == "Super-Hero"
-    assert tt.cover_date == date(2011,11,1)
-    assert tt.store_date == date(2011,9,28)
+    assert tt.cover_date == date(2011, 11, 1)
+    assert tt.store_date == date(2011, 9, 28)
     assert tt.upc == "76194130522600111"
     assert tt.page_count == 36
     assert tt.price == Decimal("2.99")
@@ -256,4 +257,3 @@ def test_bad_issue_validate(talker: Session) -> None:
 
         with pytest.raises(exceptions.ApiError):
             talker.issue(150)
-

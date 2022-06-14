@@ -8,20 +8,23 @@ This module provides the following classes:
 """
 from marshmallow import EXCLUDE, Schema, fields, post_load
 
+
 class Genre:
     """
-    The Genre object contains information about a Series or Issue
-    genre.
+    The Genre object contains information about a Series or Issue genre.
 
     :param `**kwargs`: The keyword arguments is used for setting genre data from Metron.
     """
+
     def __init__(self, **kwargs):
         """Initialize a new Genre."""
         for k, v in kwargs.items():
             setattr(self, k, v)
 
+
 class GenreSchema(Schema):
     """Schema for the Genre."""
+
     id = fields.Int()
     name = fields.Str()
 
