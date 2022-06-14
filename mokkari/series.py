@@ -114,6 +114,9 @@ class SeriesSchema(Schema):
 
     .. versionchanged:: 2.0.4
         - Reverted ``series_type`` back to a nested field.
+
+    .. versionchanged:: 2.1.1
+        Added ``genres`` fields
     """
 
     id = fields.Int()
