@@ -118,3 +118,10 @@ def test_series_with_associated_series(talker: Session) -> None:
     assoc = ff.associated[0]
     assert assoc.id == 26
     assert assoc.name == "Fantastic Four (1961)"
+
+def test_series_with_genres(talker: Session)-> None:
+    """Test series with genres."""
+    tt2011 = talker.series(3503)
+    assert tt2011.name == "Teen Titans"
+    assert len(tt2011.genres) == 1
+    assert tt2011.genres[0].name == "Super-Hero"
