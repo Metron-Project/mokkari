@@ -5,7 +5,6 @@ This module provides the following classes:
 
 - Genre
 - GenreSchema
-- ReprintsList
 """
 from marshmallow import EXCLUDE, Schema, fields, post_load
 
