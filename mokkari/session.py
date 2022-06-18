@@ -156,6 +156,17 @@ class Session:
         res = self._get_results(["character"], params)
         return characters.CharactersList(res)
 
+    def character_issues_list(self, _id: int) -> List[issues.Issue]:
+        """
+        Request a list of issues that a character appears in.
+
+        :param int _id: The arc id.
+
+        ::return: A list of :class:`Issue` objects.
+        """
+        result = self._get_results(["character", _id, "issue_list"])
+        return issues.IssuesList(result)
+
     def publisher(self, _id: int) -> publishers.Publisher:
         """
         Request data for a publisher based on its ``_id``.
@@ -221,6 +232,17 @@ class Session:
         """
         res = self._get_results(["team"], params)
         return teams.TeamsList(res)
+
+    def team_issues_list(self, _id: int) -> List[issues.Issue]:
+        """
+        Request a list of issues that a team appears in.
+
+        :param int _id: The arc id.
+
+        ::return: A list of :class:`Issue` objects.
+        """
+        result = self._get_results(["team", _id, "issue_list"])
+        return issues.IssuesList(result)
 
     def arc(self, _id: int) -> arcs.Arc:
         """
