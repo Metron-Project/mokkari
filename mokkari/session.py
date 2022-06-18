@@ -160,9 +160,12 @@ class Session:
         """
         Request a list of issues that a character appears in.
 
+        .. versionadded:: 2.2.0
+
         :param int _id: The arc id.
 
-        ::return: A list of :class:`Issue` objects.
+        :return: A list of :class:`Issue` objects.
+        :rtype: List[Issue]
         """
         result = self._get_results(["character", _id, "issue_list"])
         return issues.IssuesList(result)
@@ -237,9 +240,12 @@ class Session:
         """
         Request a list of issues that a team appears in.
 
+        .. versionadded:: 2.2.0
+
         :param int _id: The arc id.
 
-        ::return: A list of :class:`Issue` objects.
+        :return: A list of :class:`Issue` objects.
+        :rtype: List[Issue]
         """
         result = self._get_results(["team", _id, "issue_list"])
         return issues.IssuesList(result)
@@ -281,7 +287,8 @@ class Session:
 
         :param int _id: The arc id.
 
-        ::return: A list of :class:`Issue` objects.
+        :return: A list of :class:`Issue` objects.
+        :rtype: List[Issue]
         """
         result = self._get_results(["arc", _id, "issue_list"])
         return issues.IssuesList(result)
