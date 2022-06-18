@@ -4,7 +4,7 @@ Test Teams module.
 This module contains tests for Team objects.
 """
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import requests_mock
@@ -40,6 +40,15 @@ def test_teamlist(talker: Session) -> None:
     assert next(team_iter).name == "A.I.M."
     assert len(teams) == 503
     assert teams[2].name == "A.I.M."
+
+
+def test_team_issue_list(talker: Session) -> None:
+    """Test for getting an issue list for an arc."""
+    issues = talker.team_issues_list(1)
+    assert len(issues) == 485
+    assert issues[0].id == 258
+    assert issues[0].issue_name == "Fantastic Four (1961) #45"
+    assert issues[0].cover_date == date(1965, 12, 1)
 
 
 def test_bad_team(talker: Session) -> None:

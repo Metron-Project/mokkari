@@ -4,7 +4,7 @@ Test Arcs module.
 This module contains tests for Arc objects.
 """
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import requests_mock
@@ -42,6 +42,15 @@ def test_arcslist(talker: Session) -> None:
     assert next(arc_iter).name == "52"
     assert len(arcs) == 679
     assert arcs[2].name == "52"
+
+
+def test_arc_issue_list(talker: Session) -> None:
+    """Test for getting an issue list for an arc."""
+    issues = talker.arc_issues_list(177)
+    assert len(issues) == 7
+    assert issues[0].id == 6798
+    assert issues[0].issue_name == "Batman (2011) #1"
+    assert issues[0].cover_date == date(2011, 11, 1)
 
 
 def test_bad_arc(talker: Session) -> None:

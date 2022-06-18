@@ -4,7 +4,7 @@ Test Characters module.
 This module contains tests for Character objects.
 """
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import requests_mock
@@ -44,6 +44,15 @@ def test_characterlist(talker: Session) -> None:
     assert next(character_iter).name == "3-D Man (Garrett)"
     assert len(character) == 490
     assert character[2].name == "3-D Man (Garrett)"
+
+
+def test_character_issue_list(talker: Session) -> None:
+    """Test for getting an issue list for an arc."""
+    issues = talker.character_issues_list(1)
+    assert len(issues) == 336
+    assert issues[0].id == 258
+    assert issues[0].issue_name == "Fantastic Four (1961) #45"
+    assert issues[0].cover_date == date(1965, 12, 1)
 
 
 def test_bad_character(talker: Session) -> None:
