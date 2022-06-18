@@ -120,7 +120,7 @@ class Session:
         :return: A list of :class:`Creator` objects containing their id and name.
         :rtype: CreatorsList
         """
-        res = self._get_results("creator", params)
+        res = self._get_results(["creator"], params)
         return creators.CreatorsList(res)
 
     def character(self, _id: int) -> characters.Character:
@@ -153,7 +153,7 @@ class Session:
         :return: A list of :class:`Character` objects containing their id and name.
         :rtype: CharactersList
         """
-        res = self._get_results("character", params)
+        res = self._get_results(["character"], params)
         return characters.CharactersList(res)
 
     def publisher(self, _id: int) -> publishers.Publisher:
@@ -186,7 +186,7 @@ class Session:
         :return: A list of :class:`Publisher` objects containing their id and name.
         :rtype: PublishersList
         """
-        res = self._get_results("publisher", params)
+        res = self._get_results(["publisher"], params)
         return publishers.PublishersList(res)
 
     def team(self, _id: int) -> teams.Team:
@@ -219,7 +219,7 @@ class Session:
         :return: A list of :class:`Team` objects containing their id and name.
         :rtype: TeamsList
         """
-        res = self._get_results("team", params)
+        res = self._get_results(["team"], params)
         return teams.TeamsList(res)
 
     def arc(self, _id: int) -> arcs.Arc:
@@ -250,8 +250,19 @@ class Session:
         :return: A list of :class:`Arc` objects containing their id and name.
         :rtype: ArcsList
         """
-        res = self._get_results("arc", params)
+        res = self._get_results(["arc"], params)
         return arcs.ArcsList(res)
+
+    def arc_issues_list(self, _id: int) -> List[issues.Issue]:
+        """
+        Request a list of issues for a story arc.
+
+        :param int _id: The arc id.
+
+        ::return: A list of :class:`Issue` objects.
+        """
+        result = self._get_results(["arc", _id, "issue_list"])
+        return issues.IssuesList(result)
 
     def series(self, _id: int) -> ser.Series:
         """
@@ -283,7 +294,7 @@ class Session:
         :return: A list of :class:`Series` objects containing their id and name.
         :rtype: SeriesList
         """
-        res = self._get_results("series", params)
+        res = self._get_results(["series"], params)
         return ser.SeriesList(res)
 
     def issue(self, _id: int) -> issues.Issue:
@@ -316,7 +327,7 @@ class Session:
         :return: A list of :class:`Issue` objects containing their id and name.
         :rtype: IssuesList
         """
-        res = self._get_results("issue", params)
+        res = self._get_results(["issue"], params)
         return issues.IssuesList(res)
 
     def role_list(
@@ -332,16 +343,18 @@ class Session:
         :rtype: RoleList
 
         """
-        res = self._get_results("role", params)
+        res = self._get_results(["role"], params)
         return issues.RoleList(res)
 
     def _get_results(
-        self, resource: str, params: Optional[Dict[str, Union[str, int]]]
+        self,
+        endpoint: List[Union[str, int]],
+        params: Optional[Dict[str, Union[str, int]]] = None,
     ) -> Dict[str, Any]:
         if params is None:
             params = {}
 
-        result = self._call([resource], params=params)
+        result = self._call(endpoint, params=params)
         if result["next"]:
             result = self._retrieve_all_results(result)
         return result
