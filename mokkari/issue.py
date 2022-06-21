@@ -152,6 +152,10 @@ class IssueSchema(Schema):
     .. versionchanged:: 2.1.0
 
         - Add ``reprints`` field
+
+    .. versionadded:: 2.2.2
+
+        - Add ``collection_title`` field
     """
 
     id = fields.Int()
@@ -159,6 +163,7 @@ class IssueSchema(Schema):
     series = fields.Nested(series.SeriesSchema)
     volume = fields.Int()
     number = fields.Str()
+    collection_title = fields.Str(allow_none=True, data_key="title")
     story_titles = fields.List(fields.Str(allow_none=True), data_key="name")
     cover_date = fields.Date()
     store_date = fields.Date(allow_none=True)
