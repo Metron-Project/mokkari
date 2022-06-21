@@ -196,6 +196,16 @@ def test_issue_genre(talker: Session) -> None:
     assert tt.price == Decimal("2.99")
 
 
+def test_tpb(talker: Session) -> None:
+    """Test a TPB."""
+    hos = talker.issue(49622)
+    assert hos.collection_title == "The Butcher's Mark"
+    assert hos.price == Decimal("14.99")
+    assert hos.sku == "FEB220718"
+    assert hos.upc == "9781684158164"
+    assert len(hos.reprints) == 5
+
+
 def test_bad_issue(talker: Session) -> None:
     """Test for a non-existant issue."""
     with requests_mock.Mocker() as r:
