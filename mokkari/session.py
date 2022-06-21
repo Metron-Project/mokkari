@@ -332,11 +332,15 @@ class Session:
         """
         Request a list of series types.
 
+        .. versionadded:: 2.2.2
+
+            - Add ``series_type_list`` method
+
         :param params: Parameters to add to the request.
         :type params: dict, optional
 
         :return: A list of :class:`SeriesType` objects containing their id and name.
-        :rtype: List[ser.]
+        :rtype: SeriesTypeList
         """
         res = self._get_results(["series_type"], params)
         return ser.SeriesTypeList(res)
