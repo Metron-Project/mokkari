@@ -326,6 +326,21 @@ class Session:
         res = self._get_results(["series"], params)
         return ser.SeriesList(res)
 
+    def series_type_list(
+        self, params: Optional[Dict[str, Union[str, int]]] = None
+    ) -> ser.SeriesTypeList:
+        """
+        Request a list of series types.
+
+        :param params: Parameters to add to the request.
+        :type params: dict, optional
+
+        :return: A list of :class:`SeriesType` objects containing their id and name.
+        :rtype: List[ser.]
+        """
+        res = self._get_results(["series_type"], params)
+        return ser.SeriesTypeList(res)
+
     def issue(self, _id: int) -> issues.Issue:
         """
         Request data for an issue based on it's ``_id``.

@@ -48,6 +48,35 @@ class SeriesTypeSchema(Schema):
         return SeriesType(**data)
 
 
+class SeriesTypeList:
+    """The SeriesTypeList object contains a list of `SeriesType` objects."""
+
+    def __init__(self, response):
+        """Initialize a new SeriesTypeList."""
+        self.series = []
+
+        schema = SeriesTypeSchema()
+        for series_type_dict in response["results"]:
+            try:
+                result = schema.load(series_type_dict)
+            except ValidationError as error:
+                raise exceptions.ApiError(error) from error
+
+            self.series.append(result)
+
+    def __iter__(self):
+        """Return an iterator object."""
+        return iter(self.series)
+
+    def __len__(self):
+        """Return the length of the object."""
+        return len(self.series)
+
+    def __getitem__(self, index: int):
+        """Return the object of a at index."""
+        return self.series[index]
+
+
 class AssociatedSeries:
     """
     The AssociateSeries objects contains any associated series to the primary series.
