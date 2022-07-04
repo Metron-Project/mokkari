@@ -63,7 +63,7 @@ Documentation
 Bugs/Requests
 -------------
   
-Please use the `GitHub issue tracker <https://github.com/bpepple/mokkari/issues>`_ to submit bugs or request features.
+Please use the `GitHub issue tracker <https://github.com/Metron-Project/mokkari/issues>`_ to submit bugs or request features.
 
 License
 -------

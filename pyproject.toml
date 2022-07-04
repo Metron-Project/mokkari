@@ -73,8 +73,8 @@ known_first_party = []
 known_third_party = ["marshmallow", "pytest", "ratelimit", "requests", "requests_mock", "urllib3"]
 
 [tool.poetry.urls]
-"Homepage" = "https://github.com/bpepple/mokkari"
-"Bug Tracker" = "https://github.com/bpepple/mokkari/issues"
+"Homepage" = "https://github.com/Metron-Project/mokkari"
+"Bug Tracker" = "https://github.com/Metron-Project/mokkari/issues"
 
 [tool.poetry.extras]
 docs = ["sphinx-rtd-theme", "sphinxcontrib-napoleon"]
