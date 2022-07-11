@@ -156,6 +156,10 @@ class IssueSchema(Schema):
     .. versionadded:: 2.2.2
 
         - Add ``collection_title`` field
+
+    .. versionchanged:: 2.3.0
+
+        - Removed ``volume`` field. The series object will have that information.
     """
 
     id = fields.Int()
