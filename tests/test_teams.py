@@ -38,7 +38,7 @@ def test_teamlist(talker: Session) -> None:
     assert next(team_iter).name == "A-Force"
     assert next(team_iter).name == "A-Next"
     assert next(team_iter).name == "A.I.M."
-    assert len(teams) == 503
+    assert len(teams) == 543
     assert teams[2].name == "A.I.M."
 
 

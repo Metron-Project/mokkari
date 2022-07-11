@@ -19,24 +19,24 @@ def test_known_issue(talker: Session) -> None:
     death = talker.issue(1)
     assert death.publisher.name == "Marvel"
     assert death.series.name == "Death of the Inhumans"
-    assert death.volume == 1
+    assert death.series.volume == 1
     assert death.story_titles[0] == "Chapter One: Vox"
     assert death.cover_date == date(2018, 9, 1)
     assert death.store_date == date(2018, 7, 4)
-    assert death.price is None
+    assert death.price == Decimal("4.99")
     assert not death.sku
     assert death.image == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     assert len(death.characters) > 0
     assert len(death.teams) > 0
     assert len(death.credits) > 0
     assert death.modified == datetime(
-        2019,
-        6,
-        23,
-        15,
-        13,
+        2022,
+        5,
+        26,
         16,
-        899872,
+        24,
+        3,
+        608369,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
     assert death.teams[0].name == "Inhumans"
@@ -67,7 +67,7 @@ def test_issue_without_store_date(talker: Session) -> None:
     spidey = talker.issue(31047)
     assert spidey.publisher.name == "Marvel"
     assert spidey.series.name == "The Spectacular Spider-Man"
-    assert spidey.volume == 1
+    assert spidey.series.volume == 1
     assert spidey.story_titles[0] == "A Night on the Prowl!"
     assert spidey.cover_date == date(1980, 10, 1)
     assert spidey.store_date is None
@@ -80,7 +80,7 @@ def test_issue_without_story_title(talker: Session) -> None:
     redemption = talker.issue(30662)
     assert redemption.publisher.name == "AWA Studios"
     assert redemption.series.name == "Redemption"
-    assert redemption.volume == 1
+    assert redemption.series.volume == 1
     assert len(redemption.story_titles) == 0
     assert redemption.cover_date == date(2021, 5, 1)
     assert redemption.store_date == date(2021, 5, 19)
@@ -122,7 +122,7 @@ def test_issue_with_upc_sku_price(talker: Session) -> None:
 
 def test_issue_without_upc_sku_price(talker: Session) -> None:
     """Test issue without upc, sku, and price values."""
-    bullets = talker.issue(32662)
+    bullets = talker.issue(3980)
     assert bullets.price is None
     assert bullets.sku == ""
     assert bullets.upc == ""
@@ -149,13 +149,17 @@ def test_issue_with_variants(talker: Session) -> None:
     paprika = talker.issue(37094)
     assert paprika.series.id == 2511
     assert paprika.series.name == "Mirka Andolfo's Sweet Paprika"
-    assert paprika.volume == 1
+    assert paprika.series.sort_name == "Mirka Andolfo's Sweet Paprika"
+    assert paprika.series.volume == 1
+    assert paprika.series.series_type.name == "Maxi-Series"
+    assert paprika.series.series_type.id == 4
+    assert len(paprika.series.genres) == 0
     assert paprika.number == "2"
     assert paprika.cover_date == date(2021, 9, 1)
     assert paprika.store_date == date(2021, 9, 1)
     assert paprika.price == Decimal("3.99")
     assert paprika.sku == "JUN210256"
-    assert paprika.page_count is None
+    assert paprika.page_count == 32
     assert len(paprika.credits) == 9
     assert len(paprika.variants) == 4
     assert paprika.variants[0].name == "Cover B Sejic"
@@ -181,7 +185,7 @@ def test_issue_with_page_count(talker: Session) -> None:
     assert gr.cover_date == date(2020, 2, 1)
     assert gr.store_date == date(2019, 12, 18)
     assert gr.series.name == "Revenge of the Cosmic Ghost Rider"
-    assert gr.volume == 1
+    assert gr.series.volume == 1
 
 
 def test_issue_genre(talker: Session) -> None:

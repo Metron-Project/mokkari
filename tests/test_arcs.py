@@ -38,10 +38,10 @@ def test_arcslist(talker: Session) -> None:
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
     assert next(arc_iter).name == "'Til Death Do Us..."
+    assert next(arc_iter).name == "1883"
     assert next(arc_iter).name == "2099"
-    assert next(arc_iter).name == "52"
-    assert len(arcs) == 679
-    assert arcs[2].name == "52"
+    assert len(arcs) == 810
+    assert arcs[2].name == "2099"
 
 
 def test_arc_issue_list(talker: Session) -> None:

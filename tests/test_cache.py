@@ -3,12 +3,10 @@ Test Cache module.
 
 This module contains tests for SqliteCache objects.
 """
-import json
-
 import pytest
 import requests_mock
 
-from mokkari import api, exceptions, sqlite_cache
+from mokkari import api, exceptions
 
 
 class NoGet:
@@ -50,25 +48,25 @@ def test_no_store(dummy_username: str, dummy_password: str) -> None:
             m.series(5)
 
 
-def test_sql_store(dummy_username: str, dummy_password: str) -> None:
-    """Test for saving data to the sqlite cache."""
-    fresh_cache = sqlite_cache.SqliteCache(":memory:")
-    test_cache = sqlite_cache.SqliteCache("tests/testing_mock.sqlite")
+# def test_sql_store(dummy_username: str, dummy_password: str) -> None:
+#     """Test for saving data to the sqlite cache."""
+#     fresh_cache = sqlite_cache.SqliteCache(":memory:")
+#     test_cache = sqlite_cache.SqliteCache("tests/testing_mock.sqlite")
 
-    m = api(username=dummy_username, passwd=dummy_password, cache=fresh_cache)
-    url = "https://metron.cloud/api/series/1/"
+#     m = api(username=dummy_username, passwd=dummy_password, cache=fresh_cache)
+#     url = "https://metron.cloud/api/series/1/"
 
-    assert fresh_cache.get(url) is None
+#     assert fresh_cache.get(url) is None
 
-    try:
-        with requests_mock.Mocker() as r:
-            r.get(url, text=json.dumps(test_cache.get(url)))
-            m.series(1)
+#     try:
+#         with requests_mock.Mocker() as r:
+#             r.get(url, text=json.dumps(test_cache.get(url)))
+#             m.series(1)
 
-        assert fresh_cache.get(url) is not None
-    except TypeError:
-        print(
-            "This test will fail after cache db deleted.\n"
-            "It should pass if you now re-run the test suite without deleting the database."
-        )
-        assert False
+#         assert fresh_cache.get(url) is not None
+#     except TypeError:
+#         print(
+#             "This test will fail after cache db deleted.\n"
+#             "It should pass if you now re-run the test suite without deleting the database."
+#         )
+#         assert False

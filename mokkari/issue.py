@@ -161,7 +161,6 @@ class IssueSchema(Schema):
     id = fields.Int()
     publisher = fields.Nested(publisher.PublisherSchema)
     series = fields.Nested(series.SeriesSchema)
-    volume = fields.Int()
     number = fields.Str()
     collection_title = fields.Str(allow_none=True, data_key="title")
     story_titles = fields.List(fields.Str(allow_none=True), data_key="name")
