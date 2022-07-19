@@ -13,7 +13,13 @@ class Variant:
     """
     The Variant object contains information for variant issues.
 
-    :param `**kwargs`: The keyword arguments is used for setting variant issue data.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting arc data from Metron.
+
+    Attributes:
+        name (int): The name of the variant cover.
+        sku (str): The stock keeping unit for the variant cover.
+        image (url): The url for an image for the variant cover.
     """
 
     def __init__(self, **kwargs):
@@ -39,9 +45,11 @@ class VariantSchema(Schema):
         """
         Make the Variant object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Variant` object
-        :rtype: Variant
+        Returns:
+            An :obj:`Variant` object
         """
         return Variant(**data)

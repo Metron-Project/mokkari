@@ -35,9 +35,10 @@ class Session:
     """
     Session to request api endpoints.
 
-    :param str username: The username for authentication with metron.cloud
-    :param str passwd: The password used for authentication with metron.cloud
-    :param SqliteCache optional: SqliteCache to use
+    Args:
+        username (str): The username for authentication with metron.cloud
+        passwd (str): The password used for authentication with metron.cloud
+        cache (SqliteCache, optional): SqliteCache to use
     """
 
     def __init__(
@@ -63,8 +64,9 @@ class Session:
         """
         Make request for api endpoints.
 
-        :param str endpoint: The endpoint to request information from.
-        :param dict params: Parameters to add to the request.
+        Args:
+            endpoint (str): The endpoint to request information from.
+            params (dict[str, any]): Parameters to add to the request.
         """
         if params is None:
             params = {}
@@ -94,12 +96,14 @@ class Session:
         """
         Request data for a creator based on its ``_id``.
 
-        :param int _id: The creator id.
+        Args:
+            _id (int): The creator id.
 
-        :return: :class:`Creator` object
-        :rtype: Creator
+        Returns:
+            A :obj:`Creator` object.
 
-        :raises: :class:`ApiError`
+        Raises:
+            ApiError: If there is a problem with the API request.
         """
         try:
             result = creators.CreatorSchema().load(self._call(["creator", _id]))
@@ -114,11 +118,11 @@ class Session:
         """
         Request a list of creators.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Creator` objects containing their id and name.
-        :rtype: CreatorsList
+        Returns:
+            A :obj:`CreatorsList` object.
         """
         res = self._get_results(["creator"], params)
         return creators.CreatorsList(res)
@@ -127,12 +131,14 @@ class Session:
         """
         Request data for a character based on its ``_id``.
 
-        :param int _id: The character id.
+        Args:
+            _id (int): The character id.
 
-        :return: :class:`Character` object
-        :rtype: Character
+        Returns:
+            A :obj:`Character` object.
 
-        :raises: :class:`ApiError`
+        Raises:
+            ApiError: If there is a problem with the API request.
         """
         try:
             result = characters.CharacterSchema().load(self._call(["character", _id]))
@@ -147,11 +153,11 @@ class Session:
         """
         Request a list of characters.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Character` objects containing their id and name.
-        :rtype: CharactersList
+        Returns:
+            A :class:`CharactersList` object.
         """
         res = self._get_results(["character"], params)
         return characters.CharactersList(res)
@@ -162,10 +168,11 @@ class Session:
 
         .. versionadded:: 2.2.0
 
-        :param int _id: The arc id.
+        Args:
+            _id (int): The character id.
 
-        :return: A list of :class:`Issue` objects.
-        :rtype: List[Issue]
+        Returns:
+            A list of :class:`Issue` objects.
         """
         result = self._get_results(["character", _id, "issue_list"])
         return issues.IssuesList(result)
@@ -174,12 +181,14 @@ class Session:
         """
         Request data for a publisher based on its ``_id``.
 
-        :param int _id: The publisher id.
+        Args:
+            _id (int): The publisher id.
 
-        :return: :class:`Publisher` object
-        :rtype: Publisher
+        Returns:
+            A :obj:`Publisher` object.
 
-        :raises: :class:`ApiError`
+        Raises:
+            ApiError: If there is a problem with the API request.
         """
         try:
             result = publishers.PublisherSchema().load(self._call(["publisher", _id]))
@@ -194,11 +203,11 @@ class Session:
         """
         Request a list of publishers.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Publisher` objects containing their id and name.
-        :rtype: PublishersList
+        Returns:
+            A :class:`PublishersList` object.
         """
         res = self._get_results(["publisher"], params)
         return publishers.PublishersList(res)
@@ -207,12 +216,14 @@ class Session:
         """
         Request data for a team based on its ``_id``.
 
-        :param int _id: The team id.
+        Args:
+            _id (int): The team id.
 
-        :return: :class:`Team` object
-        :rtype: Team
+        Returns:
+            A :obj:`Team` object.
 
-        :raises: :class:`ApiError`
+        Raises:
+            ApiError: If there is a problem with the API request.
         """
         try:
             result = teams.TeamSchema().load(self._call(["team", _id]))
@@ -227,11 +238,11 @@ class Session:
         """
         Request a list of teams.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Team` objects containing their id and name.
-        :rtype: TeamsList
+        Returns:
+            A :class:`TeamsList` object.
         """
         res = self._get_results(["team"], params)
         return teams.TeamsList(res)
@@ -242,10 +253,11 @@ class Session:
 
         .. versionadded:: 2.2.0
 
-        :param int _id: The arc id.
+        Args:
+            _id (int): The team id.
 
-        :return: A list of :class:`Issue` objects.
-        :rtype: List[Issue]
+        Returns:
+            A list of :class:`Issue` objects.
         """
         result = self._get_results(["team", _id, "issue_list"])
         return issues.IssuesList(result)
@@ -254,12 +266,14 @@ class Session:
         """
         Request data for a story arc based on its ``_id``.
 
-        :param int _id: The story arc id.
+        Args:
+            _id (int): The story arc id.
 
-        :return: :class:`Arc` object
-        :rtype: Arc
+        Returns:
+            A :obj:`Arc` object.
 
-        :raises: :class:`ApiError`
+        Raises:
+            ApiError: If there is a problem with the API request.
         """
         try:
             result = arcs.ArcSchema().load(self._call(["arc", _id]))
@@ -272,11 +286,11 @@ class Session:
         """
         Request a list of story arcs.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Arc` objects containing their id and name.
-        :rtype: ArcsList
+        Returns:
+            A :class:`ArcsList` object.
         """
         res = self._get_results(["arc"], params)
         return arcs.ArcsList(res)
@@ -285,10 +299,11 @@ class Session:
         """
         Request a list of issues for a story arc.
 
-        :param int _id: The arc id.
+        Args:
+            _id (int): The arc id.
 
-        :return: A list of :class:`Issue` objects.
-        :rtype: List[Issue]
+        Returns:
+            A list of :class:`Issue` objects.
         """
         result = self._get_results(["arc", _id, "issue_list"])
         return issues.IssuesList(result)
@@ -297,12 +312,14 @@ class Session:
         """
         Request data for a series based on its ``_id``.
 
-        :param int _id: The series id.
+        Args:
+            _id (int): The series id.
 
-        :return: :class:`Series` object
-        :rtype: Series
+        Returns:
+            A :obj:`Series` object.
 
-        :raises: :class:`ApiError`
+        Raises:
+            ApiError: If there is a problem with the API request.
         """
         try:
             result = ser.SeriesSchema().load(self._call(["series", _id]))
@@ -317,11 +334,11 @@ class Session:
         """
         Request a list of series.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Series` objects containing their id and name.
-        :rtype: SeriesList
+        Returns:
+            A :class:`SeriesList` object.
         """
         res = self._get_results(["series"], params)
         return ser.SeriesList(res)
@@ -336,11 +353,11 @@ class Session:
 
             - Add ``series_type_list`` method
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`SeriesType` objects containing their id and name.
-        :rtype: SeriesTypeList
+        Returns:
+            A :class:`SeriesTypeList` object.
         """
         res = self._get_results(["series_type"], params)
         return ser.SeriesTypeList(res)
@@ -349,12 +366,14 @@ class Session:
         """
         Request data for an issue based on it's ``_id``.
 
-        :param int _id: The issue id.
+        Args:
+            _id (int): The issue id.
 
-        :return: :class:`Issue` object
-        :rtype: Issue
+        Returns:
+            A :obj:`Issue` object.
 
-        :raises: :class:`ApiError`
+        Raises:
+            ApiError: If there is a problem with the API request.
         """
         try:
             result = issues.IssueSchema().load(self._call(["issue", _id]))
@@ -369,11 +388,11 @@ class Session:
         """
         Request a list of issues.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Issue` objects containing their id and name.
-        :rtype: IssuesList
+        Returns:
+            A :class:`IssuesList` object.
         """
         res = self._get_results(["issue"], params)
         return issues.IssuesList(res)
@@ -384,11 +403,11 @@ class Session:
         """
         Request a list of creator roles.
 
-        :param params: Parameters to add to the request.
-        :type params: dict, optional
+        Args:
+            params (dict, optional): Parameters to add to the request.
 
-        :return: A list of :class:`Role` objects containing their id and name.
-        :rtype: RoleList
+        Returns:
+            A :class:`RoleList` object.
 
         """
         res = self._get_results(["role"], params)

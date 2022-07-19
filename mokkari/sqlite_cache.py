@@ -15,9 +15,10 @@ class SqliteCache:
     """
     The SqliteCache object to cache search results from Metron.
 
-    :param str db_name: Path and database name to use.
-    :param expire: The number of days to keep the cache results before they expire.
-    :type expire: int, optional
+    Args:
+        db_name (str): Path and database name to use.
+        expire (int, optional): The number of days to keep the cache results
+        before they expire.
     """
 
     def __init__(
@@ -34,7 +35,8 @@ class SqliteCache:
         """
         Retrieve data from the cache database.
 
-        :param str key: value to search for.
+        Args:
+            key (str): value to search for.
         """
         self.cur.execute("SELECT json FROM responses WHERE key = ?", (key,))
         if result := self.cur.fetchone():
@@ -46,8 +48,9 @@ class SqliteCache:
         """
         Save data to the cache database.
 
-        :param str key: Item id.
-        :param str value: data to save.
+        Args:
+            key (str): Item id.
+            value (str): data to save.
         """
         self.cur.execute(
             "INSERT INTO responses(key, json, expire) VALUES(?, ?, ?)",
