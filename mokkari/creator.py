@@ -16,7 +16,17 @@ class Creator:
     """
     The Creator object contains information for creators.
 
-    :param `**kwargs`: The keyword arguments is used for setting creator data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting creator data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the creator.
+        name (str): The name of the creator.
+        birth (date): The date of birth for the creator.
+        death (date): The date of death for the creator.
+        desc (str): The description of the creator.
+        image (url): The url for an image associated with the creator.
+        modified (datetime): The date/time the creator was last changed.
     """
 
     def __init__(self, **kwargs):
@@ -34,6 +44,7 @@ class CreatorSchema(Schema):
         - Added ``modified`` field
 
     .. versionchanged:: 2.0.2
+
         - Removed ``wikipedia`` field
     """
 
@@ -57,16 +68,28 @@ class CreatorSchema(Schema):
         """
         Make the Creator object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Creator` object
-        :rtype: Creator
+        Returns:
+            A :obj:`Creator` object.
         """
         return Creator(**data)
 
 
 class CreatorsList:
-    """The CreatorsList object contains a list of `Creator` objects."""
+    """
+    The :obj:`CreatorsList` object contains a list of creators.
+
+    Attributes:
+        id (int): The Metron identification number for the creator.
+        name (str): The name of the creator.
+        modified (datetime): The date/time the creator was last changed.
+
+    Returns:
+        A list of creators.
+    """
 
     def __init__(self, response) -> None:
         """Initialize a new CreatorsList."""

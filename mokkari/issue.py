@@ -21,7 +21,12 @@ class Role:
     """
     The Role object contains information for creators' role.
 
-    :param `**kwargs`: The keyword arguments is used for setting role data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting role data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the role.
+        name (str): The name of the role.
     """
 
     def __init__(self, **kwargs):
@@ -41,16 +46,27 @@ class RolesSchema(Schema):
         """
         Make the Role object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Role` object
-        :rtype: Role
+        Returns:
+            A :obj:`Role` object.
         """
         return Role(**data)
 
 
 class RoleList:
-    """The RoleList object contains a list of `Role` objects."""
+    """
+    The :obj:`RoleList` object contains a list of roles.
+
+    Attributes:
+        id (int): The Metron identification number for the role.
+        name (str): The name of the role.
+
+    Returns:
+        A list of roles.
+    """
 
     def __init__(self, response):
         """Initialize a new RoleList."""
@@ -82,7 +98,13 @@ class Credit:
     """
     The Credit object contains information for creators credits for an issue.
 
-    :param `**kwargs`: The keyword arguments is used for setting creator credit data.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting credits data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the credit.
+        creator (str): The name of the creator.
+        role (RoleList): A list of roles for the creator.
     """
 
     def __init__(self, **kwargs):
@@ -103,10 +125,12 @@ class CreditsSchema(Schema):
         """
         Make the Credit object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Credit` object
-        :rtype: Credit
+        Returns:
+            A :obj:`Credit` object.
         """
         return Credit(**data)
 
@@ -115,7 +139,32 @@ class Issue:
     """
     The Issue object contains information for an issue.
 
-    :param `**kwargs`: The keyword arguments is used for setting issue data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting creator data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the creator.
+        publisher (Publisher): The publisher information for the issue.
+        series (Series): The series information for the issue.
+        number (str): The issue number.
+        collection_title (str): The title of a Trade Paperback.
+        story_titles (list[str]): A list of stories contained in the issue.
+        cover_date (date): The cover date of the issue.
+        store_date (date, optional): The date the issue went for sale.
+        price (decimal): The price of the issue.
+        sku (str): Stock keeping unit for the issue.
+        upc (str): UPC barcode for the issue.
+        page_count (int): Number of pages for the issue.
+        desc (str): Summary description for the issue.
+        image (url): The url for a cover image associated with the issue.
+        arcs (list[:obj:`Arc`]): A list of story arcs.
+        credits (list[:obj:`Credit`]): A list of creator credits for the issue.
+        characters (list[:obj:`Character`]): A list of characters who appear in the issue.
+        teams (list[:obj:`Team`]): A list of teams who appear in the issue.
+        reprints (list[:obj:`Reprint`]): A list of reprinted issue contained in the issue.
+        issue_name (str): The name used to identified the issue.
+        variants (list[:obj:`Variant`]): A list of variant covers for the issue.
+        modified (datetime): The date/time the issue was last changed.
     """
 
     def __init__(self, **kwargs):
@@ -194,18 +243,31 @@ class IssueSchema(Schema):
     @post_load
     def make_object(self, data, **kwargs):
         """
-        Make the arc object.
+        Make the issue object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Issue` object
-        :rtype: Issue
+        Returns:
+            An :obj:`Issue` object.
         """
         return Issue(**data)
 
 
 class IssuesList:
-    """The IssuesList object contains a list of `Issue` objects."""
+    """
+    The :obj:`IssuesList` object contains a list of issues.
+
+    Attributes:
+        id (int): The Metron identification number for the issue.
+        issue (str): The name of the issue.
+        cover_date (date): The cover date for the issue.
+        modified (datetime): The date/time the creator was last changed.
+
+    Returns:
+        A list of issues.
+    """
 
     def __init__(self, response):
         """Initialize a new IssuesList."""

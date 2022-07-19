@@ -15,14 +15,16 @@ def api(
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
-    :param str username: The username used for metron.cloud.
-    :param str passwd: The password used for metron.cloud.
-    :param SqliteCache optional: SqliteCache to use
+    Args:
+        username (str): The username used for metron.cloud.
+        passwd (str): The password used for metron.cloud.
+        SqliteCache optional: SqliteCache to use
 
-    :return: :class:`Session` object
-    :rtype: Session
+    Returns:
+        A :obj:`Session` object
 
-    :raises: :class:`AuthenticationError`
+    Raises:
+        AuthenticationError: If Metron returns with an invalid API credentials response.
     """
     if username is None:
         raise exceptions.AuthenticationError("Missing username.")

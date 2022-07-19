@@ -16,7 +16,18 @@ class Character:
     """
     The Character object contains information for characters.
 
-    :param `**kwargs`: The keyword arguments is used for setting character data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting character data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the character.
+        name (str): The name of the character.
+        alias (list[str]): List of aliases the character may have.
+        desc (str): The description of the character.
+        image (url): The url for an image associated with the character.
+        creators (list[Creator]): A list of creators for the character.
+        teams (list[Team]): A list of teams the character is a member of.
+        modified (datetime): The date/time the character was last changed.
     """
 
     def __init__(self, **kwargs):
@@ -57,16 +68,28 @@ class CharacterSchema(Schema):
         """
         Make the character object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Character` object
-        :rtype: Character
+        Returns:
+            A :obj:`Character` object
         """
         return Character(**data)
 
 
 class CharactersList:
-    """The CharactersList object contains a list of `Character` objects."""
+    """
+    The :obj:`CharactersList` object contains a list of characters.
+
+    Attributes:
+        id (int): The Metron identification number for the character.
+        name (str): The name of the character.
+        modified (datetime): The date/time the character was last changed.
+
+    Returns:
+        A list of characters.
+    """
 
     def __init__(self, response):
         """Initialize a new CharactersList."""

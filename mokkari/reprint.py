@@ -14,7 +14,13 @@ class Reprint:
     """
     The Reprint object contains information for a reprint issue.
 
-    :param `**kwargs`: The keyword arguments is used for setting reprint data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting reprint issue
+        data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the issue.
+        issue (str): The name of the issue being reprinted.
     """
 
     def __init__(self, **kwargs):
@@ -39,9 +45,11 @@ class ReprintSchema(Schema):
         """
         Make the reprint object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Reprint` object
-        :rtype: Reprint
+        Returns:
+            A :obj:`Reprint` object.
         """
         return Reprint(**data)

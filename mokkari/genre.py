@@ -13,7 +13,12 @@ class Genre:
     """
     The Genre object contains information about a Series or Issue genre.
 
-    :param `**kwargs`: The keyword arguments is used for setting genre data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting genre data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the genre.
+        name (str): The name of the genre.
     """
 
     def __init__(self, **kwargs):
@@ -38,9 +43,11 @@ class GenreSchema(Schema):
         """
         Make the Genre object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Genre` object
-        :rtype: Genre
+        Returns:
+            A :obj:`Genre` object.
         """
         return Genre(**data)
