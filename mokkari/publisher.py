@@ -16,7 +16,16 @@ class Publisher:
     """
     The Publisher object contains information for publishers.
 
-    :param `**kwargs`: The keyword arguments is used for setting publisher data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting publisher data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the publisher.
+        name (str): The name of the publisher.
+        founded (int): The year the publisher was founded.
+        desc (str): A summary description about the publisher.
+        image (url): The url for an image associated with the publisher.
+        modified (datetime): The date/time the publisher was last changed.
     """
 
     def __init__(self, **kwargs):
@@ -34,6 +43,7 @@ class PublisherSchema(Schema):
         - Added ``modified`` field
 
     .. versionchanged:: 2.0.2
+
         - Removed ``wikipedia`` field
     """
 
@@ -55,16 +65,28 @@ class PublisherSchema(Schema):
         """
         Make the Publisher object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Publisher` object
-        :rtype: Publisher
+        Returns:
+            A :obj:`Publisher` object.
         """
         return Publisher(**data)
 
 
 class PublishersList:
-    """The PublishersList object contains a list of `Publisher` objects."""
+    """
+    The :obj:`PublishersList` object contains a list of publishers.
+
+    Attributes:
+        id (int): The Metron identification number for the publisher.
+        name (str): The name of the publisher.
+        modified (datetime): The date/time the publisher was last changed.
+
+    Returns:
+        A list of publishers.
+    """
 
     def __init__(self, response):
         """Initialize a new PublishersList."""

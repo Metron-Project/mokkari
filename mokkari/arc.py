@@ -16,7 +16,15 @@ class Arc:
     """
     The Arc object contains information for story arcs.
 
-    :param `**kwargs`: The keyword arguments is used for setting arc data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting arc data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the story arc.
+        name (str): The name of the story arc.
+        desc (str): The description of the story arc.
+        image (url): The url for an image associated with the story arc.
+        modified (datetime): The date/time the story arc was last changed.
     """
 
     def __init__(self, **kwargs):
@@ -51,16 +59,28 @@ class ArcSchema(Schema):
         """
         Make the arc object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Arc` object
-        :rtype: Arc
+        Returns:
+            An :obj:`Arc` object
         """
         return Arc(**data)
 
 
 class ArcsList:
-    """The ArcsList object contains a list of `Arc` objects."""
+    """
+    The :obj:`ArcsList` object contains a list of story arcs.
+
+    Attributes:
+        id (int): The Metron identification number for the story arc.
+        name (str): The name of the story arc.
+        modified (datetime): The date/time the story arc was last changed.
+
+    Returns:
+        A list of story arcs.
+    """
 
     def __init__(self, response):
         """Initialize a new ArcsList."""

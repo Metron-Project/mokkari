@@ -16,7 +16,16 @@ class Team:
     """
     The Team object contains information for teams.
 
-    :param `**kwargs`: The keyword arguments is used for setting team data from Metron.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting team data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the team.
+        name (str): The name of the team.
+        desc (str): The description of the team.
+        image (url): The url for an image associated with the team.
+        creators (list[:obj:`Creator`]): A list of creators for the team.
+        modified (datetime): The date/time the team was last changed.
     """
 
     def __init__(self, **kwargs):
@@ -55,16 +64,28 @@ class TeamSchema(Schema):
         """
         Make the Team object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Team` object
-        :rtype: Team
+        Returns:
+            A :obj:`Team` object
         """
         return Team(**data)
 
 
 class TeamsList:
-    """The TeamsList object contains a list of `Team` objects."""
+    """
+    The :obj:`TeamsList` object contains a list of teams.
+
+    Attributes:
+        id (int): The Metron identification number for the team.
+        name (str): The name of the team.
+        modified (datetime): The date/time the team was last changed.
+
+    Returns:
+        A list of teams.
+    """
 
     def __init__(self, response):
         """Initialize a new TeamsList."""

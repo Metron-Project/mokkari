@@ -20,7 +20,12 @@ class SeriesType:
     """
     The SeriesType object contains information for type of series.
 
-    :param `**kwargs`: The keyword arguments is used for setting series type data.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting series type data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the series type.
+        name (str): The name of the series type.
     """
 
     def __init__(self, **kwargs):
@@ -40,16 +45,27 @@ class SeriesTypeSchema(Schema):
         """
         Make the SeriesType object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`SeriesType` object
-        :rtype: SeriesType
+        Returns:
+            A :obj:`SeriesType` object.
         """
         return SeriesType(**data)
 
 
 class SeriesTypeList:
-    """The SeriesTypeList object contains a list of `SeriesType` objects."""
+    """
+    The :obj:`SeriesTypeList` object contains a list of series types.
+
+    Attributes:
+        id (int): The Metron identification number for the series type.
+        name (str): The name of the series type.
+
+    Returns:
+        A list of series types.
+    """
 
     def __init__(self, response):
         """Initialize a new SeriesTypeList."""
@@ -81,7 +97,13 @@ class AssociatedSeries:
     """
     The AssociateSeries objects contains any associated series to the primary series.
 
-    :param `**kwargs`: he keyword arguments is used for setting associated series data.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting associated series data
+        from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the associated series.
+        name (str): The name of the associated series.
     """
 
     def __init__(self, **kwargs):
@@ -101,10 +123,12 @@ class AssociatedSeriesSchema(Schema):
         """
         Make the AssociatedSeries object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`AssociatedSeries` object
-        :rtype: AssociatedSeries
+        Returns:
+            An :obj:`AssociatedSeries` object.
         """
         return AssociatedSeries(**data)
 
@@ -113,7 +137,24 @@ class Series:
     """
     The Series object contains information for comic series.
 
-    :param `**kwargs`: The keyword arguments is used for setting series data.
+    Args:
+        **kwargs (Any): The keyword arguments is used for setting series data from Metron.
+
+    Attributes:
+        id (int): The Metron identification number for the series.
+        name (str): The name of the series.
+        sort_name (str): The name used to sort a series.
+        volume (int): The volume number for a series.
+        publisher (Publisher): The publisher of the series.
+        year_began (int): The cover year the series began.
+        year_end (int, optional): The cover year in which the series ended.
+        desc (str): A summary description of the series.
+        issue_count (int): The number of issues the series contains.
+        display_name (str): The display name for the series.
+        genres (list[Genre]): A list of genres for the series.
+        associated (list[AssociatedSeries]): A list of of series associated with the
+        primary series.
+        modified (datetime): The date/time the series was last changed.
     """
 
     def __init__(self, **kwargs):
@@ -175,16 +216,28 @@ class SeriesSchema(Schema):
         """
         Make the Series object.
 
-        :param data: Data from Metron response.
+        Args:
+            data (Any): Data from Metron response.
+            **kwargs (Any): Any additional keyword arguments.
 
-        :returns: :class:`Series` object
-        :rtype: Series
+        Returns:
+            A :obj:`Series` object.
         """
         return Series(**data)
 
 
 class SeriesList:
-    """The SeriesList object contains a list of `Series` objects."""
+    """
+    The :obj:`SeriesList` object contains a list of series.
+
+    Attributes:
+        id (int): The Metron identification number for the series.
+        series (str): The name of the series.
+        modified (datetime): The date/time the series was last changed.
+
+    Returns:
+        A list of series.
+    """
 
     def __init__(self, response):
         """Initialize a new SeriesList."""
