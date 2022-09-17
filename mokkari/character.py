@@ -52,7 +52,7 @@ class CharacterSchema(Schema):
     name = fields.Str()
     alias = fields.List(fields.Str)
     desc = fields.Str()
-    image = fields.Url()
+    image = fields.Url(allow_none=True)
     creators = fields.Nested(creator.CreatorSchema, many=True)
     teams = fields.Nested(team.TeamSchema, many=True)
     modified = fields.DateTime()

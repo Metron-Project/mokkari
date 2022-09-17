@@ -199,7 +199,7 @@ class SeriesSchema(Schema):
     year_end = fields.Int(allow_none=True)
     desc = fields.Str()
     issue_count = fields.Int()
-    image = fields.Url()
+    image = fields.Url(allow_none=True)
     display_name = fields.Str(data_key="series")
     genres = fields.Nested(GenreSchema, many=True)
     associated = fields.Nested(AssociatedSeriesSchema, many=True)

@@ -224,7 +224,7 @@ class IssueSchema(Schema):
     upc = fields.Str()
     page_count = fields.Int(allow_none=True, data_key="page")
     desc = fields.Str(allow_none=True)
-    image = fields.URL()
+    image = fields.URL(allow_none=True)
     arcs = fields.Nested(arc.ArcSchema, many=True)
     credits = fields.Nested(CreditsSchema, many=True)
     characters = fields.Nested(character.CharacterSchema, many=True)

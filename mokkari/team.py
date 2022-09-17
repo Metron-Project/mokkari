@@ -49,7 +49,7 @@ class TeamSchema(Schema):
     id = fields.Int()
     name = fields.Str()
     desc = fields.Str()
-    image = fields.Url()
+    image = fields.Url(allow_none=True)
     creators = fields.Nested(creator.CreatorSchema, many=True)
     modified = fields.DateTime()
 
