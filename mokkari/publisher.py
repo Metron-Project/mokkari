@@ -51,7 +51,7 @@ class PublisherSchema(Schema):
     name = fields.Str()
     founded = fields.Int()
     desc = fields.Str()
-    image = fields.Url()
+    image = fields.Url(allow_none=True)
     modified = fields.DateTime()
 
     class Meta:

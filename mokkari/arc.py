@@ -45,7 +45,7 @@ class ArcSchema(Schema):
     id = fields.Int()
     name = fields.Str()
     desc = fields.Str()
-    image = fields.Url()
+    image = fields.Url(allow_none=True)
     modified = fields.DateTime()
 
     class Meta:

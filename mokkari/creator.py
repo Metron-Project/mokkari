@@ -53,7 +53,7 @@ class CreatorSchema(Schema):
     birth = fields.Date(allow_none=True)
     death = fields.Date(allow_none=True)
     desc = fields.Str()
-    image = fields.Url()
+    image = fields.Url(allow_none=True)
     modified = fields.DateTime()
 
     class Meta:
