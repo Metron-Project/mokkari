@@ -160,6 +160,7 @@ class Issue:
         cover_date (date): The cover date of the issue.
         store_date (date, optional): The date the issue went for sale.
         price (decimal): The price of the issue.
+        rating (Rating): The issue rating.
         sku (str): Stock keeping unit for the issue.
         upc (str): UPC barcode for the issue.
         page_count (int): Number of pages for the issue.
@@ -217,6 +218,10 @@ class IssueSchema(Schema):
     .. versionchanged:: 2.3.0
 
         - Removed ``volume`` field. The series object will have that information.
+
+    .. versionchanged:: 2.3.2
+
+        - Added ``rating`` field.
     """
 
     id = fields.Int()

@@ -60,6 +60,14 @@ mokkari.publisher module
    :undoc-members:
    :show-inheritance:
 
+mokkari.rating module
+---------------------
+
+.. automodule:: mokkari.rating
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 mokkari.reprint module
 ----------------------
 
