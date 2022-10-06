@@ -14,7 +14,15 @@ This module provides the following classes:
 """
 from marshmallow import EXCLUDE, Schema, ValidationError, fields, post_load
 
-from mokkari import arc, character, exceptions, publisher, reprint, series, team, variant
+from mokkari import exceptions
+from mokkari.arc import ArcSchema
+from mokkari.character import CharacterSchema
+from mokkari.publisher import PublisherSchema
+from mokkari.rating import RatingSchema
+from mokkari.reprint import ReprintSchema
+from mokkari.series import SeriesSchema
+from mokkari.team import TeamSchema
+from mokkari.variant import VariantSchema
 
 
 class Role:
@@ -212,26 +220,27 @@ class IssueSchema(Schema):
     """
 
     id = fields.Int()
-    publisher = fields.Nested(publisher.PublisherSchema)
-    series = fields.Nested(series.SeriesSchema)
+    publisher = fields.Nested(PublisherSchema)
+    series = fields.Nested(SeriesSchema)
     number = fields.Str()
     collection_title = fields.Str(allow_none=True, data_key="title")
     story_titles = fields.List(fields.Str(allow_none=True), data_key="name")
     cover_date = fields.Date()
     store_date = fields.Date(allow_none=True)
     price = fields.Decimal(places=2, allow_none=True)
+    rating = fields.Nested(RatingSchema)
     sku = fields.Str()
     upc = fields.Str()
     page_count = fields.Int(allow_none=True, data_key="page")
     desc = fields.Str(allow_none=True)
     image = fields.URL(allow_none=True)
-    arcs = fields.Nested(arc.ArcSchema, many=True)
+    arcs = fields.Nested(ArcSchema, many=True)
     credits = fields.Nested(CreditsSchema, many=True)
-    characters = fields.Nested(character.CharacterSchema, many=True)
-    teams = fields.Nested(team.TeamSchema, many=True)
-    reprints = fields.Nested(reprint.ReprintSchema, many=True)
+    characters = fields.Nested(CharacterSchema, many=True)
+    teams = fields.Nested(TeamSchema, many=True)
+    reprints = fields.Nested(ReprintSchema, many=True)
     issue_name = fields.Str(data_key="issue")
-    variants = fields.Nested(variant.VariantSchema, many=True)
+    variants = fields.Nested(VariantSchema, many=True)
     modified = fields.DateTime()
 
     class Meta:

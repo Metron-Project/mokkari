@@ -14,6 +14,19 @@ from mokkari import exceptions, issue
 from mokkari.session import Session
 
 
+def test_issue_with_rating(talker: Session) -> None:
+    """Test issue with a rating."""
+    ff: issue.IssueSchema = talker.issue(51658)
+    assert ff.series.name == "Fantastic Four"
+    assert ff.series.volume == 7
+    assert ff.rating.id == 4
+    assert ff.rating.name == "Teen Plus"
+    assert ff.cover_date == date(2022, 11, 1)
+    assert ff.store_date == date(2022, 9, 21)
+    assert ff.series.genres[0].id == 10
+    assert ff.series.genres[0].name == "Super-Hero"
+
+
 def test_known_issue(talker: Session) -> None:
     """Test for a known issue."""
     death = talker.issue(1)
