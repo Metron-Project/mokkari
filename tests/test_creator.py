@@ -15,7 +15,7 @@ from mokkari.session import Session
 
 def test_known_creator(talker: Session) -> None:
     """Test for a known creator."""
-    jack = talker.creator(3)
+    jack: creator.CreatorSchema = talker.creator(3)
     assert jack.name == "Jack Kirby"
     assert jack.birth == date(1917, 8, 28)
     assert jack.death == date(1994, 2, 6)
@@ -33,6 +33,7 @@ def test_known_creator(talker: Session) -> None:
         311024,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert jack.resource_url == "https://metron.cloud/creator/jack-kirby/"
 
 
 def test_comiclist(talker: Session) -> None:
@@ -43,7 +44,7 @@ def test_comiclist(talker: Session) -> None:
     assert next(creator_iter).name == "Adam Freeman"
     assert next(creator_iter).name == "Adam Schlagman"
     assert next(creator_iter).name == "Al Sulman"
-    assert len(creators) == 202
+    assert len(creators) == 213
     assert creators[3].name == "Al Sulman"
 
 
