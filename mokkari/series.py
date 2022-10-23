@@ -154,6 +154,7 @@ class Series:
         genres (list[Genre]): A list of genres for the series.
         associated (list[AssociatedSeries]): A list of of series associated with the
         primary series.
+        resource_url (url): The url for the resource.
         modified (datetime): The date/time the series was last changed.
     """
 
@@ -187,6 +188,10 @@ class SeriesSchema(Schema):
 
     .. versionchanged:: 2.1.1
         Added ``genres`` fields
+
+    .. versionchanged:: 2.3.3
+
+        - Added ``resource_url`` field.
     """
 
     id = fields.Int()
@@ -203,6 +208,7 @@ class SeriesSchema(Schema):
     display_name = fields.Str(data_key="series")
     genres = fields.Nested(GenreSchema, many=True)
     associated = fields.Nested(AssociatedSeriesSchema, many=True)
+    resource_url = fields.URL()
     modified = fields.DateTime()
 
     class Meta:
