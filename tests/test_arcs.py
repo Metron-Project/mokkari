@@ -15,7 +15,7 @@ from mokkari.session import Session
 
 def test_known_arc(talker: Session) -> None:
     """Test for known arcs."""
-    heroes = talker.arc(1)
+    heroes: arc.ArcSchema = talker.arc(1)
     assert heroes.name == "Heroes In Crisis"
     assert (
         heroes.image
@@ -31,6 +31,7 @@ def test_known_arc(talker: Session) -> None:
         456634,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert heroes.resource_url == "https://metron.cloud/arc/heroes-crisis/"
 
 
 def test_arcslist(talker: Session) -> None:
