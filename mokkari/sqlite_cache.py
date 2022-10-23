@@ -39,10 +39,7 @@ class SqliteCache:
             key (str): value to search for.
         """
         self.cur.execute("SELECT json FROM responses WHERE key = ?", (key,))
-        if result := self.cur.fetchone():
-            return json.loads(result[0])
-
-        return None
+        return json.loads(result[0]) if (result := self.cur.fetchone()) else None
 
     def store(self, key: str, value: str) -> None:
         """
