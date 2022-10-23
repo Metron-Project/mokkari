@@ -15,7 +15,7 @@ from mokkari.session import Session
 
 def test_known_team(talker: Session) -> None:
     """Test for a known team."""
-    inhumans = talker.team(1)
+    inhumans: team.TeamSchema = talker.team(1)
     assert inhumans.name == "Inhumans"
     assert inhumans.image == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
     assert len(inhumans.creators) == 2
@@ -29,6 +29,7 @@ def test_known_team(talker: Session) -> None:
         975156,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert inhumans.resource_url == "https://metron.cloud/team/inhumans/"
 
 
 def test_teamlist(talker: Session) -> None:
@@ -38,14 +39,14 @@ def test_teamlist(talker: Session) -> None:
     assert next(team_iter).name == "A-Force"
     assert next(team_iter).name == "A-Next"
     assert next(team_iter).name == "A.I.M."
-    assert len(teams) == 543
+    assert len(teams) == 591
     assert teams[2].name == "A.I.M."
 
 
 def test_team_issue_list(talker: Session) -> None:
     """Test for getting an issue list for an arc."""
     issues = talker.team_issues_list(1)
-    assert len(issues) == 485
+    assert len(issues) == 515
     assert issues[0].id == 258
     assert issues[0].issue_name == "Fantastic Four (1961) #45"
     assert issues[0].cover_date == date(1965, 12, 1)
