@@ -15,7 +15,7 @@ from mokkari.session import Session
 
 def test_known_character(talker: Session) -> None:
     """Test for a known character."""
-    black_bolt = talker.character(1)
+    black_bolt: character.CharacterSchema = talker.character(1)
     assert black_bolt.name == "Black Bolt"
     assert (
         black_bolt.image
@@ -33,6 +33,7 @@ def test_known_character(talker: Session) -> None:
         90281,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert black_bolt.resource_url == "https://metron.cloud/character/black-bolt/"
 
 
 def test_characterlist(talker: Session) -> None:
@@ -42,14 +43,14 @@ def test_characterlist(talker: Session) -> None:
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "3-D Man (Chandler)"
     assert next(character_iter).name == "3-D Man (Garrett)"
-    assert len(character) == 537
+    assert len(character) == 576
     assert character[2].name == "3-D Man (Garrett)"
 
 
 def test_character_issue_list(talker: Session) -> None:
     """Test for getting an issue list for an arc."""
     issues = talker.character_issues_list(1)
-    assert len(issues) == 336
+    assert len(issues) == 344
     assert issues[0].id == 258
     assert issues[0].issue_name == "Fantastic Four (1961) #45"
     assert issues[0].cover_date == date(1965, 12, 1)

@@ -15,7 +15,7 @@ from mokkari.session import Session
 
 def test_known_arc(talker: Session) -> None:
     """Test for known arcs."""
-    heroes = talker.arc(1)
+    heroes: arc.ArcSchema = talker.arc(1)
     assert heroes.name == "Heroes In Crisis"
     assert (
         heroes.image
@@ -31,6 +31,7 @@ def test_known_arc(talker: Session) -> None:
         456634,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert heroes.resource_url == "https://metron.cloud/arc/heroes-crisis/"
 
 
 def test_arcslist(talker: Session) -> None:
@@ -38,10 +39,10 @@ def test_arcslist(talker: Session) -> None:
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
     assert next(arc_iter).name == "'Til Death Do Us..."
+    assert next(arc_iter).name == "1+2 = Fantastic Three"
     assert next(arc_iter).name == "1883"
-    assert next(arc_iter).name == "2099"
-    assert len(arcs) == 810
-    assert arcs[2].name == "2099"
+    assert len(arcs) == 873
+    assert arcs[2].name == "1883"
 
 
 def test_arc_issue_list(talker: Session) -> None:

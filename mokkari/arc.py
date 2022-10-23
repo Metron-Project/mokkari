@@ -24,6 +24,7 @@ class Arc:
         name (str): The name of the story arc.
         desc (str): The description of the story arc.
         image (url): The url for an image associated with the story arc.
+        resource_url (url): The url for the resource.
         modified (datetime): The date/time the story arc was last changed.
     """
 
@@ -40,12 +41,17 @@ class ArcSchema(Schema):
     .. versionchanged:: 1.0.0
 
         - Added ``modified`` field
+
+    .. versionchanged:: 2.3.3
+
+        - Added ``resource_url`` field.
     """
 
     id = fields.Int()
     name = fields.Str()
     desc = fields.Str()
     image = fields.Url(allow_none=True)
+    resource_url = fields.URL()
     modified = fields.DateTime()
 
     class Meta:

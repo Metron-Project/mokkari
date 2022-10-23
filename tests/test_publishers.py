@@ -15,7 +15,7 @@ from mokkari.session import Session
 
 def test_known_publishers(talker: Session) -> None:
     """Test for a known publisher."""
-    marvel = talker.publisher(1)
+    marvel: publisher.PublisherSchema = talker.publisher(1)
     assert marvel.name == "Marvel"
     assert marvel.image == "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg"
     assert marvel.founded == 1939
@@ -29,6 +29,7 @@ def test_known_publishers(talker: Session) -> None:
         591390,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert marvel.resource_url == "https://metron.cloud/publisher/marvel/"
 
 
 def test_publisherlist(talker: Session) -> None:
@@ -37,9 +38,9 @@ def test_publisherlist(talker: Session) -> None:
     publisher_iter = iter(publishers)
     assert next(publisher_iter).name == "12-Gauge Comics"
     assert next(publisher_iter).name == "AWA Studios"
-    assert next(publisher_iter).name == "AfterShock Comics"
-    assert len(publishers) == 45
-    assert publishers[2].name == "AfterShock Comics"
+    assert next(publisher_iter).name == "Abrams Books"
+    assert len(publishers) == 48
+    assert publishers[2].name == "Abrams Books"
 
 
 def test_bad_publisher(talker: Session) -> None:

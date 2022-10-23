@@ -25,6 +25,7 @@ class Team:
         desc (str): The description of the team.
         image (url): The url for an image associated with the team.
         creators (list[:obj:`Creator`]): A list of creators for the team.
+        resource_url (url): The url for the resource.
         modified (datetime): The date/time the team was last changed.
     """
 
@@ -44,6 +45,10 @@ class TeamSchema(Schema):
 
     .. versionchanged:: 2.0.2
         - Removed ``wikipedia`` field
+
+    .. versionchanged:: 2.3.3
+
+        - Added ``resource_url`` field.
     """
 
     id = fields.Int()
@@ -51,6 +56,7 @@ class TeamSchema(Schema):
     desc = fields.Str()
     image = fields.Url(allow_none=True)
     creators = fields.Nested(creator.CreatorSchema, many=True)
+    resource_url = fields.URL()
     modified = fields.DateTime()
 
     class Meta:

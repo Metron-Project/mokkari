@@ -25,11 +25,12 @@ def test_issue_with_rating(talker: Session) -> None:
     assert ff.store_date == date(2022, 9, 21)
     assert ff.series.genres[0].id == 10
     assert ff.series.genres[0].name == "Super-Hero"
+    assert ff.resource_url == "https://metron.cloud/issue/fantastic-four-2018-47/"
 
 
 def test_known_issue(talker: Session) -> None:
     """Test for a known issue."""
-    death = talker.issue(1)
+    death: issue.IssueSchema = talker.issue(1)
     assert death.publisher.name == "Marvel"
     assert death.series.name == "Death of the Inhumans"
     assert death.series.volume == 1
@@ -44,12 +45,12 @@ def test_known_issue(talker: Session) -> None:
     assert len(death.credits) > 0
     assert death.modified == datetime(
         2022,
-        5,
-        26,
-        16,
-        24,
-        3,
-        608369,
+        10,
+        21,
+        9,
+        12,
+        31,
+        376522,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
     assert death.teams[0].name == "Inhumans"
@@ -64,11 +65,12 @@ def test_known_issue(talker: Session) -> None:
         975156,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert death.resource_url == "https://metron.cloud/issue/death-of-the-inhumans-2018-1/"
 
 
 def test_issue_with_price_and_sku(talker: Session) -> None:
     """Test issue with price & sku values."""
-    die_16 = talker.issue(36860)
+    die_16: issue.IssueSchema = talker.issue(36860)
     assert die_16.price == Decimal("3.99")
     assert die_16.sku == "JUN210207"
     assert die_16.cover_date == date(2021, 8, 1)
@@ -77,7 +79,7 @@ def test_issue_with_price_and_sku(talker: Session) -> None:
 
 def test_issue_without_store_date(talker: Session) -> None:
     """Test issue that does not have a store date."""
-    spidey = talker.issue(31047)
+    spidey: issue.IssueSchema = talker.issue(31047)
     assert spidey.publisher.name == "Marvel"
     assert spidey.series.name == "The Spectacular Spider-Man"
     assert spidey.series.volume == 1
@@ -118,9 +120,9 @@ def test_issueslist_with_params(talker: Session) -> None:
         "series_name": "Kang",
     }
     issues = talker.issues_list(params=params)
-    assert len(issues) == 5
-    assert issues[0].issue_name == "Kang The Conqueror (2021) #1"
-    assert issues[0].cover_date == date(2021, 10, 1)
+    assert len(issues) == 6
+    assert issues[1].issue_name == "Kang The Conqueror (2021) #1"
+    assert issues[1].cover_date == date(2021, 10, 1)
 
 
 def test_issue_with_upc_sku_price(talker: Session) -> None:
@@ -166,7 +168,7 @@ def test_issue_with_variants(talker: Session) -> None:
     assert paprika.series.volume == 1
     assert paprika.series.series_type.name == "Maxi-Series"
     assert paprika.series.series_type.id == 4
-    assert len(paprika.series.genres) == 0
+    assert len(paprika.series.genres) == 1
     assert paprika.number == "2"
     assert paprika.cover_date == date(2021, 9, 1)
     assert paprika.store_date == date(2021, 9, 1)
