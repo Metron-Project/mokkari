@@ -173,6 +173,7 @@ class Issue:
         reprints (list[:obj:`Reprint`]): A list of reprinted issue contained in the issue.
         issue_name (str): The name used to identified the issue.
         variants (list[:obj:`Variant`]): A list of variant covers for the issue.
+        resource_url (url): The url for the resource.
         modified (datetime): The date/time the issue was last changed.
     """
 
@@ -222,6 +223,10 @@ class IssueSchema(Schema):
     .. versionchanged:: 2.3.2
 
         - Added ``rating`` field.
+
+    .. versionchanged:: 2.3.3
+
+        - Added ``resource_url`` field.
     """
 
     id = fields.Int()
@@ -246,6 +251,7 @@ class IssueSchema(Schema):
     reprints = fields.Nested(ReprintSchema, many=True)
     issue_name = fields.Str(data_key="issue")
     variants = fields.Nested(VariantSchema, many=True)
+    resource_url = fields.URL()
     modified = fields.DateTime()
 
     class Meta:
