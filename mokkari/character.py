@@ -53,9 +53,9 @@ class CharacterSchema(Schema):
 
         - Added ``resource_url`` field.
 
-    .. versionchanged:: 2.4.0
+    .. versionadded:: 2.4.0
 
-        - Add ``cv_id`` field.
+        - Added ``cv_id`` field.
     """
 
     id = fields.Int()
