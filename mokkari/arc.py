@@ -24,6 +24,7 @@ class Arc:
         name (str): The name of the story arc.
         desc (str): The description of the story arc.
         image (url): The url for an image associated with the story arc.
+        cv_id (int): Comic Vine ID for the story arc.
         resource_url (url): The url for the resource.
         modified (datetime): The date/time the story arc was last changed.
     """
@@ -45,12 +46,17 @@ class ArcSchema(Schema):
     .. versionchanged:: 2.3.3
 
         - Added ``resource_url`` field.
+
+    .. versionchanged:: 2.4.0
+
+        - Add ``cv_id`` field.
     """
 
     id = fields.Int()
     name = fields.Str()
     desc = fields.Str()
     image = fields.Url(allow_none=True)
+    cv_id = fields.Int(allow_none=True)
     resource_url = fields.URL()
     modified = fields.DateTime()
 

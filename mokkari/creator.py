@@ -26,6 +26,7 @@ class Creator:
         death (date): The date of death for the creator.
         desc (str): The description of the creator.
         image (url): The url for an image associated with the creator.
+        cv_id (int): Comic Vine ID for the Creator.
         resource_url (url): The url for the resource.
         modified (datetime): The date/time the creator was last changed.
     """
@@ -51,6 +52,10 @@ class CreatorSchema(Schema):
     .. versionchanged:: 2.3.3
 
         - Added ``resource_url`` field.
+
+    .. versionchanged:: 2.4.0
+
+        - Add ``cv_id`` field.
     """
 
     id = fields.Int()
@@ -59,6 +64,7 @@ class CreatorSchema(Schema):
     death = fields.Date(allow_none=True)
     desc = fields.Str()
     image = fields.Url(allow_none=True)
+    cv_id = fields.Int(allow_none=True)
     resource_url = fields.URL()
     modified = fields.DateTime()
 

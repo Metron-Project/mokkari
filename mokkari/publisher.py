@@ -25,6 +25,7 @@ class Publisher:
         founded (int): The year the publisher was founded.
         desc (str): A summary description about the publisher.
         image (url): The url for an image associated with the publisher.
+        cv_id (int): Comic Vine ID for the publisher.
         resource_url (url): The url for the resource.
         modified (datetime): The date/time the publisher was last changed.
     """
@@ -50,6 +51,10 @@ class PublisherSchema(Schema):
     .. versionchanged:: 2.3.3
 
         - Added ``resource_url`` field.
+
+    .. versionchanged:: 2.4.0
+
+        - Add ``cv_id`` field.
     """
 
     id = fields.Int()
@@ -57,6 +62,7 @@ class PublisherSchema(Schema):
     founded = fields.Int()
     desc = fields.Str()
     image = fields.Url(allow_none=True)
+    cv_id = fields.Int(allow_none=True)
     resource_url = fields.URL()
     modified = fields.DateTime()
 

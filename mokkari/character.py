@@ -27,6 +27,7 @@ class Character:
         image (url): The url for an image associated with the character.
         creators (list[Creator]): A list of creators for the character.
         teams (list[Team]): A list of teams the character is a member of.
+        cv_id (int): Comic Vine ID for the Character.
         resource_url (url): The url for the resource.
         modified (datetime): The date/time the character was last changed.
     """
@@ -51,6 +52,10 @@ class CharacterSchema(Schema):
     .. versionchanged:: 2.3.3
 
         - Added ``resource_url`` field.
+
+    .. versionchanged:: 2.4.0
+
+        - Add ``cv_id`` field.
     """
 
     id = fields.Int()
@@ -60,6 +65,7 @@ class CharacterSchema(Schema):
     image = fields.Url(allow_none=True)
     creators = fields.Nested(creator.CreatorSchema, many=True)
     teams = fields.Nested(team.TeamSchema, many=True)
+    cv_id = fields.Int(allow_none=True)
     resource_url = fields.URL()
     modified = fields.DateTime()
 
