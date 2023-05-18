@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mokkari"
-version = "2.3.3"
+version = "2.4.0"
 description = "Python wrapper for Metron API"
 authors = ["Brian Pepple <bdpepple@gmail.com>"]
 license = "GPL-3.0-or-later"

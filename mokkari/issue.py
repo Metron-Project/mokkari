@@ -173,6 +173,7 @@ class Issue:
         reprints (list[:obj:`Reprint`]): A list of reprinted issue contained in the issue.
         issue_name (str): The name used to identified the issue.
         variants (list[:obj:`Variant`]): A list of variant covers for the issue.
+        cv_id (int): Comic Vine ID for the issue.
         resource_url (url): The url for the resource.
         modified (datetime): The date/time the issue was last changed.
     """
@@ -227,6 +228,10 @@ class IssueSchema(Schema):
     .. versionchanged:: 2.3.3
 
         - Added ``resource_url`` field.
+
+    .. versionadded:: 2.4.0
+
+        - Added ``cv_id`` field.
     """
 
     id = fields.Int()
@@ -251,6 +256,7 @@ class IssueSchema(Schema):
     reprints = fields.Nested(ReprintSchema, many=True)
     issue_name = fields.Str(data_key="issue")
     variants = fields.Nested(VariantSchema, many=True)
+    cv_id = fields.Int(allow_none=True)
     resource_url = fields.URL()
     modified = fields.DateTime()
 
