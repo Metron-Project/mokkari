@@ -45,13 +45,15 @@ class Session:
         self,
         username: str,
         passwd: str,
+        user_agent: Optional[str] = None,
         cache: Optional[sqlite_cache.SqliteCache] = None,
     ) -> None:
         """Initialize a new Session."""
         self.username = username
         self.passwd = passwd
         self.header = {
-            "User-Agent": f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
+            "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
+            + f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
         }
         self.api_url = "https://metron.cloud/api/{}/"
         self.cache = cache
