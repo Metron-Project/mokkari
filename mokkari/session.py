@@ -45,8 +45,8 @@ class Session:
         self,
         username: str,
         passwd: str,
-        user_agent: Optional[str] = None,
         cache: Optional[sqlite_cache.SqliteCache] = None,
+        user_agent: Optional[str] = None,
     ) -> None:
         """Initialize a new Session."""
         self.username = username
