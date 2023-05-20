@@ -12,12 +12,15 @@ def api(
     username: Optional[str] = None,
     passwd: Optional[str] = None,
     cache: sqlite_cache.SqliteCache = None,
+    user_agent: Optional[str] = None,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
     Args:
         username (str): The username used for metron.cloud.
         passwd (str): The password used for metron.cloud.
+        user_agent optional(str): The user agent string for the application using Mokkari.
+        For example 'Foo Bar/1.0'.
         SqliteCache optional: SqliteCache to use
 
     Returns:
@@ -32,4 +35,4 @@ def api(
     if passwd is None:
         raise exceptions.AuthenticationError("Missing passwd.")
 
-    return session.Session(username, passwd, cache=cache)
+    return session.Session(username, passwd, cache=cache, user_agent=user_agent)
