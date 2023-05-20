@@ -39,6 +39,7 @@ class Session:
         username (str): The username for authentication with metron.cloud
         passwd (str): The password used for authentication with metron.cloud
         cache (SqliteCache, optional): SqliteCache to use
+        user_agent optional(str): The user agent string for the application using Mokkari.
     """
 
     def __init__(

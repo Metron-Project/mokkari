@@ -19,15 +19,19 @@ def api(
     Args:
         username (str): The username used for metron.cloud.
         passwd (str): The password used for metron.cloud.
+        SqliteCache optional: SqliteCache to use
         user_agent optional(str): The user agent string for the application using Mokkari.
         For example 'Foo Bar/1.0'.
-        SqliteCache optional: SqliteCache to use
 
     Returns:
         A :obj:`Session` object
 
     Raises:
         AuthenticationError: If Metron returns with an invalid API credentials response.
+
+    .. versionadded:: 2.5.0
+
+        - Added ``user_agent`` argument.
     """
     if username is None:
         raise exceptions.AuthenticationError("Missing username.")
