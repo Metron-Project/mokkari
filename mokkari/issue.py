@@ -166,6 +166,7 @@ class Issue:
         page_count (int): Number of pages for the issue.
         desc (str): Summary description for the issue.
         image (url): The url for a cover image associated with the issue.
+        cover_hash (str): A Perceptual hash string for the cover image.
         arcs (list[:obj:`Arc`]): A list of story arcs.
         credits (list[:obj:`Credit`]): A list of creator credits for the issue.
         characters (list[:obj:`Character`]): A list of characters who appear in the issue.
@@ -232,6 +233,10 @@ class IssueSchema(Schema):
     .. versionadded:: 2.4.0
 
         - Added ``cv_id`` field.
+
+    .. versionadded:: 2.6.0
+
+        - Add ``cover_hash`` field.
     """
 
     id = fields.Int()
@@ -249,6 +254,7 @@ class IssueSchema(Schema):
     page_count = fields.Int(allow_none=True, data_key="page")
     desc = fields.Str(allow_none=True)
     image = fields.URL(allow_none=True)
+    cover_hash = fields.Str()
     arcs = fields.Nested(ArcSchema, many=True)
     credits = fields.Nested(CreditsSchema, many=True)
     characters = fields.Nested(CharacterSchema, many=True)
