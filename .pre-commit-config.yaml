@@ -8,18 +8,18 @@ repos:
     hooks:
       - id: isort
   - repo: https://github.com/ambv/black
-    rev: 23.3.0
+    rev: 23.9.1
     hooks:
       - id: black
         language_version: python3.11
   - repo: https://github.com/PyCQA/flake8
-    rev: 6.0.0
+    rev: 6.1.0
     hooks:
       - id: flake8
         additional_dependencies:
           [flake8-docstrings, flake8-builtins, flake8-rst-docstrings]
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.4.0
+    rev: v3.15.0
     hooks:
       - id: pyupgrade
         args: ["--py36-plus", "--py37-plus", "--py38-plus"]
