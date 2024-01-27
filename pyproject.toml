@@ -74,7 +74,7 @@ multi_line_output = 3
 line_length = 95
 default_section = "THIRDPARTY"
 known_first_party = []
-known_third_party = ["marshmallow", "pytest", "ratelimit", "requests", "requests_mock", "urllib3"]
+known_third_party = ["marshmallow", "pydantic", "pytest", "ratelimit", "requests", "requests_mock", "urllib3"]
 
 [tool.poetry.urls]
 "Homepage" = "https://github.com/Metron-Project/mokkari"
