@@ -38,9 +38,6 @@ class CommonSeries(BaseModel):
         year_began (int): The year the series began.
         issue_count (int): The number of issues.
         modified (datetime): The date/time the series was last changed.
-
-    Returns:
-        A list of teams.
     """
 
     id: int
