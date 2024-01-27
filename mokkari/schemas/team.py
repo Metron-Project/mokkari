@@ -37,14 +37,11 @@ class Team(BaseTeam):
     The Team object extends the :obj:`BaseTeam` by containing all information for a team.
 
     Attributes:
-        id (int): The Metron identification number for the team.
-        name (str): The name of the team.
         desc (str): The description of the team.
         image (url): The url for an image associated with the team.
         creators (list[:obj:`Generic`]): A list of creators for the team.
         cv_id (int): Comic Vine ID for the team.
         resource_url (url): The url for the resource.
-        modified (datetime): The date/time the team was last changed.
     """
 
     desc: str | None = None
