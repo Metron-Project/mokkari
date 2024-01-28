@@ -23,9 +23,6 @@ class BaseCharacter(BaseModel):
         id (int): The Metron identification number for the character.
         name (str): The name of the character.
         modified (datetime): The date/time the team was last changed.
-
-    Returns:
-        A list of characters.
     """
 
     id: int

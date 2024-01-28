@@ -1,5 +1,5 @@
 """
-This module provides the following classes:
+This module provides the following classes.
 
 - BaseModel
 """
@@ -17,4 +17,3 @@ class BaseModel(
     extra="ignore",
 ):
     """Base model for mokkari resources."""
-
