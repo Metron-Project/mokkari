@@ -10,9 +10,6 @@ Mokkari
 .. image:: https://img.shields.io/github/license/bpepple/mokkari
     :target: https://opensource.org/licenses/GPL-3.0
 
-.. image:: https://codecov.io/gh/Metron-Project/mokkari/branch/main/graph/badge.svg?token=QU1ROMMOS4 
-    :target: https://codecov.io/gh/Metron-Project/mokkari
-
 .. image:: https://img.shields.io/badge/Code%20Style-Black-000000.svg?style=flat-square
     :target: https://github.com/psf/black
 
