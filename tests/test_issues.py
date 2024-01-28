@@ -3,6 +3,7 @@ Test Issues module.
 
 This module contains tests for Issue objects.
 """
+
 import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -10,27 +11,27 @@ from decimal import Decimal
 import pytest
 import requests_mock
 
-from mokkari import exceptions, issue
+from mokkari import exceptions
 from mokkari.session import Session
 
 
 def test_issue_with_rating(talker: Session) -> None:
     """Test issue with a rating."""
-    ff: issue.IssueSchema = talker.issue(51658)
+    ff = talker.issue(51658)
     assert ff.series.name == "Fantastic Four"
     assert ff.series.volume == 7
-    assert ff.rating.id == 4
-    assert ff.rating.name == "Teen Plus"
+    assert ff.rating.id == 3
+    assert ff.rating.name == "Teen"
     assert ff.cover_date == date(2022, 11, 1)
     assert ff.store_date == date(2022, 9, 21)
     assert ff.series.genres[0].id == 10
     assert ff.series.genres[0].name == "Super-Hero"
-    assert ff.resource_url == "https://metron.cloud/issue/fantastic-four-2018-47/"
+    assert ff.resource_url.__str__() == "https://metron.cloud/issue/fantastic-four-2018-47/"
 
 
 def test_known_issue(talker: Session) -> None:
     """Test for a known issue."""
-    death: issue.IssueSchema = talker.issue(1)
+    death = talker.issue(1)
     assert death.publisher.name == "Marvel"
     assert death.series.name == "Death of the Inhumans"
     assert death.series.volume == 1
@@ -39,18 +40,20 @@ def test_known_issue(talker: Session) -> None:
     assert death.store_date == date(2018, 7, 4)
     assert death.price == Decimal("4.99")
     assert not death.sku
-    assert death.image == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
+    assert (
+        death.image.__str__() == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
+    )
     assert len(death.characters) > 0
     assert len(death.teams) > 0
     assert len(death.credits) > 0
     assert death.modified == datetime(
-        2022,
-        10,
-        21,
-        9,
-        12,
+        2023,
+        5,
         31,
-        376522,
+        9,
+        0,
+        46,
+        300882,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
     assert death.teams[0].name == "Inhumans"
@@ -65,12 +68,14 @@ def test_known_issue(talker: Session) -> None:
         975156,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
-    assert death.resource_url == "https://metron.cloud/issue/death-of-the-inhumans-2018-1/"
+    assert (
+        death.resource_url.__str__() == "https://metron.cloud/issue/death-of-the-inhumans-2018-1/"
+    )
 
 
 def test_issue_with_price_and_sku(talker: Session) -> None:
     """Test issue with price & sku values."""
-    die_16: issue.IssueSchema = talker.issue(36860)
+    die_16 = talker.issue(36860)
     assert die_16.price == Decimal("3.99")
     assert die_16.sku == "JUN210207"
     assert die_16.cover_date == date(2021, 8, 1)
@@ -79,7 +84,7 @@ def test_issue_with_price_and_sku(talker: Session) -> None:
 
 def test_issue_without_store_date(talker: Session) -> None:
     """Test issue that does not have a store date."""
-    spidey: issue.IssueSchema = talker.issue(31047)
+    spidey = talker.issue(31047)
     assert spidey.publisher.name == "Marvel"
     assert spidey.series.name == "The Spectacular Spider-Man"
     assert spidey.series.volume == 1
@@ -137,7 +142,7 @@ def test_issue_with_upc_sku_price(talker: Session) -> None:
 
 def test_issue_without_upc_sku_price(talker: Session) -> None:
     """Test issue without upc, sku, and price values."""
-    bullets = talker.issue(3980)
+    bullets = talker.issue(89134)
     assert bullets.price is None
     assert bullets.sku == ""
     assert bullets.upc == ""
@@ -150,7 +155,7 @@ def test_issue_with_reprints(talker: Session) -> None:
     assert wf.number == "228"
     assert wf.cover_date == date(1975, 3, 1)
     assert wf.price == Decimal(".6")
-    assert len(wf.reprints) == 3
+    assert len(wf.reprints) == 4
     assert wf.reprints[0].id == 35086
     assert wf.reprints[0].issue == "Action Comics (1938) #193"
     assert wf.reprints[1].id == 3645
@@ -166,8 +171,8 @@ def test_issue_with_variants(talker: Session) -> None:
     assert paprika.series.name == "Mirka Andolfo's Sweet Paprika"
     assert paprika.series.sort_name == "Mirka Andolfo's Sweet Paprika"
     assert paprika.series.volume == 1
-    assert paprika.series.series_type.name == "Maxi-Series"
-    assert paprika.series.series_type.id == 4
+    assert paprika.series.series_type.name == "Limited Series"
+    assert paprika.series.series_type.id == 11
     assert len(paprika.series.genres) == 1
     assert paprika.number == "2"
     assert paprika.cover_date == date(2021, 9, 1)
@@ -180,13 +185,13 @@ def test_issue_with_variants(talker: Session) -> None:
     assert paprika.variants[0].name == "Cover B Sejic"
     assert paprika.variants[0].sku == "JUN210257"
     assert (
-        paprika.variants[0].image
+        paprika.variants[0].image.__str__()
         == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2b.jpg"
     )
     assert paprika.variants[1].name == "Cover C March"
     assert paprika.variants[1].sku == "JUN210258"
     assert (
-        paprika.variants[1].image
+        paprika.variants[1].image.__str__()
         == "https://static.metron.cloud/media/variants/2021/08/26/sweet-paprika-2c.jpg"
     )
 
@@ -234,12 +239,6 @@ def test_bad_issue(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.issue(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for bad issue response."""
-    with pytest.raises(exceptions.ApiError):
-        issue.IssuesList({"results": {"volume": "1"}})
 
 
 def test_multi_page_results(talker: Session) -> None:

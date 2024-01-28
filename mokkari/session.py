@@ -5,28 +5,28 @@ This module provides the following classes:
 
 - Session
 """
+
 import platform
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 from urllib.parse import urlencode
 
 import requests
-from marshmallow import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from ratelimit import limits, sleep_and_retry
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
 # Alias these modules to prevent namespace collision with methods.
-from mokkari import __version__
-from mokkari import arc as arcs
-from mokkari import character as characters
-from mokkari import creator as creators
-from mokkari import exceptions
-from mokkari import issue as issues
-from mokkari import publisher as publishers
-from mokkari import series as ser
-from mokkari import sqlite_cache
-from mokkari import team as teams
+from mokkari import __version__, exceptions, sqlite_cache
+from mokkari.schemas.arc import Arc, BaseArc
+from mokkari.schemas.character import BaseCharacter, Character
+from mokkari.schemas.creator import BaseCreator, Creator
+from mokkari.schemas.generic import GenericItem
+from mokkari.schemas.issue import BaseIssue, Issue
+from mokkari.schemas.publisher import BasePublisher, Publisher
+from mokkari.schemas.series import BaseSeries, Series
+from mokkari.schemas.team import BaseTeam, Team
 
 ONE_MINUTE = 60
 
@@ -61,9 +61,9 @@ class Session:
 
     def _call(
         self,
-        endpoint: List[Union[str, int]],
-        params: Optional[Dict[str, Union[str, int]]] = None,
-    ) -> Dict[str, Any]:
+        endpoint: list[Union[str, int]],
+        params: Optional[dict[str, Union[str, int]]] = None,
+    ) -> dict[str, Any]:
         """
         Make request for api endpoints.
 
@@ -95,7 +95,7 @@ class Session:
 
         return data
 
-    def creator(self, _id: int) -> creators.Creator:
+    def creator(self, _id: int) -> Creator:
         """
         Request data for a creator based on its ``_id``.
 
@@ -108,16 +108,17 @@ class Session:
         Raises:
             ApiError: If there is a problem with the API request.
         """
+        resp = self._call(["creator", _id])
+        adaptor = TypeAdapter(Creator)
         try:
-            result = creators.CreatorSchema().load(self._call(["creator", _id]))
+            result = adaptor.validate_python(resp)
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
-
         return result
 
     def creators_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> creators.CreatorsList:
+        self, params: Optional[dict[str, Union[str, int]]] = None
+    ) -> list[BaseCreator]:
         """
         Request a list of creators.
 
@@ -127,10 +128,15 @@ class Session:
         Returns:
             A :obj:`CreatorsList` object.
         """
-        res = self._get_results(["creator"], params)
-        return creators.CreatorsList(res)
+        resp = self._get_results(["creator"], params)
+        adaptor = TypeAdapter(list[BaseCreator])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
 
-    def character(self, _id: int) -> characters.Character:
+    def character(self, _id: int) -> Character:
         """
         Request data for a character based on its ``_id``.
 
@@ -143,16 +149,17 @@ class Session:
         Raises:
             ApiError: If there is a problem with the API request.
         """
+        resp = self._call(["character", _id])
+        adaptor = TypeAdapter(Character)
         try:
-            result = characters.CharacterSchema().load(self._call(["character", _id]))
+            result = adaptor.validate_python(resp)
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
-
         return result
 
     def characters_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> characters.CharactersList:
+        self, params: Optional[dict[str, Union[str, int]]] = None
+    ) -> list[BaseCharacter]:
         """
         Request a list of characters.
 
@@ -162,10 +169,15 @@ class Session:
         Returns:
             A :class:`CharactersList` object.
         """
-        res = self._get_results(["character"], params)
-        return characters.CharactersList(res)
+        resp = self._get_results(["character"], params)
+        adaptor = TypeAdapter(list[BaseCharacter])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
 
-    def character_issues_list(self, _id: int) -> List[issues.Issue]:
+    def character_issues_list(self, _id: int) -> list[BaseIssue]:
         """
         Request a list of issues that a character appears in.
 
@@ -177,10 +189,15 @@ class Session:
         Returns:
             A list of :class:`Issue` objects.
         """
-        result = self._get_results(["character", _id, "issue_list"])
-        return issues.IssuesList(result)
+        resp = self._get_results(["character", _id, "issue_list"])
+        adaptor = TypeAdapter(list[BaseIssue])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def publisher(self, _id: int) -> publishers.Publisher:
+    def publisher(self, _id: int) -> Publisher:
         """
         Request data for a publisher based on its ``_id``.
 
@@ -193,16 +210,17 @@ class Session:
         Raises:
             ApiError: If there is a problem with the API request.
         """
+        resp = self._call(["publisher", _id])
+        adaptor = TypeAdapter(Publisher)
         try:
-            result = publishers.PublisherSchema().load(self._call(["publisher", _id]))
-        except ValidationError as error:
-            raise exceptions.ApiError(error) from error
-
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
         return result
 
     def publishers_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> publishers.PublishersList:
+        self, params: Optional[dict[str, Union[str, int]]] = None
+    ) -> list[BasePublisher]:
         """
         Request a list of publishers.
 
@@ -212,10 +230,15 @@ class Session:
         Returns:
             A :class:`PublishersList` object.
         """
-        res = self._get_results(["publisher"], params)
-        return publishers.PublishersList(res)
+        resp = self._get_results(["publisher"], params)
+        adapter = TypeAdapter(list[BasePublisher])
+        try:
+            result = adapter.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def team(self, _id: int) -> teams.Team:
+    def team(self, _id: int) -> Team:
         """
         Request data for a team based on its ``_id``.
 
@@ -228,16 +251,15 @@ class Session:
         Raises:
             ApiError: If there is a problem with the API request.
         """
+        resp = self._call(["team", _id])
+        adaptor = TypeAdapter(Team)
         try:
-            result = teams.TeamSchema().load(self._call(["team", _id]))
+            result = adaptor.validate_python(resp)
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
-
         return result
 
-    def teams_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> teams.TeamsList:
+    def teams_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseTeam]:
         """
         Request a list of teams.
 
@@ -247,10 +269,15 @@ class Session:
         Returns:
             A :class:`TeamsList` object.
         """
-        res = self._get_results(["team"], params)
-        return teams.TeamsList(res)
+        resp = self._get_results(["team"], params)
+        adapter = TypeAdapter(list[BaseTeam])
+        try:
+            result = adapter.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def team_issues_list(self, _id: int) -> List[issues.Issue]:
+    def team_issues_list(self, _id: int) -> list[BaseIssue]:
         """
         Request a list of issues that a team appears in.
 
@@ -262,10 +289,15 @@ class Session:
         Returns:
             A list of :class:`Issue` objects.
         """
-        result = self._get_results(["team", _id, "issue_list"])
-        return issues.IssuesList(result)
+        resp = self._get_results(["team", _id, "issue_list"])
+        adapter = TypeAdapter(list[BaseIssue])
+        try:
+            result = adapter.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def arc(self, _id: int) -> arcs.Arc:
+    def arc(self, _id: int) -> Arc:
         """
         Request data for a story arc based on its ``_id``.
 
@@ -278,14 +310,15 @@ class Session:
         Raises:
             ApiError: If there is a problem with the API request.
         """
+        resp = self._call(["arc", _id])
+        adaptor = TypeAdapter(Arc)
         try:
-            result = arcs.ArcSchema().load(self._call(["arc", _id]))
-        except ValidationError as error:
-            raise exceptions.ApiError(error) from error
-
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
         return result
 
-    def arcs_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> arcs.ArcsList:
+    def arcs_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseArc]:
         """
         Request a list of story arcs.
 
@@ -295,10 +328,15 @@ class Session:
         Returns:
             A :class:`ArcsList` object.
         """
-        res = self._get_results(["arc"], params)
-        return arcs.ArcsList(res)
+        resp = self._get_results(["arc"], params)
+        adapter = TypeAdapter(list[BaseArc])
+        try:
+            result = adapter.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def arc_issues_list(self, _id: int) -> List[issues.Issue]:
+    def arc_issues_list(self, _id: int) -> list[BaseIssue]:
         """
         Request a list of issues for a story arc.
 
@@ -308,10 +346,15 @@ class Session:
         Returns:
             A list of :class:`Issue` objects.
         """
-        result = self._get_results(["arc", _id, "issue_list"])
-        return issues.IssuesList(result)
+        resp = self._get_results(["arc", _id, "issue_list"])
+        adaptor = TypeAdapter(list[BaseIssue])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def series(self, _id: int) -> ser.Series:
+    def series(self, _id: int) -> Series:
         """
         Request data for a series based on its ``_id``.
 
@@ -324,16 +367,15 @@ class Session:
         Raises:
             ApiError: If there is a problem with the API request.
         """
+        resp = self._call(["series", _id])
+        adaptor = TypeAdapter(Series)
         try:
-            result = ser.SeriesSchema().load(self._call(["series", _id]))
-        except ValidationError as error:
-            raise exceptions.ApiError(error) from error
-
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
         return result
 
-    def series_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> ser.SeriesList:
+    def series_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseSeries]:
         """
         Request a list of series.
 
@@ -343,12 +385,17 @@ class Session:
         Returns:
             A :class:`SeriesList` object.
         """
-        res = self._get_results(["series"], params)
-        return ser.SeriesList(res)
+        resp = self._get_results(["series"], params)
+        adaptor = TypeAdapter(list[BaseSeries])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
     def series_type_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> ser.SeriesTypeList:
+        self, params: Optional[dict[str, Union[str, int]]] = None
+    ) -> list[GenericItem]:
         """
         Request a list of series types.
 
@@ -362,10 +409,15 @@ class Session:
         Returns:
             A :class:`SeriesTypeList` object.
         """
-        res = self._get_results(["series_type"], params)
-        return ser.SeriesTypeList(res)
+        resp = self._get_results(["series_type"], params)
+        adaptor = TypeAdapter(list[GenericItem])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def issue(self, _id: int) -> issues.Issue:
+    def issue(self, _id: int) -> Issue:
         """
         Request data for an issue based on it's ``_id``.
 
@@ -378,16 +430,15 @@ class Session:
         Raises:
             ApiError: If there is a problem with the API request.
         """
+        resp = self._call(["issue", _id])
+        adaptor = TypeAdapter(Issue)
         try:
-            result = issues.IssueSchema().load(self._call(["issue", _id]))
+            result = adaptor.validate_python(resp)
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
-
         return result
 
-    def issues_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> issues.IssuesList:
+    def issues_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseIssue]:
         """
         Request a list of issues.
 
@@ -397,12 +448,15 @@ class Session:
         Returns:
             A :class:`IssuesList` object.
         """
-        res = self._get_results(["issue"], params)
-        return issues.IssuesList(res)
+        resp = self._get_results(["issue"], params)
+        adaptor = TypeAdapter(list[BaseIssue])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
-    def role_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> issues.RoleList:
+    def role_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[GenericItem]:
         """
         Request a list of creator roles.
 
@@ -413,14 +467,19 @@ class Session:
             A :class:`RoleList` object.
 
         """
-        res = self._get_results(["role"], params)
-        return issues.RoleList(res)
+        resp = self._get_results(["role"], params)
+        adaptor = TypeAdapter(list[GenericItem])
+        try:
+            result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
 
     def _get_results(
         self,
-        endpoint: List[Union[str, int]],
-        params: Optional[Dict[str, Union[str, int]]] = None,
-    ) -> Dict[str, Any]:
+        endpoint: list[Union[str, int]],
+        params: Optional[dict[str, Union[str, int]]] = None,
+    ) -> dict[str, Any]:
         if params is None:
             params = {}
 
@@ -429,7 +488,7 @@ class Session:
             result = self._retrieve_all_results(result)
         return result
 
-    def _retrieve_all_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _retrieve_all_results(self, data: dict[str, Any]) -> dict[str, Any]:
         has_next_page = True
         next_page = data["next"]
 
@@ -456,9 +515,7 @@ class Session:
 
     @sleep_and_retry
     @limits(calls=25, period=ONE_MINUTE)
-    def _request_data(
-        self, url: str, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> Any:
+    def _request_data(self, url: str, params: Optional[dict[str, Union[str, int]]] = None) -> Any:
         if params is None:
             params = {}
 

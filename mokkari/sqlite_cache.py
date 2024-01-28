@@ -5,6 +5,7 @@ This module provides the following classes:
 
 - SqliteCache
 """
+
 import json
 import sqlite3
 from datetime import datetime, timedelta
@@ -21,9 +22,7 @@ class SqliteCache:
         before they expire.
     """
 
-    def __init__(
-        self, db_name: str = "mokkari_cache.db", expire: Optional[int] = None
-    ) -> None:
+    def __init__(self, db_name: str = "mokkari_cache.db", expire: Optional[int] = None) -> None:
         """Initialize a new SqliteCache."""
         self.expire = expire
         self.con = sqlite3.connect(db_name)

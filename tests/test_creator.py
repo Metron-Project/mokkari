@@ -3,24 +3,25 @@ Test Creator module.
 
 This module contains tests for Creator objects.
 """
+
 import json
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import requests_mock
 
-from mokkari import creator, exceptions
+from mokkari import exceptions
 from mokkari.session import Session
 
 
 def test_known_creator(talker: Session) -> None:
     """Test for a known creator."""
-    jack: creator.CreatorSchema = talker.creator(3)
+    jack = talker.creator(3)
     assert jack.name == "Jack Kirby"
     assert jack.birth == date(1917, 8, 28)
     assert jack.death == date(1994, 2, 6)
     assert (
-        jack.image
+        jack.image.__str__()
         == "https://static.metron.cloud/media/creator/2018/11/11/432124-Jack_Kirby01.jpg"
     )
     assert jack.modified == datetime(
@@ -33,23 +34,23 @@ def test_known_creator(talker: Session) -> None:
         311024,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
-    assert jack.resource_url == "https://metron.cloud/creator/jack-kirby/"
+    assert jack.resource_url.__str__() == "https://metron.cloud/creator/jack-kirby/"
 
 
-def test_comiclist(talker: Session) -> None:
+def test_comic_list(talker: Session) -> None:
     """Test the CreatorsList."""
     creators = talker.creators_list({"name": "man"})
     creator_iter = iter(creators)
     assert next(creator_iter).name == "A. J. Lieberman"
+    assert next(creator_iter).name == "Abel Laxamana"
     assert next(creator_iter).name == "Adam Freeman"
     assert next(creator_iter).name == "Adam Schlagman"
-    assert next(creator_iter).name == "Al Sulman"
-    assert len(creators) == 213
-    assert creators[3].name == "Al Sulman"
+    assert len(creators) == 338
+    assert creators[3].name == "Adam Schlagman"
 
 
 def test_bad_creator(talker: Session) -> None:
-    """Test for a non-existant creator."""
+    """Test for a non-existent creator."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/creator/-1/",
@@ -57,12 +58,6 @@ def test_bad_creator(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.creator(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for a bad creator response."""
-    with pytest.raises(exceptions.ApiError):
-        creator.CreatorsList({"results": {"name": 1}})
 
 
 def test_bad_creator_validate(talker: Session) -> None:

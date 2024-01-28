@@ -3,6 +3,7 @@ Test Init module.
 
 This module contains tests for project init.
 """
+
 import pytest
 
 from mokkari import api, exceptions, session
