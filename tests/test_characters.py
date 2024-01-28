@@ -10,7 +10,20 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions
+from mokkari.schemas.character import Character
 from mokkari.session import Session
+
+
+def test_no_alias(talker: Session) -> None:
+    """Test for no alias attribute."""
+    character = talker.character(23843)
+    assert isinstance(character, Character)
+    assert character.name == "4-D Man"
+    assert character.alias is None
+    assert character.desc == "An alien from the 4th Dimension."
+    assert character.creators == []
+    assert character.teams == []
+    assert character.cv_id == 137999
 
 
 def test_known_character(talker: Session) -> None:

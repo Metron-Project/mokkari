@@ -44,7 +44,7 @@ class Character(BaseCharacter):
         resource_url (url): The url for the resource.
     """
 
-    alias: list[str] = []
+    alias: list[str] | None = None
     desc: str | None = None
     image: HttpUrl | None = None
     creators: list[BaseCreator] = []
