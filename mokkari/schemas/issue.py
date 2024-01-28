@@ -18,7 +18,7 @@ from pydantic import Field, HttpUrl
 from mokkari.schemas import BaseModel
 from mokkari.schemas.arc import BaseArc
 from mokkari.schemas.character import BaseCharacter
-from mokkari.schemas.generic import Generic
+from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.reprint import Reprint
 from mokkari.schemas.team import BaseTeam
 from mokkari.schemas.variant import Variant
@@ -31,12 +31,12 @@ class Credit(BaseModel):
     Attributes:
         id (int): The Metron identification number for the issue credit.
         creator (str): The name of the creator for the issue credit.
-        role (list[Generic]): The role of the creator for the issue.
+        role (list[GenericItem]): The role of the creator for the issue.
     """
 
     id: int
     creator: str
-    role: list[Generic] = []
+    role: list[GenericItem] = []
 
 
 class BasicSeries(BaseModel):
@@ -63,7 +63,7 @@ class IssueSeries(BaseModel):
         name (str): The name of the series.
         sort_name (str): The sort name of the series.
         volume (int): The volume of the series.
-        series_type (Generic): The type of series.
+        series_type (GenericItem): The type of series.
         genres (list[Generic]): The genres of the series.
     """
 
@@ -71,8 +71,8 @@ class IssueSeries(BaseModel):
     name: str
     sort_name: str
     volume: int
-    series_type: Generic
-    genres: list[Generic] = []
+    series_type: GenericItem
+    genres: list[GenericItem] = []
 
 
 class CommonIssue(BaseModel):
@@ -121,7 +121,7 @@ class Issue(CommonIssue):
         cover_date (date): The cover date of the issue.
         store_date (date): The store date of the issue.
         price (Decimal): The price of the issue.
-        rating (Generic): The rating of the issue.
+        rating (GenericItem): The rating of the issue.
         sku (str): The sku of the issue.
         isbn (str): The isbn of the issue.
         upc (str): The upc of the issue.
@@ -137,14 +137,14 @@ class Issue(CommonIssue):
         resource_url (HttpUrl): The URL of the issue.
     """
 
-    publisher: Generic
+    publisher: GenericItem
     series: IssueSeries
     collection_title: str = Field(alias="title")
     story_titles: list[str] = Field(alias="name")
     cover_date: date
     store_date: date | None = None
     price: Decimal | None = None
-    rating: Generic
+    rating: GenericItem
     sku: str | None = None
     isbn: str | None = None
     upc: str | None = None

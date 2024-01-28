@@ -21,7 +21,7 @@ from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc, BaseArc
 from mokkari.schemas.character import BaseCharacter, Character
 from mokkari.schemas.creator import BaseCreator, Creator
-from mokkari.schemas.generic import Generic
+from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.issue import BaseIssue, Issue
 from mokkari.schemas.publisher import BasePublisher, Publisher
 from mokkari.schemas.series import BaseSeries, Series
@@ -394,7 +394,7 @@ class Session:
 
     def series_type_list(
         self, params: Optional[Dict[str, Union[str, int]]] = None
-    ) -> list[Generic]:
+    ) -> list[GenericItem]:
         """
         Request a list of series types.
 
@@ -409,7 +409,7 @@ class Session:
             A :class:`SeriesTypeList` object.
         """
         resp = self._get_results(["series_type"], params)
-        adaptor = TypeAdapter(list[Generic])
+        adaptor = TypeAdapter(list[GenericItem])
         try:
             result = adaptor.validate_python(resp["results"])
         except ValidationError as err:
@@ -456,7 +456,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def role_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> list[Generic]:
+    def role_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> list[GenericItem]:
         """
         Request a list of creator roles.
 
@@ -468,7 +468,7 @@ class Session:
 
         """
         resp = self._get_results(["role"], params)
-        adaptor = TypeAdapter(list[Generic])
+        adaptor = TypeAdapter(list[GenericItem])
         try:
             result = adaptor.validate_python(resp["results"])
         except ValidationError as err:

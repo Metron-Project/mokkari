@@ -11,7 +11,7 @@ from datetime import datetime
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
-from mokkari.schemas.generic import Generic
+from mokkari.schemas.generic import GenericItem
 
 
 class BaseTeam(BaseModel):
@@ -46,6 +46,6 @@ class Team(BaseTeam):
 
     desc: str | None = None
     image: HttpUrl | None = None
-    creators: list[Generic] = []
+    creators: list[GenericItem] = []
     cv_id: int | None = None
     resource_url: HttpUrl

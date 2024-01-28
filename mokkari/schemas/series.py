@@ -13,7 +13,7 @@ from datetime import datetime
 from pydantic import Field, HttpUrl
 
 from mokkari.schemas import BaseModel
-from mokkari.schemas.generic import Generic
+from mokkari.schemas.generic import GenericItem
 
 
 class AssociatedSeries(BaseModel):
@@ -65,8 +65,8 @@ class Series(CommonSeries):
         name (str): The name of the series.
         sort_name (str): The name used to determine the sort order for a series.
         volume (int): The volume of the series.
-        series_type (Generic): The type of series.
-        publisher (Generic): The publisher of the series.
+        series_type (GenericItem): The type of series.
+        publisher (GenericItem): The publisher of the series.
         year_end (int): The year the series ended.
         desc (str): The description of the series.
         genres list(Generic): The genres of the series.
@@ -78,11 +78,11 @@ class Series(CommonSeries):
     name: str
     sort_name: str
     volume: int
-    series_type: Generic
-    publisher: Generic
+    series_type: GenericItem
+    publisher: GenericItem
     year_end: int | None = None
     desc: str | None = None
-    genres: list[Generic] = []
+    genres: list[GenericItem] = []
     associated: list[AssociatedSeries] = []
     cv_id: int | None = None
     resource_url: HttpUrl

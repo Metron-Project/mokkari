@@ -3,15 +3,15 @@ Generic module.
 
 This module provides the following classes:
 
-- Generic
+- GenericItem
 """
 
 from mokkari.schemas import BaseModel
 
 
-class Generic(BaseModel):
+class GenericItem(BaseModel):
     """
-    The :obj:`Generic` object contains basic information for various resources.
+    The :obj:`GenericItem` object contains basic information for various resources.
 
     Attributes:
         id (int): The id of the item.
