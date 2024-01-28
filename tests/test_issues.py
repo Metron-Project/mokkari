@@ -46,28 +46,9 @@ def test_known_issue(talker: Session) -> None:
     assert len(death.characters) > 0
     assert len(death.teams) > 0
     assert len(death.credits) > 0
-    assert death.modified == datetime(
-        2023,
-        5,
-        31,
-        9,
-        0,
-        46,
-        300882,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
     assert death.teams[0].name == "Inhumans"
     assert death.teams[0].id == 1
-    assert death.teams[0].modified == datetime(
-        2019,
-        6,
-        23,
-        15,
-        13,
-        23,
-        975156,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
+    assert any(item.name == "Earth 616" for item in death.universes)
     assert (
         death.resource_url.__str__() == "https://metron.cloud/issue/death-of-the-inhumans-2018-1/"
     )

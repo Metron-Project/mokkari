@@ -14,6 +14,7 @@ from pydantic import HttpUrl
 from mokkari.schemas import BaseModel
 from mokkari.schemas.creator import BaseCreator
 from mokkari.schemas.team import BaseTeam
+from mokkari.schemas.universe import BaseUniverse
 
 
 class BaseCharacter(BaseModel):
@@ -50,5 +51,6 @@ class Character(BaseCharacter):
     image: HttpUrl | None = None
     creators: list[BaseCreator] = []
     teams: list[BaseTeam] = []
+    universes: list[BaseUniverse] = []
     cv_id: int | None = None
     resource_url: HttpUrl

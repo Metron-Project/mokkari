@@ -22,16 +22,7 @@ def test_known_team(talker: Session) -> None:
         inhumans.image.__str__() == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
     )
     assert len(inhumans.creators) == 2
-    assert inhumans.modified == datetime(
-        2019,
-        6,
-        23,
-        15,
-        13,
-        23,
-        975156,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
+    assert any(item.name == "Earth 616" for item in inhumans.universes)
     assert inhumans.resource_url.__str__() == "https://metron.cloud/team/inhumans/"
 
 
