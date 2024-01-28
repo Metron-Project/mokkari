@@ -18,9 +18,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Natural Language :: English",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Internet",
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: POSIX",
@@ -31,7 +31,7 @@ classifiers = [
 keywords=["comics", "comic", "metadata"]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 requests = "^2.26.0"
 ratelimit = "^2.2.1"
 pydantic = "^2.5.3"
@@ -65,7 +65,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 100
-target-version = ['py39']
+target-version = ['py310']
 
 [tool.isort]
 profile = "black"
