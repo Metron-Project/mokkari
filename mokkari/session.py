@@ -27,6 +27,7 @@ from mokkari.schemas.issue import BaseIssue, Issue
 from mokkari.schemas.publisher import BasePublisher, Publisher
 from mokkari.schemas.series import BaseSeries, Series
 from mokkari.schemas.team import BaseTeam, Team
+from mokkari.schemas.universe import Universe, BaseUniverse
 
 ONE_MINUTE = 60
 
@@ -471,6 +472,45 @@ class Session:
         adaptor = TypeAdapter(list[GenericItem])
         try:
             result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def universe(self, _id: int) -> Universe:
+        """
+        Request data for a universe based on its ``_id``.
+
+        Args:
+            _id (int): The universe id.
+
+        Returns:
+            A :obj:`Universe` object.
+
+        Raises:
+            ApiError: If there is a problem with the API request.
+        """
+        resp = self._call(["universe", _id])
+        adaptor = TypeAdapter(Universe)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def universes_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseUniverse]:
+        """
+        Request a list of universes.
+
+        Args:
+            params (dict, optional): Parameters to add to the request.
+
+        Returns:
+            A list of :class:`BaseUniverse` objects.
+        """
+        resp = self._get_results(["universe"], params)
+        adapter = TypeAdapter(list[BaseUniverse])
+        try:
+            result = adapter.validate_python(resp["results"])
         except ValidationError as err:
             raise exceptions.ApiError(err) from err
         return result

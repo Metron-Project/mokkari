@@ -38,15 +38,16 @@ def test_known_character(talker: Session) -> None:
     assert len(black_bolt.creators) == 2
     assert len(black_bolt.teams) == 3
     assert black_bolt.modified == datetime(
-        2021,
-        9,
-        9,
-        15,
-        52,
-        49,
-        90281,
+        2024,
+        1,
+        28,
+        13,
+        25,
+        35,
+        568293,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
+    assert any(item.name == "Earth 616" for item in black_bolt.universes)
     assert black_bolt.resource_url.__str__() == "https://metron.cloud/character/black-bolt/"
 
 
