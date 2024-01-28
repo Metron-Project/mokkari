@@ -15,34 +15,35 @@ from mokkari.session import Session
 
 def test_known_arc(talker: Session) -> None:
     """Test for known arcs."""
-    heroes: arc.ArcSchema = talker.arc(1)
-    assert heroes.name == "Heroes In Crisis"
+    witching = talker.arc(2)
+    assert witching.name == "The Witching Hour"
     assert (
-        heroes.image
-        == "https://static.metron.cloud/media/arc/2018/11/12/heroes-in-crisis.jpeg"
+        witching.image.__str__()
+        == "https://static.metron.cloud/media/arc/2018/11/13/witching-hour.jpg"
     )
-    assert heroes.modified == datetime(
+    assert witching.modified == datetime(
         2019,
         6,
         23,
         15,
         13,
         19,
-        456634,
+        507207,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
-    assert heroes.resource_url == "https://metron.cloud/arc/heroes-crisis/"
+    assert witching.resource_url.__str__() == "https://metron.cloud/arc/witching-hour/"
 
 
-def test_arcslist(talker: Session) -> None:
+def test_arcs_list(talker: Session) -> None:
     """Test for ArcsList."""
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
     assert next(arc_iter).name == "'Til Death Do Us..."
+    assert next(arc_iter).name == "(She) Drunk History"
     assert next(arc_iter).name == "1+2 = Fantastic Three"
-    assert next(arc_iter).name == "1883"
-    assert len(arcs) == 873
-    assert arcs[2].name == "1883"
+    assert next(arc_iter).name == "1602"
+    assert len(arcs) == 1418
+    assert arcs[3].name == "1602"
 
 
 def test_arc_issue_list(talker: Session) -> None:

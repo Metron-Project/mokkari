@@ -15,9 +15,12 @@ from mokkari.session import Session
 
 def test_known_publishers(talker: Session) -> None:
     """Test for a known publisher."""
-    marvel: publisher.PublisherSchema = talker.publisher(1)
+    marvel = talker.publisher(1)
     assert marvel.name == "Marvel"
-    assert marvel.image == "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg"
+    assert (
+        marvel.image.__str__()
+        == "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg"
+    )
     assert marvel.founded == 1939
     assert marvel.modified == datetime(
         2019,
@@ -29,22 +32,22 @@ def test_known_publishers(talker: Session) -> None:
         591390,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
-    assert marvel.resource_url == "https://metron.cloud/publisher/marvel/"
+    assert marvel.resource_url.__str__() == "https://metron.cloud/publisher/marvel/"
 
 
-def test_publisherlist(talker: Session) -> None:
+def test_publisher_list(talker: Session) -> None:
     """Test the PublishersList."""
     publishers = talker.publishers_list()
     publisher_iter = iter(publishers)
     assert next(publisher_iter).name == "12-Gauge Comics"
+    assert next(publisher_iter).name == "AAA Pop Comics"
     assert next(publisher_iter).name == "AWA Studios"
-    assert next(publisher_iter).name == "Abrams Books"
-    assert len(publishers) == 48
-    assert publishers[2].name == "Abrams Books"
+    assert len(publishers) == 93
+    assert publishers[2].name == "AWA Studios"
 
 
 def test_bad_publisher(talker: Session) -> None:
-    """Test for a non-existant publisher."""
+    """Test for a non-existent publisher."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/publisher/-1/",

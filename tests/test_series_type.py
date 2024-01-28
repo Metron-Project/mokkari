@@ -18,7 +18,7 @@ def test_series_type_list(talker: Session) -> None:
     assert next(st_iter).name == "Annual Series"
     assert next(st_iter).name == "Cancelled Series"
     assert series_types[3].name == "Hard Cover"
-    assert len(series_types) == 9
+    assert len(series_types) == 8
 
 
 def test_bad_response_data() -> None:
