@@ -19,7 +19,8 @@ def test_known_universe(talker: Session) -> None:
     assert isinstance(DCeased, Universe)
     assert DCeased.name == "DCeased"
     assert DCeased.designation == "Earth 55"
-    assert DCeased.publisher == 2
+    assert DCeased.publisher.name == "DC Comics"
+    assert DCeased.publisher.id == 2
     assert DCeased.resource_url.__str__() == "https://metron.cloud/universe/dceased/"
 
 

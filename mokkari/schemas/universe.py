@@ -12,6 +12,7 @@ from datetime import datetime
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.generic import GenericItem
 
 
 class BaseUniverse(BaseModel):
@@ -43,7 +44,7 @@ class Universe(BaseUniverse):
         image (url): The url for an image associated with the universe.
         resource_url (url): The url for the resource.
     """
-    publisher: int
+    publisher: GenericItem
     designation: str | None = None
     desc: str | None = None
     image: HttpUrl | None = None
