@@ -430,7 +430,6 @@ class Session:
             ApiError: If there is a problem with the API request.
         """
         resp = self._call(["issue", _id])
-        print(resp)
         adaptor = TypeAdapter(Issue)
         try:
             result = adaptor.validate_python(resp)
