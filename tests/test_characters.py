@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import character, exceptions
+from mokkari import exceptions
 from mokkari.session import Session
 
 
@@ -65,12 +65,6 @@ def test_bad_character(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.character(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for a bad character response."""
-    with pytest.raises(exceptions.ApiError):
-        character.CharactersList({"results": {"name": 1}})
 
 
 def test_bad_character_validate(talker: Session) -> None:

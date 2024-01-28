@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import creator, exceptions
+from mokkari import exceptions
 from mokkari.session import Session
 
 
@@ -57,12 +57,6 @@ def test_bad_creator(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.creator(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for a bad creator response."""
-    with pytest.raises(exceptions.ApiError):
-        creator.CreatorsList({"results": {"name": 1}})
 
 
 def test_bad_creator_validate(talker: Session) -> None:

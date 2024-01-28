@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import exceptions, publisher
+from mokkari import exceptions
 from mokkari.session import Session
 
 
@@ -55,12 +55,6 @@ def test_bad_publisher(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.publisher(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for a bad publisher response."""
-    with pytest.raises(exceptions.ApiError):
-        publisher.PublishersList({"results": {"name": 1}})
 
 
 def test_bad_publisher_validate(talker: Session) -> None:

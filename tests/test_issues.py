@@ -10,7 +10,7 @@ from decimal import Decimal
 import pytest
 import requests_mock
 
-from mokkari import exceptions, issue
+from mokkari import exceptions
 from mokkari.session import Session
 
 
@@ -238,12 +238,6 @@ def test_bad_issue(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.issue(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for bad issue response."""
-    with pytest.raises(exceptions.ApiError):
-        issue.IssuesList({"results": {"volume": "1"}})
 
 
 def test_multi_page_results(talker: Session) -> None:

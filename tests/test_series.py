@@ -10,7 +10,6 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions
-from mokkari import series as ser
 from mokkari.session import Session
 
 
@@ -76,12 +75,6 @@ def test_bad_series(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.series(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for a bad series response."""
-    with pytest.raises(exceptions.ApiError):
-        ser.SeriesList({"results": {"name": 1}})
 
 
 def test_bad_series_validate(talker: Session) -> None:

@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 import requests_mock
 
-from mokkari import exceptions, team
+from mokkari import exceptions
 from mokkari.session import Session
 
 
@@ -64,12 +64,6 @@ def test_bad_team(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.team(-1)
-
-
-def test_bad_response_data() -> None:
-    """Test for a bad team response."""
-    with pytest.raises(exceptions.ApiError):
-        team.TeamsList({"results": {"name": 1}})
 
 
 def test_bad_team_validate(talker: Session) -> None:

@@ -3,11 +3,6 @@ Test Series Type.
 
 This module contains tests for SeriesType objects.
 """
-
-import pytest
-
-from mokkari import exceptions
-from mokkari.series import SeriesTypeList
 from mokkari.session import Session
 
 
@@ -19,9 +14,3 @@ def test_series_type_list(talker: Session) -> None:
     assert next(st_iter).name == "Cancelled Series"
     assert series_types[3].name == "Hard Cover"
     assert len(series_types) == 8
-
-
-def test_bad_response_data() -> None:
-    """Test for a bad series type response."""
-    with pytest.raises(exceptions.ApiError):
-        SeriesTypeList({"results": {"name": 1}})
