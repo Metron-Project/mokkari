@@ -5,6 +5,7 @@ This module provides the following classes:
 
 - Variant
 """
+
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel

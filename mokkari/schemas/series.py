@@ -8,6 +8,7 @@ This module provides the following classes:
 - BaseSeries
 - Series
 """
+
 from datetime import datetime
 
 from pydantic import Field, HttpUrl

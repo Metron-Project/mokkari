@@ -3,6 +3,7 @@ Test Characters module.
 
 This module contains tests for Character objects.
 """
+
 import json
 from datetime import date, datetime, timedelta, timezone
 

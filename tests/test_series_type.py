@@ -3,6 +3,7 @@ Test Series Type.
 
 This module contains tests for SeriesType objects.
 """
+
 from mokkari.session import Session
 
 

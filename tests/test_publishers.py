@@ -3,6 +3,7 @@ Test Publishers module.
 
 This module contains tests for Publisher objects.
 """
+
 import json
 from datetime import datetime, timedelta, timezone
 

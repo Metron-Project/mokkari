@@ -5,9 +5,10 @@ This module provides the following classes:
 
 - Session
 """
+
 import platform
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 from urllib.parse import urlencode
 
 import requests
@@ -60,9 +61,9 @@ class Session:
 
     def _call(
         self,
-        endpoint: List[Union[str, int]],
-        params: Optional[Dict[str, Union[str, int]]] = None,
-    ) -> Dict[str, Any]:
+        endpoint: list[Union[str, int]],
+        params: Optional[dict[str, Union[str, int]]] = None,
+    ) -> dict[str, Any]:
         """
         Make request for api endpoints.
 
@@ -116,7 +117,7 @@ class Session:
         return result
 
     def creators_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
+        self, params: Optional[dict[str, Union[str, int]]] = None
     ) -> list[BaseCreator]:
         """
         Request a list of creators.
@@ -157,7 +158,7 @@ class Session:
         return result
 
     def characters_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
+        self, params: Optional[dict[str, Union[str, int]]] = None
     ) -> list[BaseCharacter]:
         """
         Request a list of characters.
@@ -218,7 +219,7 @@ class Session:
         return result
 
     def publishers_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
+        self, params: Optional[dict[str, Union[str, int]]] = None
     ) -> list[BasePublisher]:
         """
         Request a list of publishers.
@@ -230,7 +231,7 @@ class Session:
             A :class:`PublishersList` object.
         """
         resp = self._get_results(["publisher"], params)
-        adapter = TypeAdapter(List[BasePublisher])
+        adapter = TypeAdapter(list[BasePublisher])
         try:
             result = adapter.validate_python(resp["results"])
         except ValidationError as err:
@@ -258,7 +259,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def teams_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> list[BaseTeam]:
+    def teams_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseTeam]:
         """
         Request a list of teams.
 
@@ -317,7 +318,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def arcs_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> list[BaseArc]:
+    def arcs_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseArc]:
         """
         Request a list of story arcs.
 
@@ -374,7 +375,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def series_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> list[BaseSeries]:
+    def series_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseSeries]:
         """
         Request a list of series.
 
@@ -393,7 +394,7 @@ class Session:
         return result
 
     def series_type_list(
-        self, params: Optional[Dict[str, Union[str, int]]] = None
+        self, params: Optional[dict[str, Union[str, int]]] = None
     ) -> list[GenericItem]:
         """
         Request a list of series types.
@@ -437,7 +438,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def issues_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> list[BaseIssue]:
+    def issues_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseIssue]:
         """
         Request a list of issues.
 
@@ -455,7 +456,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def role_list(self, params: Optional[Dict[str, Union[str, int]]] = None) -> list[GenericItem]:
+    def role_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[GenericItem]:
         """
         Request a list of creator roles.
 
@@ -476,9 +477,9 @@ class Session:
 
     def _get_results(
         self,
-        endpoint: List[Union[str, int]],
-        params: Optional[Dict[str, Union[str, int]]] = None,
-    ) -> Dict[str, Any]:
+        endpoint: list[Union[str, int]],
+        params: Optional[dict[str, Union[str, int]]] = None,
+    ) -> dict[str, Any]:
         if params is None:
             params = {}
 
@@ -487,7 +488,7 @@ class Session:
             result = self._retrieve_all_results(result)
         return result
 
-    def _retrieve_all_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _retrieve_all_results(self, data: dict[str, Any]) -> dict[str, Any]:
         has_next_page = True
         next_page = data["next"]
 
@@ -514,7 +515,7 @@ class Session:
 
     @sleep_and_retry
     @limits(calls=25, period=ONE_MINUTE)
-    def _request_data(self, url: str, params: Optional[Dict[str, Union[str, int]]] = None) -> Any:
+    def _request_data(self, url: str, params: Optional[dict[str, Union[str, int]]] = None) -> Any:
         if params is None:
             params = {}
 

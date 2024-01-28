@@ -3,6 +3,7 @@ Test Cache module.
 
 This module contains tests for SqliteCache objects.
 """
+
 import pytest
 import requests_mock
 

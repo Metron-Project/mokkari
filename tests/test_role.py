@@ -3,6 +3,7 @@ Test Role api.
 
 This module contains tests for Role objects.
 """
+
 from mokkari.session import Session
 
 

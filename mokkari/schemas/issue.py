@@ -10,6 +10,7 @@ This module provides the following classes:
 - BaseIssue
 - Issue
 """
+
 from datetime import date, datetime
 from decimal import Decimal
 

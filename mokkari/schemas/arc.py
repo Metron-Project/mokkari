@@ -6,6 +6,7 @@ This module provides the following classes:
 - Arc
 - BaseArc
 """
+
 from datetime import datetime
 
 from pydantic import HttpUrl

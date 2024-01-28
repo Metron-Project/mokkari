@@ -3,6 +3,7 @@ Test Arcs module.
 
 This module contains tests for Arc objects.
 """
+
 import json
 from datetime import date, datetime, timedelta, timezone
 
