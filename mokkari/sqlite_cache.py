@@ -8,8 +8,8 @@ This module provides the following classes:
 
 import json
 import sqlite3
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 
 class SqliteCache:
@@ -22,7 +22,9 @@ class SqliteCache:
         before they expire.
     """
 
-    def __init__(self, db_name: str = "mokkari_cache.db", expire: Optional[int] = None) -> None:
+    def __init__(
+        self: "SqliteCache", db_name: str = "mokkari_cache.db", expire: int | None = None
+    ) -> None:
         """Initialize a new SqliteCache."""
         self.expire = expire
         self.con = sqlite3.connect(db_name)
@@ -30,7 +32,7 @@ class SqliteCache:
         self.cur.execute("CREATE TABLE IF NOT EXISTS responses (key, json, expire)")
         self.cleanup()
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self: "SqliteCache", key: str) -> Any | None:  # noqa: ANN401
         """
         Retrieve data from the cache database.
 
@@ -40,7 +42,7 @@ class SqliteCache:
         self.cur.execute("SELECT json FROM responses WHERE key = ?", (key,))
         return json.loads(result[0]) if (result := self.cur.fetchone()) else None
 
-    def store(self, key: str, value: str) -> None:
+    def store(self: "SqliteCache", key: str, value: str) -> None:
         """
         Save data to the cache database.
 
@@ -54,19 +56,20 @@ class SqliteCache:
         )
         self.con.commit()
 
-    def cleanup(self) -> None:
+    def cleanup(self: "SqliteCache") -> None:
         """Remove any expired data from the cache database."""
         if not self.expire:
             return
         self.cur.execute(
             "DELETE FROM responses WHERE expire < ?;",
-            (datetime.now().strftime("%Y-%m-%d"),),
+            (datetime.now(tz=timezone.utc).strftime("%Y-%m-%d"),),
         )
         self.con.commit()
 
-    def _determine_expire_str(self) -> str:
-        if self.expire:
-            dt = datetime.now() + timedelta(days=self.expire)
-        else:
-            dt = datetime.now()
+    def _determine_expire_str(self: "SqliteCache") -> str:
+        dt = (
+            datetime.now(tz=timezone.utc) + timedelta(days=self.expire)
+            if self.expire
+            else datetime.now(tz=timezone.utc)
+        )
         return dt.strftime("%Y-%m-%d")

@@ -5,7 +5,7 @@ This module contains tests for Issue objects.
 """
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from decimal import Decimal
 
 import pytest
