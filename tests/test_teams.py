@@ -5,7 +5,7 @@ This module contains tests for Team objects.
 """
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
 import pytest
 import requests_mock
