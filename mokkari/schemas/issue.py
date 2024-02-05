@@ -17,12 +17,9 @@ from decimal import Decimal
 from pydantic import Field, HttpUrl
 
 from mokkari.schemas import BaseModel
-from mokkari.schemas.arc import BaseArc
-from mokkari.schemas.character import BaseCharacter
+from mokkari.schemas.base import BaseResource
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.reprint import Reprint
-from mokkari.schemas.team import BaseTeam
-from mokkari.schemas.universe import BaseUniverse
 from mokkari.schemas.variant import Variant
 
 
@@ -152,11 +149,11 @@ class Issue(CommonIssue):
     upc: str | None = None
     page_count: int | None = Field(alias="page", default=None)
     desc: str | None = None
-    arcs: list[BaseArc] = []
+    arcs: list[BaseResource] = []
     credits: list[Credit] = []
-    characters: list[BaseCharacter] = []
-    teams: list[BaseTeam] = []
-    universes: list[BaseUniverse] = []
+    characters: list[BaseResource] = []
+    teams: list[BaseResource] = []
+    universes: list[BaseResource] = []
     reprints: list[Reprint] = []
     variants: list[Variant] = []
     cv_id: int | None = None

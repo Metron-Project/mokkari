@@ -4,32 +4,14 @@ Arc module.
 This module provides the following classes:
 
 - Arc
-- BaseArc
 """
-
-from datetime import datetime
 
 from pydantic import HttpUrl
 
-from mokkari.schemas import BaseModel
+from mokkari.schemas.base import BaseResource
 
 
-class BaseArc(BaseModel):
-    """
-    The :obj:`BaseArc` object contains a list of story arcs.
-
-    Attributes:
-        id (int): The Metron identification number for the story arc.
-        name (str): The name of the story arc.
-        modified (datetime): The date/time the story arc was last changed.
-    """
-
-    id: int
-    name: str
-    modified: datetime
-
-
-class Arc(BaseArc):
+class Arc(BaseResource):
     """
     The Arc object extends :obj:`BaseArc` providing  all information for a story arc.
 

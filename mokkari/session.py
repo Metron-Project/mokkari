@@ -19,15 +19,16 @@ from urllib3 import Retry
 
 # Alias these modules to prevent namespace collision with methods.
 from mokkari import __version__, exceptions, sqlite_cache
-from mokkari.schemas.arc import Arc, BaseArc
-from mokkari.schemas.character import BaseCharacter, Character
-from mokkari.schemas.creator import BaseCreator, Creator
+from mokkari.schemas.arc import Arc
+from mokkari.schemas.base import BaseResource
+from mokkari.schemas.character import Character
+from mokkari.schemas.creator import Creator
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.issue import BaseIssue, Issue
-from mokkari.schemas.publisher import BasePublisher, Publisher
+from mokkari.schemas.publisher import Publisher
 from mokkari.schemas.series import BaseSeries, Series
-from mokkari.schemas.team import BaseTeam, Team
-from mokkari.schemas.universe import Universe, BaseUniverse
+from mokkari.schemas.team import Team
+from mokkari.schemas.universe import Universe
 
 ONE_MINUTE = 60
 
@@ -119,7 +120,7 @@ class Session:
 
     def creators_list(
         self, params: Optional[dict[str, Union[str, int]]] = None
-    ) -> list[BaseCreator]:
+    ) -> list[BaseResource]:
         """
         Request a list of creators.
 
@@ -130,7 +131,7 @@ class Session:
             A :obj:`CreatorsList` object.
         """
         resp = self._get_results(["creator"], params)
-        adaptor = TypeAdapter(list[BaseCreator])
+        adaptor = TypeAdapter(list[BaseResource])
         try:
             result = adaptor.validate_python(resp["results"])
         except ValidationError as error:
@@ -160,7 +161,7 @@ class Session:
 
     def characters_list(
         self, params: Optional[dict[str, Union[str, int]]] = None
-    ) -> list[BaseCharacter]:
+    ) -> list[BaseResource]:
         """
         Request a list of characters.
 
@@ -171,7 +172,7 @@ class Session:
             A :class:`CharactersList` object.
         """
         resp = self._get_results(["character"], params)
-        adaptor = TypeAdapter(list[BaseCharacter])
+        adaptor = TypeAdapter(list[BaseResource])
         try:
             result = adaptor.validate_python(resp["results"])
         except ValidationError as error:
@@ -221,7 +222,7 @@ class Session:
 
     def publishers_list(
         self, params: Optional[dict[str, Union[str, int]]] = None
-    ) -> list[BasePublisher]:
+    ) -> list[BaseResource]:
         """
         Request a list of publishers.
 
@@ -232,7 +233,7 @@ class Session:
             A :class:`PublishersList` object.
         """
         resp = self._get_results(["publisher"], params)
-        adapter = TypeAdapter(list[BasePublisher])
+        adapter = TypeAdapter(list[BaseResource])
         try:
             result = adapter.validate_python(resp["results"])
         except ValidationError as err:
@@ -260,7 +261,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def teams_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseTeam]:
+    def teams_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseResource]:
         """
         Request a list of teams.
 
@@ -271,7 +272,7 @@ class Session:
             A :class:`TeamsList` object.
         """
         resp = self._get_results(["team"], params)
-        adapter = TypeAdapter(list[BaseTeam])
+        adapter = TypeAdapter(list[BaseResource])
         try:
             result = adapter.validate_python(resp["results"])
         except ValidationError as err:
@@ -319,7 +320,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def arcs_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseArc]:
+    def arcs_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseResource]:
         """
         Request a list of story arcs.
 
@@ -330,7 +331,7 @@ class Session:
             A :class:`ArcsList` object.
         """
         resp = self._get_results(["arc"], params)
-        adapter = TypeAdapter(list[BaseArc])
+        adapter = TypeAdapter(list[BaseResource])
         try:
             result = adapter.validate_python(resp["results"])
         except ValidationError as err:
@@ -497,7 +498,9 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def universes_list(self, params: Optional[dict[str, Union[str, int]]] = None) -> list[BaseUniverse]:
+    def universes_list(
+        self, params: Optional[dict[str, Union[str, int]]] = None
+    ) -> list[BaseResource]:
         """
         Request a list of universes.
 
@@ -508,7 +511,7 @@ class Session:
             A list of :class:`BaseUniverse` objects.
         """
         resp = self._get_results(["universe"], params)
-        adapter = TypeAdapter(list[BaseUniverse])
+        adapter = TypeAdapter(list[BaseResource])
         try:
             result = adapter.validate_python(resp["results"])
         except ValidationError as err:

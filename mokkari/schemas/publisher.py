@@ -3,33 +3,15 @@ Publisher module.
 
 This module provides the following classes:
 
-- BasePublisher
 - Publisher
 """
 
-from datetime import datetime
-
 from pydantic import HttpUrl
 
-from mokkari.schemas import BaseModel
+from mokkari.schemas.base import BaseResource
 
 
-class BasePublisher(BaseModel):
-    """
-    The :obj:`BasePublisher` object contains a list of publishers.
-
-    Attributes:
-        id (int): The Metron identification number for the publisher.
-        name (str): The name of the publisher.
-        modified (datetime): The date/time the team was last changed.
-    """
-
-    id: int
-    name: str
-    modified: datetime
-
-
-class Publisher(BasePublisher):
+class Publisher(BaseResource):
     """
     The Publisher object extends :obj:`BasePublisher` providing  all information for a publisher.
 

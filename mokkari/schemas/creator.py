@@ -3,33 +3,17 @@ Creator module.
 
 This module provides the following classes:
 
-- BaseCreator
 - Creator
 """
 
-from datetime import date, datetime
+from datetime import date
 
 from pydantic import HttpUrl, PastDate
 
-from mokkari.schemas import BaseModel
+from mokkari.schemas.base import BaseResource
 
 
-class BaseCreator(BaseModel):
-    """
-    The :obj:`BaseCreator` object contains a list of creators.
-
-    Attributes:
-        id (int): The Metron identification number for the creator.
-        name (str): The name of the creator.
-        modified (datetime): The date/time the team was last changed.
-    """
-
-    id: int
-    name: str
-    modified: datetime
-
-
-class Creator(BaseCreator):
+class Creator(BaseResource):
     """
     The Creator object extends :obj:`BaseCreator` providing  all information for a creator.
 
