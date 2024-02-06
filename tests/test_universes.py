@@ -15,13 +15,13 @@ from mokkari.session import Session
 
 def test_known_universe(talker: Session) -> None:
     """Test for a known universe object."""
-    DCeased = talker.universe(83)
-    assert isinstance(DCeased, Universe)
-    assert DCeased.name == "DCeased"
-    assert DCeased.designation == "Earth 55"
-    assert DCeased.publisher.name == "DC Comics"
-    assert DCeased.publisher.id == 2
-    assert DCeased.resource_url.__str__() == "https://metron.cloud/universe/dceased/"
+    dceased = talker.universe(83)
+    assert isinstance(dceased, Universe)
+    assert dceased.name == "DCeased"
+    assert dceased.designation == "Earth 55"
+    assert dceased.publisher.name == "DC Comics"
+    assert dceased.publisher.id == 2
+    assert dceased.resource_url.__str__() == "https://metron.cloud/universe/dceased/"
 
 
 def test_universe_list(talker: Session) -> None:

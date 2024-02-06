@@ -1,3 +1,4 @@
+# ruff: noqa: RUF012
 """
 Issue module.
 

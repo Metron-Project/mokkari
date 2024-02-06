@@ -15,9 +15,9 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../.."))
+sys.path.insert(0, os.path.abspath("../.."))  # noqa: PTH100
 # This import needs to be *after* setting the sys path
-import mokkari  # noqa #E402
+import mokkari  # E402
 
 # -- Project information -----------------------------------------------------
 

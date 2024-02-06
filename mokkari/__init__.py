@@ -3,16 +3,15 @@
 # Keep this at beginning of file to prevent circular import with session
 __version__ = "3.0.0"
 
-from typing import Optional
 
 from mokkari import exceptions, session, sqlite_cache
 
 
 def api(
-    username: Optional[str] = None,
-    passwd: Optional[str] = None,
+    username: str | None = None,
+    passwd: str | None = None,
     cache: sqlite_cache.SqliteCache = None,
-    user_agent: Optional[str] = None,
+    user_agent: str | None = None,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 

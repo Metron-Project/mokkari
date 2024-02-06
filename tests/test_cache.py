@@ -13,7 +13,7 @@ from mokkari import api, exceptions
 class NoGet:
     """The NoGet object fakes storing data from the sqlite cache."""
 
-    def store(self, key, value) -> None:
+    def store(self: "NoGet", key: any, value: any) -> None:  # noqa: ARG002
         """Save no data."""
         # This method should store key value pair
         return
@@ -22,9 +22,9 @@ class NoGet:
 class NoStore:
     """The NoStore object fakes getting data from the sqlite cache."""
 
-    def get(self, key) -> None:
+    def get(self: "NoStore", key: any) -> None:  # noqa: ARG002
         """Retrieve no data."""
-        return None
+        return
 
 
 def test_no_get(dummy_username: str, dummy_password: str) -> None:
