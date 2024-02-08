@@ -13,7 +13,7 @@ from mokkari.schemas.base import BaseResource
 
 class Publisher(BaseResource):
     """
-    The Publisher object extends :obj:`BasePublisher` providing  all information for a publisher.
+    The Publisher object extends :obj:`BaseResource` providing  all information for a publisher.
 
     Attributes:
         founded (int): The year the publisher was founded.

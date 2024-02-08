@@ -56,7 +56,7 @@ class BasicSeries(BaseModel):
 
 class IssueSeries(BaseModel):
     """
-    The :obj:`AssociatedSeries` object contains more detailed series information.
+    The :obj:`IssueSeries` object contains more detailed series information.
 
     Attributes:
         id (int): The Metron identification number for series.

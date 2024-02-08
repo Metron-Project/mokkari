@@ -18,8 +18,8 @@ def api(
     Args:
         username (str): The username used for metron.cloud.
         passwd (str): The password used for metron.cloud.
-        SqliteCache optional: SqliteCache to use
-        user_agent optional(str): The user agent string for the application using Mokkari.
+        cache (SqliteCache): SqliteCache to use
+        user_agent (str): The user agent string for the application using Mokkari.
         For example 'Foo Bar/1.0'.
 
     Returns:

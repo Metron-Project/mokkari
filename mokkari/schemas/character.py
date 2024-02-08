@@ -14,7 +14,7 @@ from mokkari.schemas.base import BaseResource
 
 class Character(BaseResource):
     """
-    The Character object extends :obj:`BaseCharacter` providing  all information for a character.
+    The Character object extends :obj:`BaseResource` providing  all information for a character.
 
     Attributes:
         alias (list[str]): The alias of the character.
