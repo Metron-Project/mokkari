@@ -14,7 +14,7 @@ from mokkari.schemas.base import BaseResource
 
 class Team(BaseResource):
     """
-    The Team object extends the :obj:`BaseTeam` by containing all information for a team.
+    The Team object extends the :obj:`BaseResource` by containing all information for a team.
 
     Attributes:
         desc (str): The description of the team.

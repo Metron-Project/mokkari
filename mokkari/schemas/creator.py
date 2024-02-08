@@ -15,7 +15,7 @@ from mokkari.schemas.base import BaseResource
 
 class Creator(BaseResource):
     """
-    The Creator object extends :obj:`BaseCreator` providing  all information for a creator.
+    The Creator object extends :obj:`BaseResource` providing  all information for a creator.
 
     Attributes:
         birth (date): The date of birth for the creator.

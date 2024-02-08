@@ -14,7 +14,7 @@ from mokkari.schemas.generic import GenericItem
 
 class Universe(BaseResource):
     """
-    The Universe object extends the :obj:`BaseUniverse` by containing information for a universe.
+    The Universe object extends the :obj:`BaseResource` by containing information for a universe.
 
     Attributes:
         publisher (int): The Metron identification number for the publisher

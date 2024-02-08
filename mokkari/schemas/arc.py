@@ -13,7 +13,7 @@ from mokkari.schemas.base import BaseResource
 
 class Arc(BaseResource):
     """
-    The Arc object extends :obj:`BaseArc` providing  all information for a story arc.
+    The Arc object extends :obj:`BaseResource` providing  all information for a story arc.
 
     Attributes:
         desc (str): The description of the story arc.
