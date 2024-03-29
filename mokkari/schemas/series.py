@@ -1,6 +1,5 @@
 # ruff: noqa: RUF012
-"""
-Series module.
+"""Series module.
 
 This module provides the following classes:
 
@@ -19,12 +18,13 @@ from mokkari.schemas.generic import GenericItem
 
 
 class AssociatedSeries(BaseModel):
-    """
-    The :obj:`AssociatedSeries` object contains information about an associated series.
+    """The :obj:`AssociatedSeries` object contains information about an associated series.
 
-    Attributes:
+    Attributes
+    ----------
         id (int): The Metron identification number for the associated series.
         name (str): The name of the associated series.
+
     """
 
     id: int
@@ -32,14 +32,15 @@ class AssociatedSeries(BaseModel):
 
 
 class CommonSeries(BaseModel):
-    """
-    The :obj:`CommonSeries` contains fields common to :obj:`BaseSeries` & :obj:`Series` objects.
+    """The :obj:`CommonSeries` contains fields common to :obj:`BaseSeries` & :obj:`Series` objects.
 
-    Attributes:
+    Attributes
+    ----------
         id (int): The Metron identification number for the series.
         year_began (int): The year the series began.
         issue_count (int): The number of issues.
         modified (datetime): The date/time the series was last changed.
+
     """
 
     id: int
@@ -49,21 +50,22 @@ class CommonSeries(BaseModel):
 
 
 class BaseSeries(CommonSeries):
-    """
-    The :obj:`BaseSeries` object contains extend the :obj:`CommonSeries`.
+    """The :obj:`BaseSeries` object contains extend the :obj:`CommonSeries`.
 
-    Attributes:
+    Attributes
+    ----------
         display_name (str): The name of the series.
+
     """
 
     display_name: str = Field(alias="series")
 
 
 class Series(CommonSeries):
-    """
-    :obj:`Series` extends :obj:`CommonSeries` and contains all information about a series.
+    """:obj:`Series` extends :obj:`CommonSeries` and contains all information about a series.
 
-    Attributes:
+    Attributes
+    ----------
         name (str): The name of the series.
         sort_name (str): The name used to determine the sort order for a series.
         volume (int): The volume of the series.
@@ -75,6 +77,7 @@ class Series(CommonSeries):
         associated list(AssociatedSeries): The series associated with the series.
         cv_id (int): The Comic Vine ID of the series.
         resource_url (HttpUrl): The URL of the series
+
     """
 
     name: str

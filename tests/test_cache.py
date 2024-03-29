@@ -1,5 +1,4 @@
-"""
-Test Cache module.
+"""Test Cache module.
 
 This module contains tests for SqliteCache objects.
 """

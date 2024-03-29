@@ -1,5 +1,4 @@
-"""
-Test Role api.
+"""Test Role api.
 
 This module contains tests for Role objects.
 """

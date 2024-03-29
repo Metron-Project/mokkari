@@ -1,6 +1,5 @@
 # ruff: noqa: RUF012
-"""
-Character module.
+"""Character module.
 
 This module provides the following classes:
 
@@ -13,10 +12,10 @@ from mokkari.schemas.base import BaseResource
 
 
 class Character(BaseResource):
-    """
-    The Character object extends :obj:`BaseResource` providing  all information for a character.
+    """The Character object extends :obj:`BaseResource` providing  all information for a character.
 
-    Attributes:
+    Attributes
+    ----------
         alias (list[str]): The alias of the character.
         desc (str): The description of the character.
         image (url): The url for an image associated with the character.
@@ -24,6 +23,7 @@ class Character(BaseResource):
         teams (list[:obj:`Generic`]): A list of teams for the character.
         cv_id (int): Comic Vine ID for the character.
         resource_url (url): The url for the resource.
+
     """
 
     alias: list[str] | None = None

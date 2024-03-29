@@ -1,6 +1,5 @@
 # ruff: noqa: RUF012
-"""
-Issue module.
+"""Issue module.
 
 This module provides the following classes:
 
@@ -25,13 +24,14 @@ from mokkari.schemas.variant import Variant
 
 
 class Credit(BaseModel):
-    """
-    The :obj:`Credit` object contains information about an issue creator credits.
+    """The :obj:`Credit` object contains information about an issue creator credits.
 
-    Attributes:
+    Attributes
+    ----------
         id (int): The Metron identification number for the issue credit.
         creator (str): The name of the creator for the issue credit.
         role (list[GenericItem]): The role of the creator for the issue.
+
     """
 
     id: int
@@ -40,13 +40,14 @@ class Credit(BaseModel):
 
 
 class BasicSeries(BaseModel):
-    """
-    The :obj:`BasicSeries` object contains basic series information for an issue.
+    """The :obj:`BasicSeries` object contains basic series information for an issue.
 
-    Attributes:
+    Attributes
+    ----------
         name (str): The name of the series.
         volume (int): The volume of the series.
         year_began (int): The year the series began.
+
     """
 
     name: str
@@ -55,16 +56,17 @@ class BasicSeries(BaseModel):
 
 
 class IssueSeries(BaseModel):
-    """
-    The :obj:`IssueSeries` object contains more detailed series information.
+    """The :obj:`IssueSeries` object contains more detailed series information.
 
-    Attributes:
+    Attributes
+    ----------
         id (int): The Metron identification number for series.
         name (str): The name of the series.
         sort_name (str): The sort name of the series.
         volume (int): The volume of the series.
         series_type (GenericItem): The type of series.
         genres (list[Generic]): The genres of the series.
+
     """
 
     id: int
@@ -76,16 +78,17 @@ class IssueSeries(BaseModel):
 
 
 class CommonIssue(BaseModel):
-    """
-    The :obj:`CommonIssue` object contains common information for BaseIssue and Issue objects.
+    """The :obj:`CommonIssue` object contains common information for BaseIssue and Issue objects.
 
-    Attributes:
+    Attributes
+    ----------
         id (int): The Metron identification number for the associated series.
         number (str): The number of the issue.
         cover_date (date): The cover date of the issue.
         image (HttpUrl): The url of the cover image for the issue.
         cover_hash (str): The hash of the cover image for the issue.
         modified (datetime): The modified date of the issue.
+
     """
 
     id: int
@@ -97,12 +100,13 @@ class CommonIssue(BaseModel):
 
 
 class BaseIssue(CommonIssue):
-    """
-    The :obj:`BaseIssue` object extends the :obj:`CommonIssue` object.
+    """The :obj:`BaseIssue` object extends the :obj:`CommonIssue` object.
 
-    Attributes:
+    Attributes
+    ----------
         issue_name (str): The name of the issue.
         series (BasicSeries): The series for the issue.
+
     """
 
     issue_name: str = Field(alias="issue")
@@ -110,10 +114,10 @@ class BaseIssue(CommonIssue):
 
 
 class Issue(CommonIssue):
-    """
-    The :obj:`Issue` object extends the :obj:`CommonIssue` object with all the info for an issue.
+    """The :obj:`Issue` object extends the :obj:`CommonIssue` object with all the info for an issue.
 
-    Attributes:
+    Attributes
+    ----------
         publisher (GenericPublisher): The publisher of the issue.
         series (IssueSeries): The series for the issue.
         collection_title (str): The collection title of the issue. Normally only used with TPB.
@@ -135,6 +139,7 @@ class Issue(CommonIssue):
         variants (list[Variant]): A list of variant covers for the issue.
         cv_id (int): The Comic Vine ID of the issue.
         resource_url (HttpUrl): The URL of the issue.
+
     """
 
     publisher: GenericItem

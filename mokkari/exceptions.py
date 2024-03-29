@@ -1,6 +1,5 @@
 # ruff: noqa: ANN002
-"""
-Exceptions module.
+"""Exceptions module.
 
 This module provides the following classes:
 
@@ -21,9 +20,9 @@ class ApiError(Exception):
 class AuthenticationError(Exception):
     """Class for any authentication errors."""
 
-    def __init__(self: "AuthenticationError", *args, **kwargs: dict[str, any]) -> None:
-        """Initialize an AuthenticationError."""
-        Exception.__init__(self, *args, **kwargs)
+    def __init__(self: "AuthenticationError") -> None:
+        """Initialize the Authentication error."""
+        Exception.__init__(self, "Missing authorization information")
 
 
 class CacheError(Exception):

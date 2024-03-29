@@ -1,5 +1,4 @@
-"""
-This module provides the following classes.
+"""Module provides the following classes.
 
 - BaseModel
 """
