@@ -1,5 +1,4 @@
-"""
-Creator module.
+"""Creator module.
 
 This module provides the following classes:
 
@@ -14,10 +13,10 @@ from mokkari.schemas.base import BaseResource
 
 
 class Creator(BaseResource):
-    """
-    The Creator object extends :obj:`BaseResource` providing  all information for a creator.
+    """The Creator object extends :obj:`BaseResource` providing  all information for a creator.
 
-    Attributes:
+    Attributes
+    ----------
         birth (date): The date of birth for the creator.
         death (date): The date of death for the creator.
         desc (str): The description of the creator.
@@ -25,6 +24,7 @@ class Creator(BaseResource):
         alias (list[str]): The alias of the creator.
         cv_id (int): Comic Vine ID for the creator.
         resource_url (HttpUrl): The url for the resource.
+
     """
 
     birth: PastDate | None = None

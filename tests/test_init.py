@@ -1,6 +1,5 @@
 # ruff: noqa: S106
-"""
-Test Init module.
+"""Test Init module.
 
 This module contains tests for project init.
 """
@@ -24,7 +23,7 @@ def test_api() -> None:
     m = None
     try:
         m = api(username="Something", passwd="Else")
-    except Exception as exc:  # noqa: BLE001
-        print(f"mokkari.api() raised {exc} unexpectedly!")  # noqa: T201
+    except Exception as exc:
+        print(f"mokkari.api() raised {exc} unexpectedly!")
 
     assert m.__class__.__name__ == session.Session.__name__

@@ -1,5 +1,4 @@
-"""
-Conftest module.
+"""Conftest module.
 
 This module contains pytest fixtures.
 """

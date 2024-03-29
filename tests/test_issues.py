@@ -1,5 +1,4 @@
-"""
-Test Issues module.
+"""Test Issues module.
 
 This module contains tests for Issue objects.
 """
@@ -26,7 +25,10 @@ def test_issue_with_rating(talker: Session) -> None:
     assert ff.store_date == date(2022, 9, 21)
     assert ff.series.genres[0].id == 10
     assert ff.series.genres[0].name == "Super-Hero"
-    assert ff.resource_url.__str__() == "https://metron.cloud/issue/fantastic-four-2018-47/"
+    assert (
+        ff.resource_url.__str__()
+        == "https://metron.cloud/issue/fantastic-four-2018-47/"
+    )
 
 
 def test_known_issue(talker: Session) -> None:
@@ -41,7 +43,8 @@ def test_known_issue(talker: Session) -> None:
     assert death.price == Decimal("4.99")
     assert not death.sku
     assert (
-        death.image.__str__() == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
+        death.image.__str__()
+        == "https://static.metron.cloud/media/issue/2018/11/11/6497376-01.jpg"
     )
     assert len(death.characters) > 0
     assert len(death.teams) > 0
@@ -50,7 +53,8 @@ def test_known_issue(talker: Session) -> None:
     assert death.teams[0].id == 1
     assert any(item.name == "Earth 616" for item in death.universes)
     assert (
-        death.resource_url.__str__() == "https://metron.cloud/issue/death-of-the-inhumans-2018-1/"
+        death.resource_url.__str__()
+        == "https://metron.cloud/issue/death-of-the-inhumans-2018-1/"
     )
 
 
@@ -90,7 +94,9 @@ def test_issue_without_story_title(talker: Session) -> None:
 
 def test_issueslist(talker: Session) -> None:
     """Test the IssueList."""
-    issues = talker.issues_list({"series_name": "action comics", "series_year_began": 2011})
+    issues = talker.issues_list(
+        {"series_name": "action comics", "series_year_began": 2011}
+    )
     issue_iter = iter(issues)
     assert next(issue_iter).id == 6730
     assert next(issue_iter).id == 6731
@@ -224,7 +230,9 @@ def test_bad_issue(talker: Session) -> None:
 
 def test_multi_page_results(talker: Session) -> None:
     """Test for multi page results."""
-    issues = talker.issues_list({"series_name": "action comics", "series_year_began": 1938})
+    issues = talker.issues_list(
+        {"series_name": "action comics", "series_year_began": 1938}
+    )
     assert len(issues) == 864
     assert issues[0].issue_name == "Action Comics (1938) #1"
     assert issues[0].cover_date == date(1938, 6, 1)

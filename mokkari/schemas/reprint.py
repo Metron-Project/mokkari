@@ -1,5 +1,4 @@
-"""
-Reprint module.
+"""Reprint module.
 
 This module provides the following classes:
 
@@ -10,12 +9,13 @@ from mokkari.schemas import BaseModel
 
 
 class Reprint(BaseModel):
-    """
-    The :obj:`Reprint` object contains a list of reprinted issues.
+    """The :obj:`Reprint` object contains a list of reprinted issues.
 
-    Attributes:
+    Attributes
+    ----------
         id (int): The Metron identification number for the team.
         issue (str): The name of the issue.
+
     """
 
     id: int

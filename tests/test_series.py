@@ -1,5 +1,4 @@
-"""
-Test Series module.
+"""Test Series module.
 
 This module contains tests for Series objects.
 """
@@ -36,7 +35,10 @@ def test_known_series(talker: Session) -> None:
         526656,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
-    assert death.resource_url.__str__() == "https://metron.cloud/series/death-of-the-inhumans-2018/"
+    assert (
+        death.resource_url.__str__()
+        == "https://metron.cloud/series/death-of-the-inhumans-2018/"
+    )
 
 
 def test_series_without_year_end(talker: Session) -> None:

@@ -1,6 +1,5 @@
 # ruff: noqa: RUF012
-"""
-Team module.
+"""Team module.
 
 This module provides the following classes:
 
@@ -13,15 +12,16 @@ from mokkari.schemas.base import BaseResource
 
 
 class Team(BaseResource):
-    """
-    The Team object extends the :obj:`BaseResource` by containing all information for a team.
+    """The Team object extends the :obj:`BaseResource` by containing all information for a team.
 
-    Attributes:
+    Attributes
+    ----------
         desc (str): The description of the team.
         image (url): The url for an image associated with the team.
         creators (list[:obj:`Generic`]): A list of creators for the team.
         cv_id (int): Comic Vine ID for the team.
         resource_url (url): The url for the resource.
+
     """
 
     desc: str | None = None

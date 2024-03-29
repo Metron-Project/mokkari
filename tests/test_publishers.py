@@ -1,5 +1,4 @@
-"""
-Test Publishers module.
+"""Test Publishers module.
 
 This module contains tests for Publisher objects.
 """

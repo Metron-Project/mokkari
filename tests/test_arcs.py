@@ -1,5 +1,4 @@
-"""
-Test Arcs module.
+"""Test Arcs module.
 
 This module contains tests for Arc objects.
 """

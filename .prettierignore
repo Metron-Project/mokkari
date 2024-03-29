@@ -1,0 +1,16 @@
+dist
+.git
+.idea
+.mypy_cache
+/node_modules
+package-lock.json
+poetry.lock
+__pycache__
+.pytest_cache
+.ruff_cache
+/test-results
+.tox
+.venv*
+CODE_OF_CONDUCT.md
+docs
+.github

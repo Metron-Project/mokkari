@@ -1,5 +1,4 @@
-"""
-SQLite Cache module.
+"""SQLite Cache module.
 
 This module provides the following classes:
 
@@ -13,17 +12,20 @@ from typing import Any
 
 
 class SqliteCache:
-    """
-    The SqliteCache object to cache search results from Metron.
+    """The SqliteCache object to cache search results from Metron.
 
     Args:
+    ----
         db_name (str): Path and database name to use.
         expire (int, optional): The number of days to keep the cache results
         before they expire.
+
     """
 
     def __init__(
-        self: "SqliteCache", db_name: str = "mokkari_cache.db", expire: int | None = None
+        self: "SqliteCache",
+        db_name: str = "mokkari_cache.db",
+        expire: int | None = None,
     ) -> None:
         """Initialize a new SqliteCache."""
         self.expire = expire
@@ -32,23 +34,25 @@ class SqliteCache:
         self.cur.execute("CREATE TABLE IF NOT EXISTS responses (key, json, expire)")
         self.cleanup()
 
-    def get(self: "SqliteCache", key: str) -> Any | None:  # noqa: ANN401
-        """
-        Retrieve data from the cache database.
+    def get(self: "SqliteCache", key: str) -> Any | None:
+        """Retrieve data from the cache database.
 
         Args:
+        ----
             key (str): value to search for.
+
         """
         self.cur.execute("SELECT json FROM responses WHERE key = ?", (key,))
         return json.loads(result[0]) if (result := self.cur.fetchone()) else None
 
     def store(self: "SqliteCache", key: str, value: str) -> None:
-        """
-        Save data to the cache database.
+        """Save data to the cache database.
 
         Args:
+        ----
             key (str): Item id.
             value (str): data to save.
+
         """
         self.cur.execute(
             "INSERT INTO responses(key, json, expire) VALUES(?, ?, ?)",

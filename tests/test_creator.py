@@ -1,5 +1,4 @@
-"""
-Test Creator module.
+"""Test Creator module.
 
 This module contains tests for Creator objects.
 """

@@ -1,5 +1,5 @@
-"""
-Session module.
+# ruff: noqa: TRY003, EM102
+"""Session module.
 
 This module provides the following classes:
 
@@ -34,14 +34,15 @@ ONE_MINUTE = 60
 
 
 class Session:
-    """
-    Session to request api endpoints.
+    """Session to request api endpoints.
 
     Args:
+    ----
         username (str): The username for authentication with metron.cloud
         passwd (str): The password used for authentication with metron.cloud
         cache (SqliteCache, optional): SqliteCache to use
         user_agent optional(str): The user agent string for the application using Mokkari.
+
     """
 
     def __init__(
@@ -66,12 +67,13 @@ class Session:
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
     ) -> dict[str, Any]:
-        """
-        Make request for api endpoints.
+        """Make request for api endpoints.
 
         Args:
+        ----
             endpoint (str): The endpoint to request information from.
             params (dict[str, any]): Parameters to add to the request.
+
         """
         if params is None:
             params = {}
@@ -98,17 +100,20 @@ class Session:
         return data
 
     def creator(self: "Session", _id: int) -> Creator:
-        """
-        Request data for a creator based on its ``_id``.
+        """Request data for a creator based on its ``_id``.
 
         Args:
+        ----
             _id (int): The creator id.
 
         Returns:
+        -------
             A :obj:`Creator` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["creator", _id])
         adaptor = TypeAdapter(Creator)
@@ -121,14 +126,16 @@ class Session:
     def creators_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
-        """
-        Request a list of creators.
+        """Request a list of creators.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :obj:`CreatorsList` object.
+
         """
         resp = self._get_results(["creator"], params)
         adaptor = TypeAdapter(list[BaseResource])
@@ -139,17 +146,20 @@ class Session:
         return result
 
     def character(self: "Session", _id: int) -> Character:
-        """
-        Request data for a character based on its ``_id``.
+        """Request data for a character based on its ``_id``.
 
         Args:
+        ----
             _id (int): The character id.
 
         Returns:
+        -------
             A :obj:`Character` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["character", _id])
         adaptor = TypeAdapter(Character)
@@ -162,14 +172,16 @@ class Session:
     def characters_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
-        """
-        Request a list of characters.
+        """Request a list of characters.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`CharactersList` object.
+
         """
         resp = self._get_results(["character"], params)
         adaptor = TypeAdapter(list[BaseResource])
@@ -180,16 +192,18 @@ class Session:
         return result
 
     def character_issues_list(self: "Session", _id: int) -> list[BaseIssue]:
-        """
-        Request a list of issues that a character appears in.
+        """Request a list of issues that a character appears in.
 
         .. versionadded:: 2.2.0
 
         Args:
+        ----
             _id (int): The character id.
 
         Returns:
+        -------
             A list of :class:`Issue` objects.
+
         """
         resp = self._get_results(["character", _id, "issue_list"])
         adaptor = TypeAdapter(list[BaseIssue])
@@ -200,17 +214,20 @@ class Session:
         return result
 
     def publisher(self: "Session", _id: int) -> Publisher:
-        """
-        Request data for a publisher based on its ``_id``.
+        """Request data for a publisher based on its ``_id``.
 
         Args:
+        ----
             _id (int): The publisher id.
 
         Returns:
+        -------
             A :obj:`Publisher` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["publisher", _id])
         adaptor = TypeAdapter(Publisher)
@@ -223,14 +240,16 @@ class Session:
     def publishers_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
-        """
-        Request a list of publishers.
+        """Request a list of publishers.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`PublishersList` object.
+
         """
         resp = self._get_results(["publisher"], params)
         adapter = TypeAdapter(list[BaseResource])
@@ -241,17 +260,20 @@ class Session:
         return result
 
     def team(self: "Session", _id: int) -> Team:
-        """
-        Request data for a team based on its ``_id``.
+        """Request data for a team based on its ``_id``.
 
         Args:
+        ----
             _id (int): The team id.
 
         Returns:
+        -------
             A :obj:`Team` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["team", _id])
         adaptor = TypeAdapter(Team)
@@ -264,14 +286,16 @@ class Session:
     def teams_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
-        """
-        Request a list of teams.
+        """Request a list of teams.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`TeamsList` object.
+
         """
         resp = self._get_results(["team"], params)
         adapter = TypeAdapter(list[BaseResource])
@@ -282,16 +306,18 @@ class Session:
         return result
 
     def team_issues_list(self: "Session", _id: int) -> list[BaseIssue]:
-        """
-        Request a list of issues that a team appears in.
+        """Request a list of issues that a team appears in.
 
         .. versionadded:: 2.2.0
 
         Args:
+        ----
             _id (int): The team id.
 
         Returns:
+        -------
             A list of :class:`Issue` objects.
+
         """
         resp = self._get_results(["team", _id, "issue_list"])
         adapter = TypeAdapter(list[BaseIssue])
@@ -302,17 +328,20 @@ class Session:
         return result
 
     def arc(self: "Session", _id: int) -> Arc:
-        """
-        Request data for a story arc based on its ``_id``.
+        """Request data for a story arc based on its ``_id``.
 
         Args:
+        ----
             _id (int): The story arc id.
 
         Returns:
+        -------
             A :obj:`Arc` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["arc", _id])
         adaptor = TypeAdapter(Arc)
@@ -325,14 +354,16 @@ class Session:
     def arcs_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
-        """
-        Request a list of story arcs.
+        """Request a list of story arcs.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`ArcsList` object.
+
         """
         resp = self._get_results(["arc"], params)
         adapter = TypeAdapter(list[BaseResource])
@@ -343,14 +374,16 @@ class Session:
         return result
 
     def arc_issues_list(self: "Session", _id: int) -> list[BaseIssue]:
-        """
-        Request a list of issues for a story arc.
+        """Request a list of issues for a story arc.
 
         Args:
+        ----
             _id (int): The arc id.
 
         Returns:
+        -------
             A list of :class:`Issue` objects.
+
         """
         resp = self._get_results(["arc", _id, "issue_list"])
         adaptor = TypeAdapter(list[BaseIssue])
@@ -361,17 +394,20 @@ class Session:
         return result
 
     def series(self: "Session", _id: int) -> Series:
-        """
-        Request data for a series based on its ``_id``.
+        """Request data for a series based on its ``_id``.
 
         Args:
+        ----
             _id (int): The series id.
 
         Returns:
+        -------
             A :obj:`Series` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["series", _id])
         adaptor = TypeAdapter(Series)
@@ -384,14 +420,16 @@ class Session:
     def series_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[BaseSeries]:
-        """
-        Request a list of series.
+        """Request a list of series.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`SeriesList` object.
+
         """
         resp = self._get_results(["series"], params)
         adaptor = TypeAdapter(list[BaseSeries])
@@ -404,18 +442,20 @@ class Session:
     def series_type_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[GenericItem]:
-        """
-        Request a list of series types.
+        """Request a list of series types.
 
         .. versionadded:: 2.2.2
 
             - Add ``series_type_list`` method
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`SeriesTypeList` object.
+
         """
         resp = self._get_results(["series_type"], params)
         adaptor = TypeAdapter(list[GenericItem])
@@ -426,17 +466,20 @@ class Session:
         return result
 
     def issue(self: "Session", _id: int) -> Issue:
-        """
-        Request data for an issue based on it's ``_id``.
+        """Request data for an issue based on it's ``_id``.
 
         Args:
+        ----
             _id (int): The issue id.
 
         Returns:
+        -------
             A :obj:`Issue` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["issue", _id])
         adaptor = TypeAdapter(Issue)
@@ -446,15 +489,19 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def issues_list(self: "Session", params: dict[str, str | int] | None = None) -> list[BaseIssue]:
-        """
-        Request a list of issues.
+    def issues_list(
+        self: "Session", params: dict[str, str | int] | None = None
+    ) -> list[BaseIssue]:
+        """Request a list of issues.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`IssuesList` object.
+
         """
         resp = self._get_results(["issue"], params)
         adaptor = TypeAdapter(list[BaseIssue])
@@ -464,14 +511,17 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def role_list(self: "Session", params: dict[str, str | int] | None = None) -> list[GenericItem]:
-        """
-        Request a list of creator roles.
+    def role_list(
+        self: "Session", params: dict[str, str | int] | None = None
+    ) -> list[GenericItem]:
+        """Request a list of creator roles.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A :class:`RoleList` object.
 
         """
@@ -484,17 +534,20 @@ class Session:
         return result
 
     def universe(self: "Session", _id: int) -> Universe:
-        """
-        Request data for a universe based on its ``_id``.
+        """Request data for a universe based on its ``_id``.
 
         Args:
+        ----
             _id (int): The universe id.
 
         Returns:
+        -------
             A :obj:`Universe` object.
 
         Raises:
+        ------
             ApiError: If there is a problem with the API request.
+
         """
         resp = self._call(["universe", _id])
         adaptor = TypeAdapter(Universe)
@@ -507,14 +560,16 @@ class Session:
     def universes_list(
         self: "Session", params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
-        """
-        Request a list of universes.
+        """Request a list of universes.
 
         Args:
+        ----
             params (dict, optional): Parameters to add to the request.
 
         Returns:
+        -------
             A list of :class:`BaseUniverse` objects.
+
         """
         resp = self._get_results(["universe"], params)
         adapter = TypeAdapter(list[BaseResource])
@@ -564,7 +619,9 @@ class Session:
 
     @sleep_and_retry
     @limits(calls=25, period=ONE_MINUTE)
-    def _request_data(self: "Session", url: str, params: dict[str, str | int] | None = None) -> Any:  # noqa: ANN401
+    def _request_data(
+        self: "Session", url: str, params: dict[str, str | int] | None = None
+    ) -> Any:
         if params is None:
             params = {}
 
@@ -584,7 +641,7 @@ class Session:
 
         return response
 
-    def _get_results_from_cache(self: "Session", key: str) -> Any | None:  # noqa: ANN401
+    def _get_results_from_cache(self: "Session", key: str) -> Any | None:
         cached_response = None
 
         if self.cache:

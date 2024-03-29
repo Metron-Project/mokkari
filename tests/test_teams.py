@@ -1,5 +1,4 @@
-"""
-Test Teams module.
+"""Test Teams module.
 
 This module contains tests for Team objects.
 """
@@ -19,7 +18,8 @@ def test_known_team(talker: Session) -> None:
     inhumans = talker.team(1)
     assert inhumans.name == "Inhumans"
     assert (
-        inhumans.image.__str__() == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
+        inhumans.image.__str__()
+        == "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg"
     )
     assert len(inhumans.creators) == 2
     assert any(item.name == "Earth 616" for item in inhumans.universes)

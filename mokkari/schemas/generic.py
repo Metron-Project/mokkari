@@ -1,5 +1,4 @@
-"""
-Generic module.
+"""Generic module.
 
 This module provides the following classes:
 
@@ -10,12 +9,13 @@ from mokkari.schemas import BaseModel
 
 
 class GenericItem(BaseModel):
-    """
-    The :obj:`GenericItem` object contains basic information for various resources.
+    """The :obj:`GenericItem` object contains basic information for various resources.
 
-    Attributes:
+    Attributes
+    ----------
         id (int): The id of the item.
         name (str): The name of the item.
+
     """
 
     id: int

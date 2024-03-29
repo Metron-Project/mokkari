@@ -1,8 +1,8 @@
-"""
-Test Universes module.
+"""Test Universes module.
 
 This module contains tests for Universe objects.
 """
+
 import json
 
 import pytest
