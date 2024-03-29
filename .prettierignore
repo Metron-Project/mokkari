@@ -11,3 +11,6 @@ __pycache__
 /test-results
 .tox
 .venv*
+CODE_OF_CONDUCT.md
+docs
+.github
