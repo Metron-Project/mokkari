@@ -65,8 +65,12 @@ def test_series_list(talker: Session) -> None:
     assert next(series_iter).id == 763
     assert next(series_iter).id == 7133
     assert len(series) == 230
+    assert series[3].id == 763
+    assert series[3].volume == 2
+    assert series[3].issue_count == 57
     assert series[4].id == 7133
     assert series[4].display_name == "Batman HC (2012)"
+    assert series[4].volume == 1
 
 
 def test_bad_series(talker: Session) -> None:

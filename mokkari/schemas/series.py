@@ -39,6 +39,7 @@ class CommonSeries(BaseModel):
         id (int): The Metron identification number for the series.
         year_began (int): The year the series began.
         issue_count (int): The number of issues.
+        volume (int): The volume of the series.
         modified (datetime): The date/time the series was last changed.
 
     """
@@ -46,6 +47,7 @@ class CommonSeries(BaseModel):
     id: int
     year_began: int
     issue_count: int
+    volume: int
     modified: datetime
 
 
@@ -68,7 +70,6 @@ class Series(CommonSeries):
     ----------
         name (str): The name of the series.
         sort_name (str): The name used to determine the sort order for a series.
-        volume (int): The volume of the series.
         series_type (GenericItem): The type of series.
         publisher (GenericItem): The publisher of the series.
         year_end (int): The year the series ended.
@@ -82,7 +83,6 @@ class Series(CommonSeries):
 
     name: str
     sort_name: str
-    volume: int
     series_type: GenericItem
     publisher: GenericItem
     year_end: int | None = None
