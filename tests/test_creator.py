@@ -36,7 +36,7 @@ def test_known_creator(talker: Session) -> None:
     assert jack.resource_url.__str__() == "https://metron.cloud/creator/jack-kirby/"
 
 
-def test_comic_list(talker: Session) -> None:
+def test_creator_list(talker: Session) -> None:
     """Test the CreatorsList."""
     creators = talker.creators_list({"name": "man"})
     creator_iter = iter(creators)
@@ -44,7 +44,7 @@ def test_comic_list(talker: Session) -> None:
     assert next(creator_iter).name == "Abel Laxamana"
     assert next(creator_iter).name == "Adam Freeman"
     assert next(creator_iter).name == "Adam Schlagman"
-    assert len(creators) == 338
+    assert len(creators) == 352
     assert creators[3].name == "Adam Schlagman"
 
 

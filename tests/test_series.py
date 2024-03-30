@@ -63,10 +63,10 @@ def test_series_list(talker: Session) -> None:
     assert next(series_iter).id == 5959
     assert next(series_iter).id == 2481
     assert next(series_iter).id == 763
-    assert next(series_iter).id == 93
-    assert len(series) == 219
-    assert series[4].id == 93
-    assert series[4].display_name == "Batman (2016)"
+    assert next(series_iter).id == 7133
+    assert len(series) == 230
+    assert series[4].id == 7133
+    assert series[4].display_name == "Batman HC (2012)"
 
 
 def test_bad_series(talker: Session) -> None:

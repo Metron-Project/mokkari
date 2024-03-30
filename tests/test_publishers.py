@@ -42,7 +42,7 @@ def test_publisher_list(talker: Session) -> None:
     assert next(publisher_iter).name == "12-Gauge Comics"
     assert next(publisher_iter).name == "AAA Pop Comics"
     assert next(publisher_iter).name == "AWA Studios"
-    assert len(publishers) == 93
+    assert len(publishers) == 103
     assert publishers[2].name == "AWA Studios"
 
 
