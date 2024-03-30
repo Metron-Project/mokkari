@@ -85,6 +85,7 @@ class CommonIssue(BaseModel):
         id (int): The Metron identification number for the associated series.
         number (str): The number of the issue.
         cover_date (date): The cover date of the issue.
+        store_date (date): The store date of the issue.
         image (HttpUrl): The url of the cover image for the issue.
         cover_hash (str): The hash of the cover image for the issue.
         modified (datetime): The modified date of the issue.
@@ -94,6 +95,7 @@ class CommonIssue(BaseModel):
     id: int
     number: str
     cover_date: date
+    store_date: date | None = None
     image: HttpUrl | None = None
     cover_hash: str | None = None
     modified: datetime
@@ -146,8 +148,6 @@ class Issue(CommonIssue):
     series: IssueSeries
     collection_title: str = Field(alias="title")
     story_titles: list[str] = Field(alias="name")
-    cover_date: date
-    store_date: date | None = None
     price: Decimal | None = None
     rating: GenericItem
     sku: str | None = None
