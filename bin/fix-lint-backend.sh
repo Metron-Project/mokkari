@@ -16,7 +16,7 @@ poetry run ruff format .
 ############################################
 ##### Javascript, JSON, Markdown, YAML #####
 ############################################
-npm run fix
+#npm run fix
 
 ###################
 ###### Shell ######

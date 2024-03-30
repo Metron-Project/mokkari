@@ -1,7 +1,7 @@
 """Project entry file."""
 
 # Keep this at beginning of file to prevent circular import with session
-__version__ = "3.0.1"
+__version__ = "3.1.0"
 
 
 from mokkari import exceptions, session, sqlite_cache

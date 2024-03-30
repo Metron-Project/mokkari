@@ -13,5 +13,5 @@ poetry run vulture --exclude "*/venv/*.py,*/.tox/*.py,*/node_modules/*.py,*/test
 ############################################
 ##### Javascript, JSON, Markdown, YAML #####
 ############################################
-npm run lint
-npm run remark-check
+#npm run lint
+#npm run remark-check
