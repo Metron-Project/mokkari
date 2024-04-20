@@ -24,7 +24,7 @@ class Publisher(BaseResource):
     """
 
     founded: int | None = None
-    desc: str | None = None
+    desc: str
     image: HttpUrl | None = None
     cv_id: int | None = None
     resource_url: HttpUrl

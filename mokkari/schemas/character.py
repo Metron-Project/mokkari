@@ -27,7 +27,7 @@ class Character(BaseResource):
     """
 
     alias: list[str] | None = None
-    desc: str | None = None
+    desc: str
     image: HttpUrl | None = None
     creators: list[BaseResource] = []
     teams: list[BaseResource] = []

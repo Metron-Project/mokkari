@@ -24,7 +24,7 @@ class Team(BaseResource):
 
     """
 
-    desc: str | None = None
+    desc: str
     image: HttpUrl | None = None
     creators: list[BaseResource] = []
     universes: list[BaseResource] = []

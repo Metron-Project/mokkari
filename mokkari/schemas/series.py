@@ -86,7 +86,7 @@ class Series(CommonSeries):
     series_type: GenericItem
     publisher: GenericItem
     year_end: int | None = None
-    desc: str | None = None
+    desc: str
     genres: list[GenericItem] = []
     associated: list[AssociatedSeries] = []
     cv_id: int | None = None

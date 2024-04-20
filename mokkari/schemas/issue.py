@@ -97,7 +97,7 @@ class CommonIssue(BaseModel):
     cover_date: date
     store_date: date | None = None
     image: HttpUrl | None = None
-    cover_hash: str | None = None
+    cover_hash: str = ""
     modified: datetime
 
 
@@ -150,11 +150,11 @@ class Issue(CommonIssue):
     story_titles: list[str] = Field(alias="name")
     price: Decimal | None = None
     rating: GenericItem
-    sku: str | None = None
-    isbn: str | None = None
-    upc: str | None = None
+    sku: str
+    isbn: str
+    upc: str
     page_count: int | None = Field(alias="page", default=None)
-    desc: str | None = None
+    desc: str
     arcs: list[BaseResource] = []
     credits: list[Credit] = []
     characters: list[BaseResource] = []
