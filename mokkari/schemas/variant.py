@@ -22,7 +22,7 @@ class Variant(BaseModel):
 
     """
 
-    name: str | None = None
-    sku: str | None = None
-    upc: str | None = None
+    name: str
+    sku: str
+    upc: str
     image: HttpUrl

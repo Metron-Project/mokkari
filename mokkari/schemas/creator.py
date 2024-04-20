@@ -29,7 +29,7 @@ class Creator(BaseResource):
 
     birth: PastDate | None = None
     death: date | None = None
-    desc: str | None = None
+    desc: str
     image: HttpUrl | None = None
     alias: list[str] | None = None
     cv_id: int | None = None

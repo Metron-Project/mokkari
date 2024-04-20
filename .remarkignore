@@ -8,6 +8,6 @@ __pycache__
 .pytest_cache
 .ruff_cache
 /test-results
+tests/README.md
 .tox
 .venv*
-tests/README.md

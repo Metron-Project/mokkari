@@ -25,7 +25,7 @@ class Universe(BaseResource):
     """
 
     publisher: GenericItem
-    designation: str | None = None
-    desc: str | None = None
+    designation: str
+    desc: str
     image: HttpUrl | None = None
     resource_url: HttpUrl

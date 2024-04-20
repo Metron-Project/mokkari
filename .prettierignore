@@ -1,5 +1,8 @@
+CODE_OF_CONDUCT.md
 dist
+docs
 .git
+.github
 .idea
 .mypy_cache
 /node_modules
@@ -11,6 +14,3 @@ __pycache__
 /test-results
 .tox
 .venv*
-CODE_OF_CONDUCT.md
-docs
-.github
