@@ -5,6 +5,8 @@ This module provides the following classes:
 - SqliteCache
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -23,7 +25,7 @@ class SqliteCache:
     """
 
     def __init__(
-        self: "SqliteCache",
+        self: SqliteCache,
         db_name: str = "mokkari_cache.db",
         expire: int | None = None,
     ) -> None:
@@ -34,7 +36,7 @@ class SqliteCache:
         self.cur.execute("CREATE TABLE IF NOT EXISTS responses (key, json, expire)")
         self.cleanup()
 
-    def get(self: "SqliteCache", key: str) -> Any | None:
+    def get(self: SqliteCache, key: str) -> Any | None:
         """Retrieve data from the cache database.
 
         Args:
@@ -45,7 +47,7 @@ class SqliteCache:
         self.cur.execute("SELECT json FROM responses WHERE key = ?", (key,))
         return json.loads(result[0]) if (result := self.cur.fetchone()) else None
 
-    def store(self: "SqliteCache", key: str, value: str) -> None:
+    def store(self: SqliteCache, key: str, value: str) -> None:
         """Save data to the cache database.
 
         Args:
@@ -60,7 +62,7 @@ class SqliteCache:
         )
         self.con.commit()
 
-    def cleanup(self: "SqliteCache") -> None:
+    def cleanup(self: SqliteCache) -> None:
         """Remove any expired data from the cache database."""
         if not self.expire:
             return
@@ -70,7 +72,7 @@ class SqliteCache:
         )
         self.con.commit()
 
-    def _determine_expire_str(self: "SqliteCache") -> str:
+    def _determine_expire_str(self: SqliteCache) -> str:
         dt = (
             datetime.now(tz=timezone.utc) + timedelta(days=self.expire)
             if self.expire

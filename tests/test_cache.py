@@ -3,6 +3,8 @@
 This module contains tests for SqliteCache objects.
 """
 
+from __future__ import annotations
+
 import pytest
 import requests_mock
 
@@ -12,7 +14,7 @@ from mokkari import api, exceptions
 class NoGet:
     """The NoGet object fakes storing data from the sqlite cache."""
 
-    def store(self: "NoGet", key: any, value: any) -> None:  # noqa: ARG002
+    def store(self: NoGet, key: any, value: any) -> None:  # noqa: ARG002
         """Save no data."""
         # This method should store key value pair
         return
@@ -21,7 +23,7 @@ class NoGet:
 class NoStore:
     """The NoStore object fakes getting data from the sqlite cache."""
 
-    def get(self: "NoStore", key: any) -> None:  # noqa: ARG002
+    def get(self: NoStore, key: any) -> None:  # noqa: ARG002
         """Retrieve no data."""
         return
 

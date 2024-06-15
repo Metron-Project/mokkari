@@ -6,6 +6,8 @@ This module provides the following classes:
 - Session
 """
 
+from __future__ import annotations
+
 import platform
 from collections import OrderedDict
 from typing import Any
@@ -46,7 +48,7 @@ class Session:
     """
 
     def __init__(
-        self: "Session",
+        self: Session,
         username: str,
         passwd: str,
         cache: sqlite_cache.SqliteCache | None = None,
@@ -63,7 +65,7 @@ class Session:
         self.cache = cache
 
     def _call(
-        self: "Session",
+        self: Session,
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
     ) -> dict[str, Any]:
@@ -99,7 +101,7 @@ class Session:
 
         return data
 
-    def creator(self: "Session", _id: int) -> Creator:
+    def creator(self: Session, _id: int) -> Creator:
         """Request data for a creator based on its ``_id``.
 
         Args:
@@ -124,7 +126,7 @@ class Session:
         return result
 
     def creators_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
         """Request a list of creators.
 
@@ -145,7 +147,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def character(self: "Session", _id: int) -> Character:
+    def character(self: Session, _id: int) -> Character:
         """Request data for a character based on its ``_id``.
 
         Args:
@@ -170,7 +172,7 @@ class Session:
         return result
 
     def characters_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
         """Request a list of characters.
 
@@ -191,7 +193,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def character_issues_list(self: "Session", _id: int) -> list[BaseIssue]:
+    def character_issues_list(self: Session, _id: int) -> list[BaseIssue]:
         """Request a list of issues that a character appears in.
 
         .. versionadded:: 2.2.0
@@ -213,7 +215,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def publisher(self: "Session", _id: int) -> Publisher:
+    def publisher(self: Session, _id: int) -> Publisher:
         """Request data for a publisher based on its ``_id``.
 
         Args:
@@ -238,7 +240,7 @@ class Session:
         return result
 
     def publishers_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
         """Request a list of publishers.
 
@@ -259,7 +261,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def team(self: "Session", _id: int) -> Team:
+    def team(self: Session, _id: int) -> Team:
         """Request data for a team based on its ``_id``.
 
         Args:
@@ -284,7 +286,7 @@ class Session:
         return result
 
     def teams_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
         """Request a list of teams.
 
@@ -305,7 +307,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def team_issues_list(self: "Session", _id: int) -> list[BaseIssue]:
+    def team_issues_list(self: Session, _id: int) -> list[BaseIssue]:
         """Request a list of issues that a team appears in.
 
         .. versionadded:: 2.2.0
@@ -327,7 +329,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def arc(self: "Session", _id: int) -> Arc:
+    def arc(self: Session, _id: int) -> Arc:
         """Request data for a story arc based on its ``_id``.
 
         Args:
@@ -352,7 +354,7 @@ class Session:
         return result
 
     def arcs_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
         """Request a list of story arcs.
 
@@ -373,7 +375,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def arc_issues_list(self: "Session", _id: int) -> list[BaseIssue]:
+    def arc_issues_list(self: Session, _id: int) -> list[BaseIssue]:
         """Request a list of issues for a story arc.
 
         Args:
@@ -393,7 +395,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def series(self: "Session", _id: int) -> Series:
+    def series(self: Session, _id: int) -> Series:
         """Request data for a series based on its ``_id``.
 
         Args:
@@ -418,7 +420,7 @@ class Session:
         return result
 
     def series_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseSeries]:
         """Request a list of series.
 
@@ -440,7 +442,7 @@ class Session:
         return result
 
     def series_type_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[GenericItem]:
         """Request a list of series types.
 
@@ -465,7 +467,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def issue(self: "Session", _id: int) -> Issue:
+    def issue(self: Session, _id: int) -> Issue:
         """Request data for an issue based on it's ``_id``.
 
         Args:
@@ -490,7 +492,7 @@ class Session:
         return result
 
     def issues_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseIssue]:
         """Request a list of issues.
 
@@ -512,7 +514,7 @@ class Session:
         return result
 
     def role_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[GenericItem]:
         """Request a list of creator roles.
 
@@ -533,7 +535,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def universe(self: "Session", _id: int) -> Universe:
+    def universe(self: Session, _id: int) -> Universe:
         """Request data for a universe based on its ``_id``.
 
         Args:
@@ -558,7 +560,7 @@ class Session:
         return result
 
     def universes_list(
-        self: "Session", params: dict[str, str | int] | None = None
+        self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
         """Request a list of universes.
 
@@ -580,7 +582,7 @@ class Session:
         return result
 
     def _get_results(
-        self: "Session",
+        self: Session,
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
     ) -> dict[str, Any]:
@@ -592,7 +594,7 @@ class Session:
             result = self._retrieve_all_results(result)
         return result
 
-    def _retrieve_all_results(self: "Session", data: dict[str, Any]) -> dict[str, Any]:
+    def _retrieve_all_results(self: Session, data: dict[str, Any]) -> dict[str, Any]:
         has_next_page = True
         next_page = data["next"]
 
@@ -620,7 +622,7 @@ class Session:
     @sleep_and_retry
     @limits(calls=25, period=ONE_MINUTE)
     def _request_data(
-        self: "Session", url: str, params: dict[str, str | int] | None = None
+        self: Session, url: str, params: dict[str, str | int] | None = None
     ) -> Any:
         if params is None:
             params = {}
@@ -641,7 +643,7 @@ class Session:
 
         return response
 
-    def _get_results_from_cache(self: "Session", key: str) -> Any | None:
+    def _get_results_from_cache(self: Session, key: str) -> Any | None:
         cached_response = None
 
         if self.cache:
@@ -654,7 +656,7 @@ class Session:
 
         return cached_response
 
-    def _save_results_to_cache(self: "Session", key: str, data: str) -> None:
+    def _save_results_to_cache(self: Session, key: str, data: str) -> None:
         if self.cache:
             try:
                 self.cache.store(key, data)
