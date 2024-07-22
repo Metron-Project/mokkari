@@ -71,6 +71,7 @@ class Series(CommonSeries):
         name (str): The name of the series.
         sort_name (str): The name used to determine the sort order for a series.
         series_type (GenericItem): The type of series.
+        status (str): The status of the series.
         publisher (GenericItem): The publisher of the series.
         year_end (int): The year the series ended.
         desc (str): The description of the series.
@@ -84,6 +85,7 @@ class Series(CommonSeries):
     name: str
     sort_name: str
     series_type: GenericItem
+    status: str
     publisher: GenericItem
     year_end: int | None = None
     desc: str
