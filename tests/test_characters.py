@@ -60,14 +60,14 @@ def test_character_list(talker: Session) -> None:
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "3-D Man (Chandler)"
     assert next(character_iter).name == "3-D Man (Garrett)"
-    assert len(chars) == 907
+    assert len(chars) == 975
     assert chars[2].name == "3-D Man (Garrett)"
 
 
 def test_character_issue_list(talker: Session) -> None:
     """Test for getting an issue list for an arc."""
     issues = talker.character_issues_list(1)
-    assert len(issues) == 403
+    assert len(issues) == 412
     assert issues[0].id == 258
     assert issues[0].issue_name == "Fantastic Four (1961) #45"
     assert issues[0].cover_date == date(1965, 12, 1)

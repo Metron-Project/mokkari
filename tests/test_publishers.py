@@ -23,13 +23,13 @@ def test_known_publishers(talker: Session) -> None:
     )
     assert marvel.founded == 1939
     assert marvel.modified == datetime(
-        2019,
-        6,
-        23,
-        15,
-        13,
-        23,
-        591390,
+        2024,
+        4,
+        7,
+        4,
+        53,
+        45,
+        729670,
         tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
     )
     assert marvel.resource_url.__str__() == "https://metron.cloud/publisher/marvel/"
@@ -42,7 +42,7 @@ def test_publisher_list(talker: Session) -> None:
     assert next(publisher_iter).name == "12-Gauge Comics"
     assert next(publisher_iter).name == "AAA Pop Comics"
     assert next(publisher_iter).name == "AWA Studios"
-    assert len(publishers) == 103
+    assert len(publishers) == 110
     assert publishers[2].name == "AWA Studios"
 
 

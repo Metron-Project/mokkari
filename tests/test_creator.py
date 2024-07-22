@@ -44,7 +44,7 @@ def test_creator_list(talker: Session) -> None:
     assert next(creator_iter).name == "Abel Laxamana"
     assert next(creator_iter).name == "Adam Freeman"
     assert next(creator_iter).name == "Adam Schlagman"
-    assert len(creators) == 352
+    assert len(creators) == 377
     assert creators[3].name == "Adam Schlagman"
 
 

@@ -23,6 +23,7 @@ def test_known_series(talker: Session) -> None:
     assert death.year_end == 2018
     assert death.issue_count == 5
     assert death.series_type.name == "Limited Series"
+    assert death.status == "Completed"
     assert death.publisher.id == 1
     assert death.publisher.name == "Marvel"
     assert death.modified == datetime(
@@ -53,6 +54,7 @@ def test_series_without_year_end(talker: Session) -> None:
     assert abs_carnage.publisher.id == 1
     assert abs_carnage.publisher.name == "Marvel"
     assert abs_carnage.series_type.name == "Limited Series"
+    assert abs_carnage.status == "Completed"
 
 
 def test_series_list(talker: Session) -> None:
@@ -61,16 +63,16 @@ def test_series_list(talker: Session) -> None:
     series_iter = iter(series)
     assert next(series_iter).id == 2547
     assert next(series_iter).id == 5959
+    assert next(series_iter).id == 7972
     assert next(series_iter).id == 2481
     assert next(series_iter).id == 763
-    assert next(series_iter).id == 7133
-    assert len(series) == 230
-    assert series[3].id == 763
-    assert series[3].volume == 2
-    assert series[3].issue_count == 57
-    assert series[4].id == 7133
-    assert series[4].display_name == "Batman HC (2012)"
-    assert series[4].volume == 1
+    assert len(series) == 245
+    assert series[3].id == 2481
+    assert series[3].volume == 1
+    assert series[3].issue_count == 715
+    assert series[4].id == 763
+    assert series[4].display_name == "Batman (2011)"
+    assert series[4].volume == 2
 
 
 def test_bad_series(talker: Session) -> None:
