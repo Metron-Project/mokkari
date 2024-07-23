@@ -12,16 +12,14 @@ from mokkari.schemas.generic import GenericItem
 
 
 class Universe(BaseResource):
-    """The Universe object extends the :obj:`BaseResource` by containing information for a universe.
+    """A data model representing a universe that extends BaseResource.
 
-    Attributes
-    ----------
-        publisher (int): The Metron identification number for the publisher
+    Attributes:
+        publisher (GenericItem): The publisher of the universe.
         designation (str): The designation of the universe.
         desc (str): The description of the universe.
-        image (url): The url for an image associated with the universe.
-        resource_url (url): The url for the resource.
-
+        image (HttpUrl, optional): The image URL of the universe.
+        resource_url (HttpUrl): The URL of the universe resource.
     """
 
     publisher: GenericItem

@@ -5,7 +5,7 @@ description = "Python wrapper for Metron API"
 authors = ["Brian Pepple <bdpepple@gmail.com>"]
 license = "GPL-3.0-or-later"
 maintainers = ["Brian Pepple <bdpepple@gmail.com>"]
-readme = "README.rst"
+readme = "README.md"
 packages = [{ include = "mokkari" }]
 exclude = ["*/**/*~"]
 include = [{ path = "tests", format = "sdist" }]
@@ -54,8 +54,10 @@ vulture = "^2.3"
 optional = true
 
 [tool.poetry.group.docs.dependencies]
-sphinx-rtd-theme = "^1.3.0"
-sphinxcontrib-napoleon = "^0.7"
+mkdocs = "^1.6.0"
+mkdocs-include-markdown-plugin = "^6.2.1"
+mkdocs-material = "^9.5.30"
+mkdocstrings = { extras = ["python"], version = "^0.25.1" }
 
 [build-system]
 requires = ["poetry-core>=1.1.0"]
@@ -170,6 +172,9 @@ combine-as-imports = true
 
 [tool.ruff.lint.pycodestyle]
 ignore-overlong-task-comments = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.vulture]
 exclude = [

@@ -9,13 +9,11 @@ from mokkari.schemas import BaseModel
 
 
 class Reprint(BaseModel):
-    """The :obj:`Reprint` object contains a list of reprinted issues.
+    """A data model representing a reprint.
 
-    Attributes
-    ----------
-        id (int): The Metron identification number for the team.
-        issue (str): The name of the issue.
-
+    Attributes:
+        id (int): The unique identifier of the reprint.
+        issue (str): The issue being reprinted.
     """
 
     id: int

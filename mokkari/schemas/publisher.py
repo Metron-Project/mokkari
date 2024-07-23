@@ -11,16 +11,14 @@ from mokkari.schemas.base import BaseResource
 
 
 class Publisher(BaseResource):
-    """The Publisher object extends :obj:`BaseResource` providing  all information for a publisher.
+    """A data model representing a publisher that extends BaseResource.
 
-    Attributes
-    ----------
-        founded (int): The year the publisher was founded.
+    Attributes:
+        founded (int, optional): The year the publisher was founded.
         desc (str): The description of the publisher.
-        image (HttpUrl): The url for an image associated with the publisher.
-        cv_id (int): Comic Vine ID for the publisher.
-        resource_url (HttpUrl): The url for the resource.
-
+        image (HttpUrl, optional): The image URL of the publisher.
+        cv_id (int, optional): The Comic Vine ID of the publisher.
+        resource_url (HttpUrl): The URL of the publisher resource.
     """
 
     founded: int | None = None

@@ -18,13 +18,11 @@ from mokkari.schemas.generic import GenericItem
 
 
 class AssociatedSeries(BaseModel):
-    """The :obj:`AssociatedSeries` object contains information about an associated series.
+    """A data model representing an associated series.
 
-    Attributes
-    ----------
-        id (int): The Metron identification number for the associated series.
+    Attributes:
+        id (int): The unique identifier of the associated series.
         name (str): The name of the associated series.
-
     """
 
     id: int
@@ -32,16 +30,14 @@ class AssociatedSeries(BaseModel):
 
 
 class CommonSeries(BaseModel):
-    """The :obj:`CommonSeries` contains fields common to :obj:`BaseSeries` & :obj:`Series` objects.
+    """A data model representing a common series.
 
-    Attributes
-    ----------
-        id (int): The Metron identification number for the series.
-        year_began (int): The year the series began.
-        issue_count (int): The number of issues.
-        volume (int): The volume of the series.
-        modified (datetime): The date/time the series was last changed.
-
+    Attributes:
+        id (int): The unique identifier of the common series.
+        year_began (int): The year the common series began.
+        issue_count (int): The number of issues in the common series.
+        volume (int): The volume number of the common series.
+        modified (datetime): The date and time when the common series was last modified.
     """
 
     id: int
@@ -52,34 +48,30 @@ class CommonSeries(BaseModel):
 
 
 class BaseSeries(CommonSeries):
-    """The :obj:`BaseSeries` object contains extend the :obj:`CommonSeries`.
+    """A data model representing a base series that extends CommonSeries.
 
-    Attributes
-    ----------
-        display_name (str): The name of the series.
-
+    Attributes:
+        display_name (str): The display name of the base series.
     """
 
     display_name: str = Field(alias="series")
 
 
 class Series(CommonSeries):
-    """:obj:`Series` extends :obj:`CommonSeries` and contains all information about a series.
+    """A data model representing a series that extends CommonSeries.
 
-    Attributes
-    ----------
+    Attributes:
         name (str): The name of the series.
-        sort_name (str): The name used to determine the sort order for a series.
-        series_type (GenericItem): The type of series.
+        sort_name (str): The name used for sorting the series.
+        series_type (GenericItem): The type of the series.
         status (str): The status of the series.
         publisher (GenericItem): The publisher of the series.
-        year_end (int): The year the series ended.
+        year_end (int, optional): The year the series ended.
         desc (str): The description of the series.
-        genres list(Generic): The genres of the series.
-        associated list(AssociatedSeries): The series associated with the series.
-        cv_id (int): The Comic Vine ID of the series.
-        resource_url (HttpUrl): The URL of the series
-
+        genres (list[GenericItem], optional): The genres associated with the series.
+        associated (list[AssociatedSeries], optional): The associated series.
+        cv_id (int, optional): The Comic Vine ID of the series.
+        resource_url (HttpUrl): The URL of the series resource.
     """
 
     name: str

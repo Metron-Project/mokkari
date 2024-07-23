@@ -12,18 +12,17 @@ from mokkari.schemas.base import BaseResource
 
 
 class Character(BaseResource):
-    """The Character object extends :obj:`BaseResource` providing  all information for a character.
+    """A data model representing a character that extends BaseResource.
 
-    Attributes
-    ----------
-        alias (list[str]): The alias of the character.
+    Attributes:
+        alias (list[str], optional): The aliases of the character.
         desc (str): The description of the character.
-        image (url): The url for an image associated with the character.
-        creators (list[:obj:`Generic`]): A list of creators for the character.
-        teams (list[:obj:`Generic`]): A list of teams for the character.
-        cv_id (int): Comic Vine ID for the character.
-        resource_url (url): The url for the resource.
-
+        image (HttpUrl, optional): The image URL of the character.
+        creators (list[BaseResource], optional): The creators of the character.
+        teams (list[BaseResource], optional): The teams the character belongs to.
+        universes (list[BaseResource], optional): The universes the character is associated with.
+        cv_id (int, optional): The Comic Vine ID of the character.
+        resource_url (HttpUrl): The URL of the character resource.
     """
 
     alias: list[str] | None = None

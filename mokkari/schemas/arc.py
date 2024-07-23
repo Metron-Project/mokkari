@@ -11,15 +11,13 @@ from mokkari.schemas.base import BaseResource
 
 
 class Arc(BaseResource):
-    """The Arc object extends :obj:`BaseResource` providing  all information for a story arc.
+    """A data model representing an arc that extends BaseResource.
 
-    Attributes
-    ----------
-        desc (str): The description of the story arc.
-        image (HttpUrl): The url for an image associated with the story arc.
-        cv_id (int): Comic Vine ID for the story arc.
-        resource_url (HttpUrl): The url for the resource.
-
+    Attributes:
+        desc (str): The description of the arc.
+        image (HttpUrl, optional): The image URL of the arc.
+        cv_id (int, optional): The Comic Vine ID of the arc.
+        resource_url (HttpUrl): The URL of the arc resource.
     """
 
     desc: str

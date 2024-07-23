@@ -13,18 +13,16 @@ from mokkari.schemas.base import BaseResource
 
 
 class Creator(BaseResource):
-    """The Creator object extends :obj:`BaseResource` providing  all information for a creator.
+    """A data model representing a creator that extends BaseResource.
 
-    Attributes
-    ----------
-        birth (date): The date of birth for the creator.
-        death (date): The date of death for the creator.
+    Attributes:
+        birth (PastDate, optional): The birthdate of the creator.
+        death (date, optional): The death date of the creator.
         desc (str): The description of the creator.
-        image (HttpUrl): The url for an image associated with the creator.
-        alias (list[str]): The alias of the creator.
-        cv_id (int): Comic Vine ID for the creator.
-        resource_url (HttpUrl): The url for the resource.
-
+        image (HttpUrl, optional): The image URL of the creator.
+        alias (list[str], optional): The aliases of the creator.
+        cv_id (int, optional): The Comic Vine ID of the creator.
+        resource_url (HttpUrl): The URL of the creator resource.
     """
 
     birth: PastDate | None = None
