@@ -9,13 +9,11 @@ from mokkari.schemas import BaseModel
 
 
 class GenericItem(BaseModel):
-    """The :obj:`GenericItem` object contains basic information for various resources.
+    """A data model representing a generic item.
 
-    Attributes
-    ----------
-        id (int): The id of the item.
-        name (str): The name of the item.
-
+    Attributes:
+        id (int): The unique identifier of the generic item.
+        name (str): The name of the generic item.
     """
 
     id: int

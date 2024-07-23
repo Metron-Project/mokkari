@@ -24,14 +24,12 @@ from mokkari.schemas.variant import Variant
 
 
 class Credit(BaseModel):
-    """The :obj:`Credit` object contains information about an issue creator credits.
+    """A class representing a credit with ID, creator, and role.
 
-    Attributes
-    ----------
-        id (int): The Metron identification number for the issue credit.
-        creator (str): The name of the creator for the issue credit.
-        role (list[GenericItem]): The role of the creator for the issue.
-
+    Attributes:
+        id (int): The ID of the credit.
+        creator (str): The creator associated with the credit.
+        role (list[GenericItem]): The role of the credit.
     """
 
     id: int
@@ -40,14 +38,12 @@ class Credit(BaseModel):
 
 
 class BasicSeries(BaseModel):
-    """The :obj:`BasicSeries` object contains basic series information for an issue.
+    """A class representing a basic series with name, volume, and year began.
 
-    Attributes
-    ----------
+    Attributes:
         name (str): The name of the series.
         volume (int): The volume of the series.
         year_began (int): The year the series began.
-
     """
 
     name: str
@@ -56,19 +52,18 @@ class BasicSeries(BaseModel):
 
 
 class IssueSeries(BaseModel):
-    """The :obj:`IssueSeries` object contains more detailed series information.
+    """A data model representing an issue series.
 
-    Attributes
-    ----------
-        id (int): The Metron identification number for series.
-        name (str): The name of the series.
-        sort_name (str): The sort name of the series.
-        volume (int): The volume of the series.
-        series_type (GenericItem): The type of series.
-        genres (list[Generic]): The genres of the series.
-
+    Attributes:
+        id (int): The unique identifier of the issue series.
+        name (str): The name of the issue series.
+        sort_name (str): The name used for sorting the issue series.
+        volume (int): The volume number of the issue series.
+        series_type (GenericItem): The type of the issue series.
+        genres (list[GenericItem], optional): The genres associated with the issue series.
     """
 
+    # TODO: Should this have the status field?
     id: int
     name: str
     sort_name: str
@@ -78,18 +73,16 @@ class IssueSeries(BaseModel):
 
 
 class CommonIssue(BaseModel):
-    """The :obj:`CommonIssue` object contains common information for BaseIssue and Issue objects.
+    """A data model representing a common issue.
 
-    Attributes
-    ----------
-        id (int): The Metron identification number for the associated series.
-        number (str): The number of the issue.
-        cover_date (date): The cover date of the issue.
-        store_date (date): The store date of the issue.
-        image (HttpUrl): The url of the cover image for the issue.
-        cover_hash (str): The hash of the cover image for the issue.
-        modified (datetime): The modified date of the issue.
-
+    Attributes:
+        id (int): The unique identifier of the common issue.
+        number (str): The number of the common issue.
+        cover_date (date): The cover date of the common issue.
+        store_date (date, optional): The store date of the common issue.
+        image (HttpUrl, optional): The image URL of the common issue.
+        cover_hash (str): The hash value of the common issue cover.
+        modified (datetime): The date and time when the common issue was last modified.
     """
 
     id: int
@@ -102,13 +95,11 @@ class CommonIssue(BaseModel):
 
 
 class BaseIssue(CommonIssue):
-    """The :obj:`BaseIssue` object extends the :obj:`CommonIssue` object.
+    """A data model representing a base issue that extends CommonIssue.
 
-    Attributes
-    ----------
-        issue_name (str): The name of the issue.
-        series (BasicSeries): The series for the issue.
-
+    Attributes:
+        issue_name (str): The name of the base issue.
+        series (BasicSeries): The basic series associated with the base issue.
     """
 
     issue_name: str = Field(alias="issue")
@@ -116,32 +107,29 @@ class BaseIssue(CommonIssue):
 
 
 class Issue(CommonIssue):
-    """The :obj:`Issue` object extends the :obj:`CommonIssue` object with all the info for an issue.
+    """A data model representing an issue that extends CommonIssue.
 
-    Attributes
-    ----------
-        publisher (GenericPublisher): The publisher of the issue.
-        series (IssueSeries): The series for the issue.
-        collection_title (str): The collection title of the issue. Normally only used with TPB.
-        story_titles (list[str]): A list of stories contained in the issue.
-        cover_date (date): The cover date of the issue.
-        store_date (date): The store date of the issue.
-        price (Decimal): The price of the issue.
+    Attributes:
+        publisher (GenericItem): The publisher of the issue.
+        series (IssueSeries): The series to which the issue belongs.
+        collection_title (str): The title of the issue collection.
+        story_titles (list[str]): The titles of the stories in the issue.
+        price (Decimal, optional): The price of the issue.
         rating (GenericItem): The rating of the issue.
-        sku (str): The sku of the issue.
-        isbn (str): The isbn of the issue.
-        upc (str): The upc of the issue.
-        page_count (int): The number of pages of the issue.
+        sku (str): The stock keeping unit (SKU) of the issue.
+        isbn (str): The International Standard Book Number (ISBN) of the issue.
+        upc (str): The Universal Product Code (UPC) of the issue.
+        page_count (int, optional): The number of pages in the issue.
         desc (str): The description of the issue.
-        arcs (list[BaseArc]): A list of story arcs for the issue.
-        credits (list[Credit]): A list of creator credits for the issue.
-        characters (list[BaseCharacter]): A list of characters for the issue.
-        teams (list[BaseTeam]): A list of teams for the issue.
-        reprints (list[Reprint]): A list of issues printed,
-        variants (list[Variant]): A list of variant covers for the issue.
-        cv_id (int): The Comic Vine ID of the issue.
-        resource_url (HttpUrl): The URL of the issue.
-
+        arcs (list[BaseResource], optional): The arcs associated with the issue.
+        credits (list[Credit], optional): The credits for the issue.
+        characters (list[BaseResource], optional): The characters featured in the issue.
+        teams (list[BaseResource], optional): The teams involved in the issue.
+        universes (list[BaseResource], optional): The universes related to the issue.
+        reprints (list[Reprint], optional): The reprints of the issue.
+        variants (list[Variant], optional): The variants of the issue.
+        cv_id (int, optional): The Comic Vine ID of the issue.
+        resource_url (HttpUrl): The URL of the issue resource.
     """
 
     publisher: GenericItem

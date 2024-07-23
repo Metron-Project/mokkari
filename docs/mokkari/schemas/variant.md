@@ -1,0 +1,1 @@
+:::mokkari.schemas.variant.Variant

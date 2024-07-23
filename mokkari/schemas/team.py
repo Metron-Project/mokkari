@@ -12,16 +12,15 @@ from mokkari.schemas.base import BaseResource
 
 
 class Team(BaseResource):
-    """The Team object extends the :obj:`BaseResource` by containing all information for a team.
+    """A data model representing a team that extends BaseResource.
 
-    Attributes
-    ----------
+    Attributes:
         desc (str): The description of the team.
-        image (url): The url for an image associated with the team.
-        creators (list[:obj:`Generic`]): A list of creators for the team.
-        cv_id (int): Comic Vine ID for the team.
-        resource_url (url): The url for the resource.
-
+        image (HttpUrl, optional): The image URL of the team.
+        creators (list[BaseResource], optional): The creators of the team.
+        universes (list[BaseResource], optional): The universes the team is associated with.
+        cv_id (int, optional): The Comic Vine ID of the team.
+        resource_url (HttpUrl): The URL of the team resource.
     """
 
     desc: str

@@ -1,0 +1,77 @@
+site_name: Mokkari
+site_url: https://mokkari.readthedocs.io/en/stable/
+site_description: A python wrapper for the Metron Comic Book Databaser API.
+site_author: Brian Pepple
+
+copyright: GPL-3.0
+
+repo_url: https://github.com/Metron-Project/mokkari
+repo_name: Metron-Project/mokkari
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.expand
+    - navigation.top
+  icon:
+    repo: material/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+markdown_extensions:
+  - pymdownx.highlight:
+      auto_title: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Mokkari:
+      - Session: mokkari/session.md
+      - Sqlite_Cache: mokkari/sqlitecache.md
+      - Exceptions: mokkari/exceptions.md
+  - Schemas:
+      - Arc: mokkari/schemas/arc.md
+      - BaseResource: mokkari/schemas/base.md
+      - Character: mokkari/schemas/character.md
+      - Creator: mokkari/schemas/creator.md
+      - GenericItem: mokkari/schemas/generic.md
+      - Issue: mokkari/schemas/issue.md
+      - Publisher: mokkari/schemas/publisher.md
+      - Reprint: mokkari/schemas/reprint.md
+      - Series: mokkari/schemas/series.md
+      - Team: mokkari/schemas/team.md
+      - Universe: mokkari/schemas/universe.md
+      - Variant: mokkari/schemas/variant.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            show_root_heading: True
+            show_root_full_path: False
+            show_category_heading: True
+            # Docstrings
+            docstring_style: google
+            docstring_section_style: spacy
+            line_length: 100
+            merge_init_into_class: True
+            show_signature_annotations: True
+            # Additional
+            show_source: False
+  - include-markdown

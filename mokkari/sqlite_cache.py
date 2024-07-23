@@ -14,14 +14,14 @@ from typing import Any
 
 
 class SqliteCache:
-    """The SqliteCache object to cache search results from Metron.
+    """A class for caching data using SQLite.
 
-    Args:
-    ----
-        db_name (str): Path and database name to use.
-        expire (int, optional): The number of days to keep the cache results
-        before they expire.
-
+    Methods:
+        - __init__: Initializes a new SqliteCache.
+        - get: Retrieve data from the cache database.
+        - store: Save data to the cache database.
+        - cleanup: Remove any expired data from the cache database.
+        - _determine_expire_str: Determine the expiration date string for cache data.
     """
 
     def __init__(
@@ -40,9 +40,10 @@ class SqliteCache:
         """Retrieve data from the cache database.
 
         Args:
-        ----
-            key (str): value to search for.
+            key: A string representing the value to search for.
 
+        Returns:
+            The retrieved data if found, or None if not found.
         """
         self.cur.execute("SELECT json FROM responses WHERE key = ?", (key,))
         return json.loads(result[0]) if (result := self.cur.fetchone()) else None
@@ -51,10 +52,11 @@ class SqliteCache:
         """Save data to the cache database.
 
         Args:
-        ----
-            key (str): Item id.
-            value (str): data to save.
+            key: A string representing the item id.
+            value: The data to be saved.
 
+        Returns:
+            None
         """
         self.cur.execute(
             "INSERT INTO responses(key, json, expire) VALUES(?, ?, ?)",
@@ -73,6 +75,7 @@ class SqliteCache:
         self.con.commit()
 
     def _determine_expire_str(self: SqliteCache) -> str:
+        """Determine the expiration date string for cache data."""
         dt = (
             datetime.now(tz=timezone.utc) + timedelta(days=self.expire)
             if self.expire
