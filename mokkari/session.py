@@ -38,7 +38,8 @@ ONE_MINUTE = 60
 class Session:
     """A class representing a Session for interacting with the API.
 
-    Args:username: A string representing the username for authentication.
+    Args:
+        username: A string representing the username for authentication.
         passwd: A string representing the password for authentication.
         cache: An optional SqliteCache object for caching data.
         user_agent: An optional string representing the user agent for the session.
