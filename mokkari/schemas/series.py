@@ -66,6 +66,7 @@ class Series(CommonSeries):
         series_type (GenericItem): The type of the series.
         status (str): The status of the series.
         publisher (GenericItem): The publisher of the series.
+        imprint (GenericItem, optional): The imprint of the series or None.
         year_end (int, optional): The year the series ended.
         desc (str): The description of the series.
         genres (list[GenericItem], optional): The genres associated with the series.
@@ -79,6 +80,7 @@ class Series(CommonSeries):
     series_type: GenericItem
     status: str
     publisher: GenericItem
+    imprint: GenericItem | None = None
     year_end: int | None = None
     desc: str
     genres: list[GenericItem] = []
