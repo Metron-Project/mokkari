@@ -26,6 +26,7 @@ from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character
 from mokkari.schemas.creator import Creator
 from mokkari.schemas.generic import GenericItem
+from mokkari.schemas.imprint import Imprint
 from mokkari.schemas.issue import BaseIssue, Issue
 from mokkari.schemas.publisher import Publisher
 from mokkari.schemas.series import BaseSeries, Series
@@ -540,6 +541,48 @@ class Session:
             ApiError: If there is an error in the API response data validation.
         """
         resp = self._get_results(["universe"], params)
+        adapter = TypeAdapter(list[BaseResource])
+        try:
+            result = adapter.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def imprint(self: Session, _id: int) -> Imprint:
+        """Retrieves an imprint by ID.
+
+        Args:
+            _id: The ID of the imprint to retrieve.
+
+        Returns:
+            Imprint: The retrieved imprint object.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._call(["imprint", _id])
+        adaptor = TypeAdapter(Imprint)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def imprints_list(
+        self: Session, params: dict[str, str | int] | None = None
+    ) -> list[BaseResource]:
+        """Retrieves a list of imprints based on the provided parameters.
+
+        Args:
+            params: A dictionary containing parameters for filtering imprints (optional).
+
+        Returns:
+            list[BaseResource]: A list of BaseResource objects representing the retrieved imprints.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._get_results(["imprint"], params)
         adapter = TypeAdapter(list[BaseResource])
         try:
             result = adapter.validate_python(resp["results"])

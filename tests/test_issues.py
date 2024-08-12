@@ -14,9 +14,19 @@ from mokkari import exceptions
 from mokkari.session import Session
 
 
+def test_imprint_issue(talker: Session) -> None:
+    """Test issue from an imprint."""
+    sandman = talker.issue(46182)
+    assert sandman.imprint.id == 1
+    assert sandman.imprint.name == "Vertigo Comics"
+
+
 def test_issue_with_rating(talker: Session) -> None:
     """Test issue with a rating."""
     ff = talker.issue(51658)
+    assert ff.publisher.id == 1
+    assert ff.publisher.name == "Marvel"
+    assert ff.imprint is None
     assert ff.series.name == "Fantastic Four"
     assert ff.series.volume == 7
     assert ff.rating.id == 3

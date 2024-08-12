@@ -13,6 +13,13 @@ from mokkari import exceptions
 from mokkari.session import Session
 
 
+def test_series_with_imprint(talker: Session) -> None:
+    """Test series from an imprint."""
+    sandman = talker.series(3315)
+    assert sandman.imprint.id == 1
+    assert sandman.imprint.name == "Vertigo Comics"
+
+
 def test_known_series(talker: Session) -> None:
     """Test for a known series."""
     death = talker.series(1)
@@ -66,7 +73,7 @@ def test_series_list(talker: Session) -> None:
     assert next(series_iter).id == 7972
     assert next(series_iter).id == 2481
     assert next(series_iter).id == 763
-    assert len(series) == 245
+    assert len(series) == 247
     assert series[3].id == 2481
     assert series[3].volume == 1
     assert series[3].issue_count == 715
