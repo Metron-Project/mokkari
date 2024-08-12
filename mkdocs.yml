@@ -48,6 +48,7 @@ nav:
       - Character: mokkari/schemas/character.md
       - Creator: mokkari/schemas/creator.md
       - GenericItem: mokkari/schemas/generic.md
+      - Imprint: mokkari/schemas/imprint.md
       - Issue: mokkari/schemas/issue.md
       - Publisher: mokkari/schemas/publisher.md
       - Reprint: mokkari/schemas/reprint.md
