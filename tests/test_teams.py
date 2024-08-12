@@ -35,14 +35,14 @@ def test_team_list(talker: Session) -> None:
     assert next(team_iter).name == "A-Force"
     assert next(team_iter).name == "A-Next"
     assert next(team_iter).name == "A.I.M."
-    assert len(teams) == 1534
+    assert len(teams) == 1545
     assert teams[4].name == "A.I.M."
 
 
 def test_team_issue_list(talker: Session) -> None:
     """Test for getting an issue list for an arc."""
     issues = talker.team_issues_list(1)
-    assert len(issues) == 618
+    assert len(issues) == 621
     assert issues[0].id == 258
     assert issues[0].issue_name == "Fantastic Four (1961) #45"
     assert issues[0].cover_date == date(1965, 12, 1)
