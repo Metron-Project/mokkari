@@ -68,18 +68,18 @@ def test_series_list(talker: Session) -> None:
     """Test the SeriesList."""
     series = talker.series_list({"name": "batman"})
     series_iter = iter(series)
+    assert next(series_iter).id == 8477
     assert next(series_iter).id == 2547
     assert next(series_iter).id == 5959
     assert next(series_iter).id == 7972
     assert next(series_iter).id == 2481
-    assert next(series_iter).id == 763
-    assert len(series) == 247
-    assert series[3].id == 2481
+    assert len(series) == 262
+    assert series[3].id == 7972
     assert series[3].volume == 1
-    assert series[3].issue_count == 715
-    assert series[4].id == 763
-    assert series[4].display_name == "Batman (2011)"
-    assert series[4].volume == 2
+    assert series[3].issue_count == 6
+    assert series[4].id == 2481
+    assert series[4].display_name == "Batman (1940)"
+    assert series[4].volume == 1
 
 
 def test_bad_series(talker: Session) -> None:
