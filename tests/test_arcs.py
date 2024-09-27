@@ -38,14 +38,12 @@ def test_arcs_list(talker: Session) -> None:
     """Test for ArcsList."""
     arcs = talker.arcs_list()
     arc_iter = iter(arcs)
-    assert next(arc_iter).name == '"Blue Beetle" Road Trip'
-    assert next(arc_iter).name == '"Bone" The Great Cow Race'
     assert next(arc_iter).name == "'Til Death Do Us..."
     assert next(arc_iter).name == "(She) Drunk History"
     assert next(arc_iter).name == "1+2 = Fantastic Three"
     assert next(arc_iter).name == "1602"
-    assert len(arcs) == 1817
-    assert arcs[5].name == "1602"
+    assert len(arcs) == 1846
+    assert arcs[3].name == "1602"
 
 
 def test_arc_issue_list(talker: Session) -> None:

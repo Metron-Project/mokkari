@@ -59,6 +59,7 @@ class IssueSeries(BaseModel):
         name (str): The name of the issue series.
         sort_name (str): The name used for sorting the issue series.
         volume (int): The volume number of the issue series.
+        year_began (int): The year the issue's series began.
         series_type (GenericItem): The type of the issue series.
         genres (list[GenericItem], optional): The genres associated with the issue series.
     """
@@ -68,6 +69,7 @@ class IssueSeries(BaseModel):
     name: str
     sort_name: str
     volume: int
+    year_began: int
     series_type: GenericItem
     genres: list[GenericItem] = []
 
