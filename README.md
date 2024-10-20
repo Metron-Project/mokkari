@@ -10,7 +10,7 @@ A python wrapper for the [Metron Comic Book Database](https://metron.cloud) API.
 ## Installation
 
 ```bash
-pipx install mokkari
+pip install mokkari
 ```
 
 ## Example Usage
