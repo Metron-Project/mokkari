@@ -20,6 +20,7 @@ class Team(BaseResource):
         creators (list[BaseResource], optional): The creators of the team.
         universes (list[BaseResource], optional): The universes the team is associated with.
         cv_id (int, optional): The Comic Vine ID of the team.
+        gcd_id (int, optional): The Grand Comics Database ID of the team.
         resource_url (HttpUrl): The URL of the team resource.
     """
 
@@ -28,4 +29,5 @@ class Team(BaseResource):
     creators: list[BaseResource] = []
     universes: list[BaseResource] = []
     cv_id: int | None = None
+    gcd_id: int | None = None
     resource_url: HttpUrl
