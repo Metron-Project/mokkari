@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mokkari"
-version = "3.4.0"
+version = "3.5.0"
 description = "Python wrapper for Metron API"
 authors = ["Brian Pepple <bdpepple@gmail.com>"]
 license = "GPL-3.0-or-later"
@@ -10,7 +10,7 @@ packages = [{ include = "mokkari" }]
 exclude = ["*/**/*~"]
 include = [{ path = "tests", format = "sdist" }]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
@@ -18,6 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Internet",
   "Operating System :: MacOS :: MacOS X",
   "Operating System :: POSIX",
@@ -25,13 +26,13 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Operating System :: Microsoft :: Windows",
 ]
-keywords = ["comics", "comic", "metadata"]
+keywords = ["comics", "comic", "metadata", "api", "rest"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 requests = "^2.26.0"
 ratelimit = "^2.2.1"
-pydantic = "^2.5.3"
+pydantic = "^2.10.3"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.5.0"
@@ -46,7 +47,7 @@ requests-mock = "^1.9.3"
 codespell = "^2.1.0"
 pyright = "^1.1.232"
 radon = { version = "^6.0.1", extras = ["toml"] }
-ruff = "^0.4.9"
+ruff = "^0.8.3"
 types-python-dateutil = "^2.8.19"
 vulture = "^2.3"
 
