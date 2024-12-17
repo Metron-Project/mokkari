@@ -22,6 +22,7 @@ class Character(BaseResource):
         teams (list[BaseResource], optional): The teams the character belongs to.
         universes (list[BaseResource], optional): The universes the character is associated with.
         cv_id (int, optional): The Comic Vine ID of the character.
+        gcd_id (int, optional): The Grand Comics Database ID of the character.
         resource_url (HttpUrl): The URL of the character resource.
     """
 
@@ -32,4 +33,5 @@ class Character(BaseResource):
     teams: list[BaseResource] = []
     universes: list[BaseResource] = []
     cv_id: int | None = None
+    gcd_id: int | None = None
     resource_url: HttpUrl

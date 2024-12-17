@@ -72,6 +72,7 @@ class Series(CommonSeries):
         genres (list[GenericItem], optional): The genres associated with the series.
         associated (list[AssociatedSeries], optional): The associated series.
         cv_id (int, optional): The Comic Vine ID of the series.
+        gcd_id (int, optional): The Grand Comics Database ID of the series.
         resource_url (HttpUrl): The URL of the series resource.
     """
 
@@ -86,4 +87,5 @@ class Series(CommonSeries):
     genres: list[GenericItem] = []
     associated: list[AssociatedSeries] = []
     cv_id: int | None = None
+    gcd_id: int | None = None
     resource_url: HttpUrl

@@ -132,6 +132,7 @@ class Issue(CommonIssue):
         reprints (list[Reprint], optional): The reprints of the issue.
         variants (list[Variant], optional): The variants of the issue.
         cv_id (int, optional): The Comic Vine ID of the issue.
+        gcd_id (int, optional): The Grand Comics Database ID of the issue.
         resource_url (HttpUrl): The URL of the issue resource.
     """
 
@@ -155,4 +156,5 @@ class Issue(CommonIssue):
     reprints: list[Reprint] = []
     variants: list[Variant] = []
     cv_id: int | None = None
+    gcd_id: int | None = None
     resource_url: HttpUrl

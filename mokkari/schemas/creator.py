@@ -22,6 +22,7 @@ class Creator(BaseResource):
         image (HttpUrl, optional): The image URL of the creator.
         alias (list[str], optional): The aliases of the creator.
         cv_id (int, optional): The Comic Vine ID of the creator.
+        gcd_id (int, optional): The Grand Comics Database ID of the creator.
         resource_url (HttpUrl): The URL of the creator resource.
     """
 
@@ -31,4 +32,5 @@ class Creator(BaseResource):
     image: HttpUrl | None = None
     alias: list[str] | None = None
     cv_id: int | None = None
+    gcd_id: int | None = None
     resource_url: HttpUrl

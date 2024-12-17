@@ -19,6 +19,7 @@ class Universe(BaseResource):
         designation (str): The designation of the universe.
         desc (str): The description of the universe.
         image (HttpUrl, optional): The image URL of the universe.
+        gcd_id (int, optional): The Grand Comics Database ID of the universe.
         resource_url (HttpUrl): The URL of the universe resource.
     """
 
@@ -26,4 +27,5 @@ class Universe(BaseResource):
     designation: str
     desc: str
     image: HttpUrl | None = None
+    gcd_id: int | None = None
     resource_url: HttpUrl
