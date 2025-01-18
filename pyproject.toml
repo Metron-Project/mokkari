@@ -31,8 +31,8 @@ keywords = ["comics", "comic", "metadata", "api", "rest"]
 [tool.poetry.dependencies]
 python = "^3.10"
 requests = "^2.26.0"
-ratelimit = "^2.2.1"
 pydantic = "^2.10.3"
+pyrate-limiter = "^3.7.0"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.5.0"
