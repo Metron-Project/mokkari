@@ -8,14 +8,16 @@ This module provides the following classes:
 
 from __future__ import annotations
 
+__all__ = ["Session"]
+
 import platform
 from collections import OrderedDict
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import urlencode
 
 import requests
 from pydantic import TypeAdapter, ValidationError
-from ratelimit import limits, sleep_and_retry
+from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
@@ -33,7 +35,11 @@ from mokkari.schemas.series import BaseSeries, Series
 from mokkari.schemas.team import Team
 from mokkari.schemas.universe import Universe
 
-ONE_MINUTE = 60
+METRON_MINUTE_RATE_LIMIT = 30
+
+
+def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
+    return "metron", 1
 
 
 class Session:
@@ -45,6 +51,12 @@ class Session:
         cache: An optional SqliteCache object for caching data.
         user_agent: An optional string representing the user agent for the session.
     """
+
+    _minute_rate = Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE)
+    _rates: ClassVar[list[Rate]] = [_minute_rate]
+    _bucket = InMemoryBucket(_rates)
+    _limiter = Limiter(_bucket, raise_when_fail=False, max_delay=Duration.MINUTE)
+    decorator = _limiter.as_decorator()
 
     def __init__(
         self: Session,
@@ -645,8 +657,7 @@ class Session:
 
         return data
 
-    @sleep_and_retry
-    @limits(calls=25, period=ONE_MINUTE)
+    @decorator(rate_mapping)
     def _request_data(
         self: Session, url: str, params: dict[str, str | int] | None = None
     ) -> Any:
