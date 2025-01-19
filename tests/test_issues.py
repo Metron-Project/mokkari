@@ -30,6 +30,8 @@ def test_issue_with_rating(talker: Session) -> None:
     assert ff.series.name == "Fantastic Four"
     assert ff.series.volume == 7
     assert ff.series.year_began == 2018
+    assert ff.number == "47"
+    assert ff.alt_number == "692"
     assert ff.rating.id == 3
     assert ff.rating.name == "Teen"
     assert ff.cover_date == date(2022, 11, 1)

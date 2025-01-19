@@ -115,6 +115,7 @@ class Issue(CommonIssue):
         publisher (GenericItem): The publisher of the issue.
         imprint (GenericItem, optional): The imprint of the issue or None.
         series (IssueSeries): The series to which the issue belongs.
+        alt_number (str): The alternative number of the issue.
         collection_title (str): The title of the issue collection.
         story_titles (list[str]): The titles of the stories in the issue.
         price (Decimal, optional): The price of the issue.
@@ -139,6 +140,7 @@ class Issue(CommonIssue):
     publisher: GenericItem
     imprint: GenericItem | None = None
     series: IssueSeries
+    alt_number: str
     collection_title: str = Field(alias="title")
     story_titles: list[str] = Field(alias="name")
     price: Decimal | None = None
