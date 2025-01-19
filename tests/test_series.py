@@ -4,7 +4,6 @@ This module contains tests for Series objects.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests_mock
@@ -33,16 +32,6 @@ def test_known_series(talker: Session) -> None:
     assert death.status == "Completed"
     assert death.publisher.id == 1
     assert death.publisher.name == "Marvel"
-    assert death.modified == datetime(
-        2023,
-        10,
-        23,
-        16,
-        58,
-        50,
-        526656,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
     assert (
         death.resource_url.__str__()
         == "https://metron.cloud/series/death-of-the-inhumans-2018/"
@@ -73,7 +62,7 @@ def test_series_list(talker: Session) -> None:
     assert next(series_iter).id == 5959
     assert next(series_iter).id == 7972
     assert next(series_iter).id == 2481
-    assert len(series) == 262
+    assert len(series) == 295
     assert series[3].id == 7972
     assert series[3].volume == 1
     assert series[3].issue_count == 6

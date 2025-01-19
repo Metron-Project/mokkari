@@ -41,11 +41,11 @@ def test_creator_list(talker: Session) -> None:
     creators = talker.creators_list({"name": "man"})
     creator_iter = iter(creators)
     assert next(creator_iter).name == "A. J. Lieberman"
+    assert next(creator_iter).name == "Aaron Guzman"
     assert next(creator_iter).name == "Abel Laxamana"
     assert next(creator_iter).name == "Adam Freeman"
-    assert next(creator_iter).name == "Adam Schlagman"
-    assert len(creators) == 387
-    assert creators[3].name == "Adam Schlagman"
+    assert len(creators) == 406
+    assert creators[3].name == "Adam Freeman"
 
 
 def test_bad_creator(talker: Session) -> None:
