@@ -42,7 +42,7 @@ def test_arcs_list(talker: Session) -> None:
     assert next(arc_iter).name == "(She) Drunk History"
     assert next(arc_iter).name == "1+2 = Fantastic Three"
     assert next(arc_iter).name == "1602"
-    assert len(arcs) == 1934
+    assert len(arcs) == 1935
     assert arcs[3].name == "1602"
 
 
