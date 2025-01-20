@@ -22,6 +22,7 @@ def test_known_publishers(talker: Session) -> None:
         == "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg"
     )
     assert marvel.founded == 1939
+    assert marvel.country == "US"
     assert marvel.modified == datetime(
         2024,
         4,

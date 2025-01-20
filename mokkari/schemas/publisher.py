@@ -5,9 +5,24 @@ This module provides the following classes:
 - Publisher
 """
 
+from typing import Annotated
+
 from pydantic import HttpUrl
 
 from mokkari.schemas.base import BaseResource
+
+COUNTY_CODE_LENGTH = 2
+
+
+def ensure_country_code_length(value: str) -> str:
+    """Ensure the country length is correct."""
+    # Should verify it's a valid country code, but checking its length should suffice for now.
+    if not value:
+        return value
+    if len(value) != COUNTY_CODE_LENGTH:
+        msg = f"Country code must be {COUNTY_CODE_LENGTH} characters long."
+        raise ValueError(msg)
+    return value
 
 
 class Publisher(BaseResource):
@@ -15,6 +30,7 @@ class Publisher(BaseResource):
 
     Attributes:
         founded (int, optional): The year the publisher was founded.
+        country: str: An ISO 3166-1 2-letter country code.
         desc (str): The description of the publisher.
         image (HttpUrl, optional): The image URL of the publisher.
         cv_id (int, optional): The Comic Vine ID of the publisher.
@@ -23,6 +39,7 @@ class Publisher(BaseResource):
     """
 
     founded: int | None = None
+    country: Annotated[str, ensure_country_code_length]
     desc: str
     image: HttpUrl | None = None
     cv_id: int | None = None
