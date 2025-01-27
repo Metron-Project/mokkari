@@ -36,6 +36,8 @@ from mokkari.schemas.team import Team
 from mokkari.schemas.universe import Universe
 
 METRON_MINUTE_RATE_LIMIT = 30
+METRON_URL = "https://metron.cloud/api/{}/"
+LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -50,6 +52,7 @@ class Session:
         passwd: A string representing the password for authentication.
         cache: An optional SqliteCache object for caching data.
         user_agent: An optional string representing the user agent for the session.
+        dev_mode: A boolean indicating whether the session should be run against a local Metron instance.
     """
 
     _minute_rate = Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE)
@@ -64,6 +67,7 @@ class Session:
         passwd: str,
         cache: sqlite_cache.SqliteCache | None = None,
         user_agent: str | None = None,
+        dev_mode: bool = False,
     ) -> None:
         """Initialize a Session object with the provided username, password, cache, and user agent."""
         self.username = username
@@ -72,7 +76,7 @@ class Session:
             "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
             f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
         }
-        self.api_url = "https://metron.cloud/api/{}/"
+        self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
 
     def _call(
