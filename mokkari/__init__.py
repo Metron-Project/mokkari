@@ -12,6 +12,7 @@ def api(
     passwd: str | None = None,
     cache: sqlite_cache.SqliteCache | None = None,
     user_agent: str | None = None,
+    dev_mode: bool = False,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
@@ -22,6 +23,7 @@ def api(
         cache (SqliteCache): SqliteCache to use
         user_agent (str): The user agent string for the application using Mokkari.
         For example 'Foo Bar/1.0'.
+        dev_mode (bool): Whether the library should be run against a local Metron instance.
 
     Returns:
     -------
@@ -39,4 +41,6 @@ def api(
     if username is None or passwd is None:
         raise exceptions.AuthenticationError
 
-    return session.Session(username, passwd, cache=cache, user_agent=user_agent)
+    return session.Session(
+        username, passwd, cache=cache, user_agent=user_agent, dev_mode=dev_mode
+    )
