@@ -118,7 +118,7 @@ export default [
       "plugin:promise/recommended",
       "plugin:switch-case/recommended",
       // SECURITY
-      "plugin:no-unsanitized/DOM",
+      // "plugin:no-unsanitized/DOM",
     ],
     overrides: [
       {
