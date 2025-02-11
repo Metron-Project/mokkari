@@ -12,14 +12,13 @@ __all__ = ["Session"]
 
 import platform
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any, ClassVar
 from urllib.parse import urlencode
 
 import requests
 from pydantic import TypeAdapter, ValidationError
 from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
 
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc
@@ -110,7 +109,7 @@ class Session:
         if cached_response is not None:
             return cached_response
 
-        data = self._request_data(url, params)
+        data = self._request_data("GET", url, params)
 
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
@@ -648,7 +647,7 @@ class Session:
                     has_next_page = False
                 continue
 
-            response = self._request_data(next_page)
+            response = self._request_data("GET", next_page)
             data["results"].extend(response["results"])
 
             self._save_results_to_cache(next_page, response)
@@ -662,38 +661,48 @@ class Session:
 
     @decorator(rate_mapping)
     def _request_data(
-        self: Session, url: str, params: dict[str, str | int] | None = None
+        self: Session,
+        method: str,
+        url: str,
+        params: dict[str, str | int] | None = None,
+        data=None,
     ) -> Any:
-        """Send a request to the specified URL with optional parameters and handles retries.
-
-        Args:
-            url: A string representing the URL to send the request to.
-            params: An optional dictionary of parameters to include in the request.
-
-        Returns:
-            The JSON response data from the request.
-
-        Raises:
-            ApiError: If there is a connection error during the request.
-        """
         if params is None:
             params = {}
 
+        data_dict = data.model_dump() if data is not None else None
+        files = None
+        if data_dict is not None and "image" in data_dict:  # NOQA: SIM102
+            if img := data_dict.pop("image"):
+                img_path = Path(img)
+                files = {"image": (img_path.name, img_path.read_bytes())}
+
         try:
-            session = requests.Session()
-            retry = Retry(connect=3, backoff_factor=0.5)
-            session.mount("https://", HTTPAdapter(max_retries=retry))
-            response = session.get(
+            response = requests.request(
+                method,
                 url,
                 params=params,
                 timeout=2.5,
                 auth=(self.username, self.passwd),
                 headers=self.header,
-            ).json()
-        except requests.exceptions.ConnectionError as e:
+                data=data_dict,
+                files=files,
+            )
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout,
+        ) as e:
             raise exceptions.ApiError(f"Connection error: {e!r}") from e
 
-        return response
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            raise exceptions.ApiError(f"HTTP error: {e!r}") from e
+
+        resp = response.json()
+        if "detail" in resp:
+            raise exceptions.ApiError(resp["detail"])
+        return resp
 
     def _get_results_from_cache(self: Session, key: str) -> Any | None:
         """Retrieve cached response data using the specified key.
