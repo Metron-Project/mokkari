@@ -21,7 +21,7 @@ from pydantic import TypeAdapter, ValidationError
 from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
 
 from mokkari import __version__, exceptions, sqlite_cache
-from mokkari.schemas.arc import Arc
+from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character
 from mokkari.schemas.creator import Creator, CreatorPost
@@ -37,7 +37,7 @@ METRON_MINUTE_RATE_LIMIT = 30
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
-T = TypeVar("T", PublisherPost, CreatorPost)
+T = TypeVar("T", ArcPost, CreatorPost, PublisherPost)
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -402,6 +402,26 @@ class Session:
             ApiError: If there is an error in the API response data validation.
         """
         resp = self._get(["arc", _id])
+        adaptor = TypeAdapter(Arc)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def arc_post(self: Session, data: ArcPost) -> Arc:
+        """Create a new arc.
+
+        Args:
+            data: ArcPost object with the arc data.
+
+        Returns:
+            An Arc object containing information about the created arc.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["arc"], data)
         adaptor = TypeAdapter(Arc)
         try:
             result = adaptor.validate_python(resp)

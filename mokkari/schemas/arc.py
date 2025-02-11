@@ -5,7 +5,9 @@ This module provides the following classes:
 - Arc
 """
 
-from pydantic import HttpUrl
+__all__ = ["Arc", "ArcPost"]
+
+from pydantic import BaseModel, HttpUrl
 
 from mokkari.schemas.base import BaseResource
 
@@ -26,3 +28,21 @@ class Arc(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+
+
+class ArcPost(BaseModel):
+    """A data model representing an arc to be created.
+
+    Attributes:
+        name (str): The name of the arc.
+        desc (str, optional): The description of the arc.
+        image (str, optional): The image URL of the arc.
+        cv_id (int, optional): The Comic Vine ID of the arc.
+        gcd_id (int, optional): The Grand Comics Database ID of the arc.
+    """
+
+    name: str
+    desc: str | None = None
+    image: str | None = None
+    cv_id: int | None = None
+    gcd_id: int | None = None
