@@ -5,9 +5,11 @@ This module provides the following classes:
 - Creator
 """
 
+__all__ = ["Creator", "CreatorPost"]
+
 from datetime import date
 
-from pydantic import HttpUrl, PastDate
+from pydantic import BaseModel, HttpUrl, PastDate
 
 from mokkari.schemas.base import BaseResource
 
@@ -34,3 +36,27 @@ class Creator(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+
+
+class CreatorPost(BaseModel):
+    """A data model representing a creator to be created.
+
+    Attributes:
+        name (str): The name of the creator.
+        birth (PastDate, optional): The birthdate of the creator.
+        death (date, optional): The death date of the creator.
+        desc (str, optional): The description of the creator.
+        image (str, optional): The image URL of the creator.
+        alias (list[str], optional): The aliases of the creator.
+        cv_id (int, optional): The Comic Vine ID of the creator.
+        gcd_id (int, optional): The Grand Comics Database ID of the creator.
+    """
+
+    name: str
+    birth: PastDate | None = None
+    death: date | None = None
+    desc: str | None = None
+    image: str | None = None
+    alias: list[str] | None = None
+    cv_id: int | None = None
+    gcd_id: int | None = None

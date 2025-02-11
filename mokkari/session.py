@@ -13,7 +13,7 @@ __all__ = ["Session"]
 import platform
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 from urllib.parse import urlencode
 
 import requests
@@ -24,11 +24,11 @@ from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character
-from mokkari.schemas.creator import Creator
+from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
 from mokkari.schemas.issue import BaseIssue, Issue
-from mokkari.schemas.publisher import Publisher
+from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.schemas.series import BaseSeries, Series
 from mokkari.schemas.team import Team
 from mokkari.schemas.universe import Universe
@@ -36,6 +36,8 @@ from mokkari.schemas.universe import Universe
 METRON_MINUTE_RATE_LIMIT = 30
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
+
+T = TypeVar("T", PublisherPost, CreatorPost)
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -118,6 +120,23 @@ class Session:
 
         return data
 
+    def _send(self: Session, method: str, endpoint: list[str], data: T) -> any:
+        """Send a request to the specified endpoint with the given data.
+
+        Args:
+            method: The HTTP method for the request.
+            endpoint: A list of strings representing the endpoint path.
+            data: The data to be sent with the request.
+
+        Returns:
+            The response data from the API.
+
+        Raises:
+            ApiError: If there is an error during the API call.
+        """
+        url = self.api_url.format("/".join(str(e) for e in endpoint))
+        return self._request_data(method=method, url=url, data=data)
+
     def creator(self: Session, _id: int) -> Creator:
         """Retrieve information about a creator with the specified ID.
 
@@ -131,6 +150,26 @@ class Session:
             ValidationError: If there is an error validating the response data.
         """
         resp = self._get(["creator", _id])
+        adaptor = TypeAdapter(Creator)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def creator_post(self: Session, data: CreatorPost) -> Creator:
+        """Create a new creator.
+
+        Args:
+            data: CreatorPost object with the creator data.
+
+        Returns:
+            A Creator object containing information about the created creator.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["creator"], data)
         adaptor = TypeAdapter(Creator)
         try:
             result = adaptor.validate_python(resp)
@@ -237,6 +276,26 @@ class Session:
 
         """
         resp = self._get(["publisher", _id])
+        adaptor = TypeAdapter(Publisher)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def publisher_post(self: Session, data: PublisherPost) -> Publisher:
+        """Create a new publisher.
+
+        Args:
+            data: PublisherPost object with the publisher data.
+
+        Returns:
+            A Publisher object containing information about the created publisher.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["publisher"], data)
         adaptor = TypeAdapter(Publisher)
         try:
             result = adaptor.validate_python(resp)
@@ -665,7 +724,7 @@ class Session:
         method: str,
         url: str,
         params: dict[str, str | int] | None = None,
-        data=None,
+        data: T | None = None,
     ) -> Any:
         if params is None:
             params = {}
