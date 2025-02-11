@@ -21,7 +21,6 @@ from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
-# Alias these modules to prevent namespace collision with methods.
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc
 from mokkari.schemas.base import BaseResource
@@ -79,7 +78,7 @@ class Session:
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
 
-    def _call(
+    def _get(
         self: Session,
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
@@ -132,7 +131,7 @@ class Session:
         Raises:
             ValidationError: If there is an error validating the response data.
         """
-        resp = self._call(["creator", _id])
+        resp = self._get(["creator", _id])
         adaptor = TypeAdapter(Creator)
         try:
             result = adaptor.validate_python(resp)
@@ -176,7 +175,7 @@ class Session:
             ApiError: If there is an error in the API response data validation.
 
         """
-        resp = self._call(["character", _id])
+        resp = self._get(["character", _id])
         adaptor = TypeAdapter(Character)
         try:
             result = adaptor.validate_python(resp)
@@ -238,7 +237,7 @@ class Session:
             A Publisher object containing information about the specified publisher.
 
         """
-        resp = self._call(["publisher", _id])
+        resp = self._get(["publisher", _id])
         adaptor = TypeAdapter(Publisher)
         try:
             result = adaptor.validate_python(resp)
@@ -281,7 +280,7 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["team", _id])
+        resp = self._get(["team", _id])
         adaptor = TypeAdapter(Team)
         try:
             result = adaptor.validate_python(resp)
@@ -344,7 +343,7 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["arc", _id])
+        resp = self._get(["arc", _id])
         adaptor = TypeAdapter(Arc)
         try:
             result = adaptor.validate_python(resp)
@@ -406,7 +405,7 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["series", _id])
+        resp = self._get(["series", _id])
         adaptor = TypeAdapter(Series)
         try:
             result = adaptor.validate_python(resp)
@@ -470,7 +469,7 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["issue", _id])
+        resp = self._get(["issue", _id])
         adaptor = TypeAdapter(Issue)
         try:
             result = adaptor.validate_python(resp)
@@ -534,7 +533,7 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["universe", _id])
+        resp = self._get(["universe", _id])
         adaptor = TypeAdapter(Universe)
         try:
             result = adaptor.validate_python(resp)
@@ -576,7 +575,7 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._call(["imprint", _id])
+        resp = self._get(["imprint", _id])
         adaptor = TypeAdapter(Imprint)
         try:
             result = adaptor.validate_python(resp)
@@ -623,7 +622,7 @@ class Session:
         if params is None:
             params = {}
 
-        result = self._call(endpoint, params=params)
+        result = self._get(endpoint, params=params)
         if result["next"]:
             result = self._retrieve_all_results(result)
         return result
