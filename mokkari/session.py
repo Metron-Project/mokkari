@@ -27,7 +27,7 @@ from mokkari.schemas.character import Character, CharacterPost, CharacterPostRes
 from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
-from mokkari.schemas.issue import BaseIssue, Issue
+from mokkari.schemas.issue import BaseIssue, Issue, IssuePost, IssuePostResponse
 from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
@@ -42,6 +42,7 @@ T = TypeVar(
     ArcPost,
     CharacterPost,
     CreatorPost,
+    IssuePost,
     PublisherPost,
     SeriesPost,
     TeamPost,
@@ -746,6 +747,47 @@ class Session:
         """
         resp = self._get(["issue", _id])
         adaptor = TypeAdapter(Issue)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def issue_post(self: Session, data: IssuePost) -> IssuePostResponse:
+        """Create a new issue.
+
+        Args:
+            data: IssuePost object with the issue data.
+
+        Returns:
+            An IssuePostResponse object containing information about the created issue.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["issue"], data)
+        adaptor = TypeAdapter(IssuePostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def issue_patch(self: Session, id_: int, data: IssuePost) -> IssuePostResponse:
+        """Update an existing issue.
+
+        Args:
+            id_: The ID of the issue to update.
+            data: IssuePost object with the updated issue data.
+
+        Returns:
+            An IssuePostResponse object containing information about the updated issue.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["issue", id_], data)
+        adaptor = TypeAdapter(IssuePostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
