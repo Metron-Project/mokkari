@@ -30,14 +30,14 @@ from mokkari.schemas.imprint import Imprint
 from mokkari.schemas.issue import BaseIssue, Issue
 from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.schemas.series import BaseSeries, Series
-from mokkari.schemas.team import Team
+from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe
 
 METRON_MINUTE_RATE_LIMIT = 30
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
-T = TypeVar("T", ArcPost, CharacterPost, CreatorPost, PublisherPost)
+T = TypeVar("T", ArcPost, CharacterPost, CreatorPost, PublisherPost, TeamPost)
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -425,6 +425,47 @@ class Session:
         """
         resp = self._get(["team", _id])
         adaptor = TypeAdapter(Team)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def team_post(self: Session, data: TeamPost) -> TeamPostResponse:
+        """Create a new team.
+
+        Args:
+            data: TeamPost object with the team data.
+
+        Returns:
+            A TeamPostResponse object containing information about the created team.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["team"], data)
+        adaptor = TypeAdapter(TeamPostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def team_patch(self: Session, id_: int, data: TeamPost) -> TeamPostResponse:
+        """Update an existing team.
+
+        Args:
+            id_: The ID of the team to update.
+            data: TeamPost object with the updated team data.
+
+        Returns:
+            A TeamPostResponse object containing information about the updated team.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["team", id_], data)
+        adaptor = TypeAdapter(TeamPostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
