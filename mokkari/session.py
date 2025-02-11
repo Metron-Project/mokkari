@@ -23,7 +23,7 @@ from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
-from mokkari.schemas.character import Character
+from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
 from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
@@ -37,7 +37,7 @@ METRON_MINUTE_RATE_LIMIT = 30
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
-T = TypeVar("T", ArcPost, CreatorPost, PublisherPost)
+T = TypeVar("T", ArcPost, CharacterPost, CreatorPost, PublisherPost)
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -215,6 +215,49 @@ class Session:
         """
         resp = self._get(["character", _id])
         adaptor = TypeAdapter(Character)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def character_post(self: Session, data: CharacterPost) -> CharacterPostResponse:
+        """Create a new character.
+
+        Args:
+            data: CharacterPost object with the character data.
+
+        Returns:
+            A Character object containing information about the created character.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["character"], data)
+        adaptor = TypeAdapter(CharacterPostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def character_patch(
+        self: Session, _id: int, data: CharacterPost
+    ) -> CharacterPostResponse:
+        """Update an existing character.
+
+        Args:
+            _id: The ID of the character to update.
+            data: CharacterPost object with the updated character data.
+
+        Returns:
+            A CharacterPostResponse object containing information about the updated character.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["character", _id], data)
+        adaptor = TypeAdapter(CharacterPostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
