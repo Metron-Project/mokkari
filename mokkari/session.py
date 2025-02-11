@@ -31,13 +31,15 @@ from mokkari.schemas.issue import BaseIssue, Issue
 from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.schemas.series import BaseSeries, Series
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
-from mokkari.schemas.universe import Universe
+from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 
 METRON_MINUTE_RATE_LIMIT = 30
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
-T = TypeVar("T", ArcPost, CharacterPost, CreatorPost, PublisherPost, TeamPost)
+T = TypeVar(
+    "T", ArcPost, CharacterPost, CreatorPost, PublisherPost, TeamPost, UniversePost
+)
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -760,6 +762,49 @@ class Session:
         """
         resp = self._get(["universe", _id])
         adaptor = TypeAdapter(Universe)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def universe_post(self: Session, data: UniversePost) -> UniversePostResponse:
+        """Create a new universe.
+
+        Args:
+            data: UniversePost object with the universe data.
+
+        Returns:
+            A UniversePostResponse object containing information about the created universe.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["universe"], data)
+        adaptor = TypeAdapter(UniversePostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def universe_patch(
+        self: Session, id_: int, data: UniversePost
+    ) -> UniversePostResponse:
+        """Update an existing universe.
+
+        Args:
+            id_: The ID of the universe to update.
+            data: UniversePost object with the updated universe data.
+
+        Returns:
+            A UniversePostResponse object containing information about the updated universe.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["universe", id_], data)
+        adaptor = TypeAdapter(UniversePostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
