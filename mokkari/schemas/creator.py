@@ -42,7 +42,7 @@ class CreatorPost(BaseModel):
     """A data model representing a creator to be created.
 
     Attributes:
-        name (str): The name of the creator.
+        name (str, optional): The name of the creator.
         birth (PastDate, optional): The birthdate of the creator.
         death (date, optional): The death date of the creator.
         desc (str, optional): The description of the creator.
@@ -52,7 +52,7 @@ class CreatorPost(BaseModel):
         gcd_id (int, optional): The Grand Comics Database ID of the creator.
     """
 
-    name: str
+    name: str | None = None
     birth: PastDate | None = None
     death: date | None = None
     desc: str | None = None

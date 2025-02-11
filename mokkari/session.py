@@ -177,6 +177,27 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
+    def creator_patch(self: Session, _id: int, data: CreatorPost) -> Creator:
+        """Update an existing creator.
+
+        Args:
+            _id: The ID of the creator to update.
+            data: CreatorPost object with the updated creator data.
+
+        Returns:
+            A Creator object containing information about the updated creator.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["creator", _id], data)
+        adaptor = TypeAdapter(Creator)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
     def creators_list(
         self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
