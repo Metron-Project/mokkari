@@ -29,7 +29,7 @@ from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
 from mokkari.schemas.issue import BaseIssue, Issue
 from mokkari.schemas.publisher import Publisher, PublisherPost
-from mokkari.schemas.series import BaseSeries, Series
+from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 
@@ -38,7 +38,14 @@ METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
 T = TypeVar(
-    "T", ArcPost, CharacterPost, CreatorPost, PublisherPost, TeamPost, UniversePost
+    "T",
+    ArcPost,
+    CharacterPost,
+    CreatorPost,
+    PublisherPost,
+    SeriesPost,
+    TeamPost,
+    UniversePost,
 )
 
 
@@ -634,6 +641,47 @@ class Session:
         """
         resp = self._get(["series", _id])
         adaptor = TypeAdapter(Series)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def series_post(self: Session, data: SeriesPost) -> SeriesPostResponse:
+        """Create a new series.
+
+        Args:
+            data: SeriesPost object with the series data.
+
+        Returns:
+            A SeriesPostResponse object containing information about the created series.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["series"], data)
+        adaptor = TypeAdapter(SeriesPostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def series_patch(self: Session, id_: int, data: SeriesPost) -> SeriesPostResponse:
+        """Update an existing series.
+
+        Args:
+            id_: The ID of the series to update.
+            data: SeriesPost object with the updated series data.
+
+        Returns:
+            A SeriesPostResponse object containing information about the updated series.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["series", id_], data)
+        adaptor = TypeAdapter(SeriesPostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as err:
