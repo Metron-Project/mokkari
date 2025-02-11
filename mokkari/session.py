@@ -346,6 +346,27 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
+    def publisher_patch(self: Session, id_: int, data: PublisherPost) -> Publisher:
+        """Update an existing publisher.
+
+        Args:
+            id_: The ID of the publisher to update.
+            data: PublisherPost object with the updated publisher data.
+
+        Returns:
+            A Publisher object containing information about the updated publisher.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["publisher", id_], data)
+        adaptor = TypeAdapter(Publisher)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
     def publishers_list(
         self: Session, params: dict[str, str | int] | None = None
     ) -> list[BaseResource]:
@@ -465,6 +486,27 @@ class Session:
             ApiError: If there is an error during the API call or validation.
         """
         resp = self._send("POST", ["arc"], data)
+        adaptor = TypeAdapter(Arc)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def arc_patch(self: Session, id_: int, data: ArcPost) -> Arc:
+        """Update an existing arc.
+
+        Args:
+            id_: The ID of the arc to update.
+            data: ArcPost object with the updated arc data.
+
+        Returns:
+            An Arc object containing information about the updated arc.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("PATCH", ["arc", id_], data)
         adaptor = TypeAdapter(Arc)
         try:
             result = adaptor.validate_python(resp)

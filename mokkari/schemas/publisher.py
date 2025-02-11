@@ -53,7 +53,7 @@ class PublisherPost(BaseModel):
     """A data model representing a publisher to be created.
 
     Attributes:
-        name (str): The name of the publisher.
+        name (str, optional): The name of the publisher.
         founded (int, optional): The year the publisher was founded.
         country: str: An ISO 3166-1 2-letter country code. Defaults to 'US'.
         desc (str, optional): The description of the publisher.
@@ -62,7 +62,7 @@ class PublisherPost(BaseModel):
         gcd_id (int, optional): The Grand Comics Database ID of the publisher.
     """
 
-    name: str
+    name: str | None = None
     founded: int | None = None
     country: Annotated[str, ensure_country_code_length] = "US"
     desc: str | None = None
