@@ -10,34 +10,54 @@ from __future__ import annotations
 
 __all__ = ["Session"]
 
+import json
 import platform
 from collections import OrderedDict
-from typing import Any, ClassVar
+from pathlib import Path
+from typing import Any, ClassVar, TypeVar
 from urllib.parse import urlencode
 
 import requests
 from pydantic import TypeAdapter, ValidationError
 from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
 
-# Alias these modules to prevent namespace collision with methods.
 from mokkari import __version__, exceptions, sqlite_cache
-from mokkari.schemas.arc import Arc
+from mokkari.exceptions import ApiError
+from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
-from mokkari.schemas.character import Character
-from mokkari.schemas.creator import Creator
+from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
+from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
-from mokkari.schemas.issue import BaseIssue, Issue
-from mokkari.schemas.publisher import Publisher
-from mokkari.schemas.series import BaseSeries, Series
-from mokkari.schemas.team import Team
-from mokkari.schemas.universe import Universe
+from mokkari.schemas.issue import (
+    BaseIssue,
+    CreditPost,
+    CreditPostResponse,
+    Issue,
+    IssuePost,
+    IssuePostResponse,
+)
+from mokkari.schemas.publisher import Publisher, PublisherPost
+from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
+from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
+from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 
 METRON_MINUTE_RATE_LIMIT = 30
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
+
+T = TypeVar(
+    "T",
+    ArcPost,
+    CharacterPost,
+    CreatorPost,
+    list[CreditPost],
+    IssuePost,
+    PublisherPost,
+    SeriesPost,
+    TeamPost,
+    UniversePost,
+)
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -79,7 +99,7 @@ class Session:
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
 
-    def _call(
+    def _get(
         self: Session,
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
@@ -111,7 +131,7 @@ class Session:
         if cached_response is not None:
             return cached_response
 
-        data = self._request_data(url, params)
+        data = self._request_data("GET", url, params)
 
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
@@ -119,6 +139,23 @@ class Session:
         self._save_results_to_cache(cache_key, data)
 
         return data
+
+    def _send(self: Session, method: str, endpoint: list[str], data: T) -> any:
+        """Send a request to the specified endpoint with the given data.
+
+        Args:
+            method: The HTTP method for the request.
+            endpoint: A list of strings representing the endpoint path.
+            data: The data to be sent with the request.
+
+        Returns:
+            The response data from the API.
+
+        Raises:
+            ApiError: If there is an error during the API call.
+        """
+        url = self.api_url.format("/".join(str(e) for e in endpoint))
+        return self._request_data(method=method, url=url, data=data)
 
     def creator(self: Session, _id: int) -> Creator:
         """Retrieve information about a creator with the specified ID.
@@ -132,7 +169,60 @@ class Session:
         Raises:
             ValidationError: If there is an error validating the response data.
         """
-        resp = self._call(["creator", _id])
+        resp = self._get(["creator", _id])
+        adaptor = TypeAdapter(Creator)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def creator_post(self: Session, data: CreatorPost) -> Creator:
+        """Create a new creator.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: CreatorPost object with the creator data.
+
+        Returns:
+            A Creator object containing information about the created creator.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["creator"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
+        adaptor = TypeAdapter(Creator)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def creator_patch(self: Session, _id: int, data: CreatorPost) -> Creator:
+        """Update an existing creator.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            _id: The ID of the creator to update.
+            data: CreatorPost object with the updated creator data.
+
+        Returns:
+            A Creator object containing information about the updated creator.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["creator", _id], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Creator)
         try:
             result = adaptor.validate_python(resp)
@@ -176,8 +266,63 @@ class Session:
             ApiError: If there is an error in the API response data validation.
 
         """
-        resp = self._call(["character", _id])
+        resp = self._get(["character", _id])
         adaptor = TypeAdapter(Character)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def character_post(self: Session, data: CharacterPost) -> CharacterPostResponse:
+        """Create a new character.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: CharacterPost object with the character data.
+
+        Returns:
+            A Character object containing information about the created character.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["character"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
+        adaptor = TypeAdapter(CharacterPostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def character_patch(
+        self: Session, _id: int, data: CharacterPost
+    ) -> CharacterPostResponse:
+        """Update an existing character.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            _id: The ID of the character to update.
+            data: CharacterPost object with the updated character data.
+
+        Returns:
+            A CharacterPostResponse object containing information about the updated character.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["character", _id], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
+        adaptor = TypeAdapter(CharacterPostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
@@ -238,7 +383,60 @@ class Session:
             A Publisher object containing information about the specified publisher.
 
         """
-        resp = self._call(["publisher", _id])
+        resp = self._get(["publisher", _id])
+        adaptor = TypeAdapter(Publisher)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def publisher_post(self: Session, data: PublisherPost) -> Publisher:
+        """Create a new publisher.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: PublisherPost object with the publisher data.
+
+        Returns:
+            A Publisher object containing information about the created publisher.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["publisher"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
+        adaptor = TypeAdapter(Publisher)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def publisher_patch(self: Session, id_: int, data: PublisherPost) -> Publisher:
+        """Update an existing publisher.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            id_: The ID of the publisher to update.
+            data: PublisherPost object with the updated publisher data.
+
+        Returns:
+            A Publisher object containing information about the updated publisher.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["publisher", id_], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Publisher)
         try:
             result = adaptor.validate_python(resp)
@@ -281,8 +479,61 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["team", _id])
+        resp = self._get(["team", _id])
         adaptor = TypeAdapter(Team)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def team_post(self: Session, data: TeamPost) -> TeamPostResponse:
+        """Create a new team.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: TeamPost object with the team data.
+
+        Returns:
+            A TeamPostResponse object containing information about the created team.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["team"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
+        adaptor = TypeAdapter(TeamPostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def team_patch(self: Session, id_: int, data: TeamPost) -> TeamPostResponse:
+        """Update an existing team.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            id_: The ID of the team to update.
+            data: TeamPost object with the updated team data.
+
+        Returns:
+            A TeamPostResponse object containing information about the updated team.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["team", id_], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
+        adaptor = TypeAdapter(TeamPostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
@@ -344,7 +595,60 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["arc", _id])
+        resp = self._get(["arc", _id])
+        adaptor = TypeAdapter(Arc)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def arc_post(self: Session, data: ArcPost) -> Arc:
+        """Create a new arc.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: ArcPost object with the arc data.
+
+        Returns:
+            An Arc object containing information about the created arc.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["arc"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
+        adaptor = TypeAdapter(Arc)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def arc_patch(self: Session, id_: int, data: ArcPost) -> Arc:
+        """Update an existing arc.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            id_: The ID of the arc to update.
+            data: ArcPost object with the updated arc data.
+
+        Returns:
+            An Arc object containing information about the updated arc.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["arc", id_], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Arc)
         try:
             result = adaptor.validate_python(resp)
@@ -406,8 +710,61 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["series", _id])
+        resp = self._get(["series", _id])
         adaptor = TypeAdapter(Series)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def series_post(self: Session, data: SeriesPost) -> SeriesPostResponse:
+        """Create a new series.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: SeriesPost object with the series data.
+
+        Returns:
+            A SeriesPostResponse object containing information about the created series.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["series"], data)
+        except ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(SeriesPostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def series_patch(self: Session, id_: int, data: SeriesPost) -> SeriesPostResponse:
+        """Update an existing series.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            id_: The ID of the series to update.
+            data: SeriesPost object with the updated series data.
+
+        Returns:
+            A SeriesPostResponse object containing information about the updated series.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["series", id_], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(SeriesPostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as err:
@@ -470,8 +827,61 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["issue", _id])
+        resp = self._get(["issue", _id])
         adaptor = TypeAdapter(Issue)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def issue_post(self: Session, data: IssuePost) -> IssuePostResponse:
+        """Create a new issue.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: IssuePost object with the issue data.
+
+        Returns:
+            An IssuePostResponse object containing information about the created issue.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["issue"], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(IssuePostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def issue_patch(self: Session, id_: int, data: IssuePost) -> IssuePostResponse:
+        """Update an existing issue.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            id_: The ID of the issue to update.
+            data: IssuePost object with the updated issue data.
+
+        Returns:
+            An IssuePostResponse object containing information about the updated issue.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["issue", id_], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(IssuePostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
@@ -496,6 +906,32 @@ class Session:
         adaptor = TypeAdapter(list[BaseIssue])
         try:
             result = adaptor.validate_python(resp["results"])
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def credits_post(self: Session, data: list[CreditPost]) -> CreditPostResponse:
+        """Create new credits.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: A list of CreditPost objects with the credit data.
+
+        Returns:
+            A list of CreditPostResponse objects.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["credit"], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(list[CreditPostResponse])
+        try:
+            result = adaptor.validate_python(resp)
         except ValidationError as err:
             raise exceptions.ApiError(err) from err
         return result
@@ -534,8 +970,63 @@ class Session:
         Raises:
             ApiError: If there is an error in the API response data validation.
         """
-        resp = self._call(["universe", _id])
+        resp = self._get(["universe", _id])
         adaptor = TypeAdapter(Universe)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def universe_post(self: Session, data: UniversePost) -> UniversePostResponse:
+        """Create a new universe.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: UniversePost object with the universe data.
+
+        Returns:
+            A UniversePostResponse object containing information about the created universe.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["universe"], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(UniversePostResponse)
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as error:
+            raise exceptions.ApiError(error) from error
+        return result
+
+    def universe_patch(
+        self: Session, id_: int, data: UniversePost
+    ) -> UniversePostResponse:
+        """Update an existing universe.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            id_: The ID of the universe to update.
+            data: UniversePost object with the updated universe data.
+
+        Returns:
+            A UniversePostResponse object containing information about the updated universe.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("PATCH", ["universe", id_], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(UniversePostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as error:
@@ -576,7 +1067,7 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._call(["imprint", _id])
+        resp = self._get(["imprint", _id])
         adaptor = TypeAdapter(Imprint)
         try:
             result = adaptor.validate_python(resp)
@@ -623,7 +1114,7 @@ class Session:
         if params is None:
             params = {}
 
-        result = self._call(endpoint, params=params)
+        result = self._get(endpoint, params=params)
         if result["next"]:
             result = self._retrieve_all_results(result)
         return result
@@ -649,7 +1140,7 @@ class Session:
                     has_next_page = False
                 continue
 
-            response = self._request_data(next_page)
+            response = self._request_data("GET", next_page)
             data["results"].extend(response["results"])
 
             self._save_results_to_cache(next_page, response)
@@ -663,38 +1154,55 @@ class Session:
 
     @decorator(rate_mapping)
     def _request_data(
-        self: Session, url: str, params: dict[str, str | int] | None = None
+        self: Session,
+        method: str,
+        url: str,
+        params: dict[str, str | int] | None = None,
+        data: T | None = None,
     ) -> Any:
-        """Send a request to the specified URL with optional parameters and handles retries.
-
-        Args:
-            url: A string representing the URL to send the request to.
-            params: An optional dictionary of parameters to include in the request.
-
-        Returns:
-            The JSON response data from the request.
-
-        Raises:
-            ApiError: If there is a connection error during the request.
-        """
         if params is None:
             params = {}
 
+        files = None
+        header = self.header
+        if isinstance(data, list):
+            lst = []
+            lst.extend(item.model_dump() for item in data)
+            data_dict = json.dumps(lst)
+            header = self.header["Content-Type"] = "application/json"
+        else:
+            data_dict = data.model_dump() if data is not None else None
+            if data_dict is not None and "image" in data_dict:  # NOQA: SIM102
+                if img := data_dict.pop("image"):
+                    img_path = Path(img)
+                    files = {"image": (img_path.name, img_path.read_bytes())}
+
         try:
-            session = requests.Session()
-            retry = Retry(connect=3, backoff_factor=0.5)
-            session.mount("https://", HTTPAdapter(max_retries=retry))
-            response = session.get(
+            response = requests.request(
+                method,
                 url,
                 params=params,
                 timeout=2.5,
                 auth=(self.username, self.passwd),
-                headers=self.header,
-            ).json()
-        except requests.exceptions.ConnectionError as e:
+                headers=header,
+                data=data_dict,
+                files=files,
+            )
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout,
+        ) as e:
             raise exceptions.ApiError(f"Connection error: {e!r}") from e
 
-        return response
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            raise exceptions.ApiError(f"HTTP error: {e!r}") from e
+
+        resp = response.json()
+        if "detail" in resp:
+            raise exceptions.ApiError(resp["detail"])
+        return resp
 
     def _get_results_from_cache(self: Session, key: str) -> Any | None:
         """Retrieve cached response data using the specified key.

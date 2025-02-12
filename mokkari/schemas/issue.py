@@ -4,12 +4,29 @@
 This module provides the following classes:
 
 - Credit
+- CreditPost
+- CreditPostResponse
 - BasicSeries
 - IssueSeries
 - CommonIssue
 - BaseIssue
 - Issue
+- IssuePost
+- IssuePostResponse
 """
+
+__all__ = [
+    "BaseIssue",
+    "BasicSeries",
+    "CommonIssue",
+    "Credit",
+    "CreditPost",
+    "CreditPostResponse",
+    "Issue",
+    "IssuePost",
+    "IssuePostResponse",
+    "IssueSeries",
+]
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -35,6 +52,35 @@ class Credit(BaseModel):
     id: int
     creator: str
     role: list[GenericItem] = []
+
+
+class CreditPost(BaseModel):
+    """A data model representing a credit to be created.
+
+    Attributes:
+        issue (int): The ID of the issue.
+        creator (int): The ID of the creator.
+        role (list[int]): The IDs of the roles.
+    """
+
+    issue: int
+    creator: int
+    role: list[int]
+
+
+class CreditPostResponse(CreditPost):
+    """A data model representing the response after creating a credit.
+
+    Attributes:
+        id (int): The ID of the credit.
+        issue (int): The ID of the issue.
+        creator (int): The ID of the creator.
+        role (list[int]): The IDs of the roles.
+        modified (datetime): The date and time when the credit was modified.
+    """
+
+    id: int
+    modified: datetime
 
 
 class BasicSeries(BaseModel):
@@ -159,4 +205,91 @@ class Issue(CommonIssue):
     variants: list[Variant] = []
     cv_id: int | None = None
     gcd_id: int | None = None
+    resource_url: HttpUrl
+
+
+class IssuePost(BaseModel):
+    """A data model representing an issue to be created.
+
+    Attributes:
+        series (int, optional): The ID of the series to which the issue belongs.
+        number (str, optional): The number of the issue.
+        alt_number (str, optional): The alternative number of the issue.
+        title (str, optional): The collection title of the issue.
+        name (list[str], optional): The story titles of the issue.
+        cover_date (date, optional): The cover date of the issue.
+        store_date (date, optional): The store date of the issue.
+        price (Decimal, optional): The price of the issue.
+        rating (int, optional): The ID of the rating of the issue.
+        sku (str, optional): The SKU of the issue.
+        isbn (str, optional): The ISBN of the issue.
+        upc (str, optional): The UPC of the issue.
+        page (int, optional): The number of pages in the issue.
+        desc (str, optional): The description of the issue.
+        image (str, optional): The image URL of the issue.
+        arcs (list[int], optional): The IDs of the arcs associated with the issue.
+        characters (list[int], optional): The IDs of the characters featured in the issue.
+        teams (list[int], optional): The IDs of the teams involved in the issue.
+        universes (list[int], optional): The IDs of the universes related to the issue.
+        reprints (list[int], optional): The IDs of the reprints of the issue.
+        cv_id (int, optional): The Comic Vine ID of the issue.
+        gcd_id (int, optional): The Grand Comics Database ID of the issue.
+    """
+
+    series: int | None = None
+    number: str | None = None
+    alt_number: str | None = None
+    title: str | None = None  # Collection Title
+    name: list[str] | None = None
+    cover_date: date | None = None
+    store_date: date | None = None
+    price: Decimal | None = None
+    rating: int | None = None
+    sku: str | None = None
+    isbn: str | None = None
+    upc: str | None = None
+    page: int | None = None
+    desc: str | None = None
+    image: str | None = None
+    arcs: list[int] | None = None
+    characters: list[int] | None = None
+    teams: list[int] | None = None
+    universes: list[int] | None = None
+    reprints: list[int] | None = None
+    cv_id: int | None = None
+    gcd_id: int | None = None
+
+
+class IssuePostResponse(IssuePost):
+    """A data model representing the response from creating an issue.
+
+    Attributes:
+        id: The ID of the issue.
+        series (int, optional): The ID of the series to which the issue belongs.
+        number (str, optional): The number of the issue.
+        alt_number (str, optional): The alternative number of the issue.
+        title (str, optional): The collection title of the issue.
+        name (list[str], optional): The story titles of the issue.
+        cover_date (date, optional): The cover date of the issue.
+        store_date (date, optional): The store date of the issue.
+        price (Decimal, optional): The price of the issue.
+        rating (int, optional): The ID of the rating of the issue.
+        sku (str, optional): The SKU of the issue.
+        isbn (str, optional): The ISBN of the issue.
+        upc (str, optional): The UPC of the issue.
+        page (int, optional): The number of pages in the issue.
+        desc (str, optional): The description of the issue.
+        image (str, optional): The image URL of the issue.
+        arcs (list[int], optional): The IDs of the arcs associated with the issue.
+        characters (list[int], optional): The IDs of the characters featured in the issue.
+        teams (list[int], optional): The IDs of the teams involved in the issue.
+        universes (list[int], optional): The IDs of the universes related to the issue.
+        reprints (list[int], optional): The IDs of the reprints of the issue.
+        cv_id (int, optional): The Comic Vine ID of the issue.
+        gcd_id (int, optional): The Grand Comics Database ID of the issue.
+        resource_url (HttpUrl): The URL of the issue resource.
+    """
+
+    # TODO: For some reason the Issue POST & PATCH responses don't include the modified field, should fix that.
+    id: int
     resource_url: HttpUrl

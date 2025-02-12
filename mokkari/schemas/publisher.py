@@ -5,10 +5,13 @@ This module provides the following classes:
 - Publisher
 """
 
+__all__ = ["Publisher", "PublisherPost"]
+
 from typing import Annotated
 
 from pydantic import HttpUrl
 
+from mokkari.schemas import BaseModel
 from mokkari.schemas.base import BaseResource
 
 COUNTY_CODE_LENGTH = 2
@@ -45,3 +48,25 @@ class Publisher(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+
+
+class PublisherPost(BaseModel):
+    """A data model representing a publisher to be created.
+
+    Attributes:
+        name (str, optional): The name of the publisher.
+        founded (int, optional): The year the publisher was founded.
+        country: str: An ISO 3166-1 2-letter country code. Defaults to 'US'.
+        desc (str, optional): The description of the publisher.
+        image (str, optional): The image URL of the publisher.
+        cv_id (int, optional): The Comic Vine ID of the publisher.
+        gcd_id (int, optional): The Grand Comics Database ID of the publisher.
+    """
+
+    name: str | None = None
+    founded: int | None = None
+    country: Annotated[str, ensure_country_code_length] = "US"
+    desc: str | None = None
+    image: str | None = None
+    cv_id: int | None = None
+    gcd_id: int | None = None

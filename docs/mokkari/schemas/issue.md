@@ -1,6 +1,10 @@
 :::mokkari.schemas.issue.Credit
+:::mokkari.schemas.issue.CreditPost
+:::mokkari.schemas.issue.CreditPostResponse
 :::mokkari.schemas.issue.BasicSeries
 :::mokkari.schemas.issue.IssueSeries
 :::mokkari.schemas.issue.CommonIssue
 :::mokkari.schemas.issue.BaseIssue
 :::mokkari.schemas.issue.Issue
+:::mokkari.schemas.issue.IssuePost
+:::mokkari.schemas.issue.IssuePostResponse
