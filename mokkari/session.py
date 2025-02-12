@@ -93,8 +93,7 @@ class Session:
         self.passwd = passwd
         self.header = {
             "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
-            f"Mokkari/{__version__} ({platform.system()}; {platform.release()})",
-            "Content-Type": "application/json",
+            f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
         }
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
@@ -1062,10 +1061,12 @@ class Session:
             params = {}
 
         files = None
+        header = self.header
         if isinstance(data, list):
             lst = []
             lst.extend(item.model_dump() for item in data)
             data_dict = json.dumps(lst)
+            header = self.header["Content-Type"] = "application/json"
         else:
             data_dict = data.model_dump() if data is not None else None
             if data_dict is not None and "image" in data_dict:  # NOQA: SIM102
@@ -1080,7 +1081,7 @@ class Session:
                 params=params,
                 timeout=2.5,
                 auth=(self.username, self.passwd),
-                headers=self.header,
+                headers=header,
                 data=data_dict,
                 files=files,
             )
