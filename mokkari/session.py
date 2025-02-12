@@ -180,6 +180,8 @@ class Session:
     def creator_post(self: Session, data: CreatorPost) -> Creator:
         """Create a new creator.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: CreatorPost object with the creator data.
 
@@ -203,6 +205,8 @@ class Session:
 
     def creator_patch(self: Session, _id: int, data: CreatorPost) -> Creator:
         """Update an existing creator.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             _id: The ID of the creator to update.
@@ -273,6 +277,8 @@ class Session:
     def character_post(self: Session, data: CharacterPost) -> CharacterPostResponse:
         """Create a new character.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: CharacterPost object with the character data.
 
@@ -298,6 +304,8 @@ class Session:
         self: Session, _id: int, data: CharacterPost
     ) -> CharacterPostResponse:
         """Update an existing character.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             _id: The ID of the character to update.
@@ -386,6 +394,8 @@ class Session:
     def publisher_post(self: Session, data: PublisherPost) -> Publisher:
         """Create a new publisher.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: PublisherPost object with the publisher data.
 
@@ -409,6 +419,8 @@ class Session:
 
     def publisher_patch(self: Session, id_: int, data: PublisherPost) -> Publisher:
         """Update an existing publisher.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             id_: The ID of the publisher to update.
@@ -478,6 +490,8 @@ class Session:
     def team_post(self: Session, data: TeamPost) -> TeamPostResponse:
         """Create a new team.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: TeamPost object with the team data.
 
@@ -501,6 +515,8 @@ class Session:
 
     def team_patch(self: Session, id_: int, data: TeamPost) -> TeamPostResponse:
         """Update an existing team.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             id_: The ID of the team to update.
@@ -590,6 +606,8 @@ class Session:
     def arc_post(self: Session, data: ArcPost) -> Arc:
         """Create a new arc.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: ArcPost object with the arc data.
 
@@ -613,6 +631,8 @@ class Session:
 
     def arc_patch(self: Session, id_: int, data: ArcPost) -> Arc:
         """Update an existing arc.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             id_: The ID of the arc to update.
@@ -701,6 +721,8 @@ class Session:
     def series_post(self: Session, data: SeriesPost) -> SeriesPostResponse:
         """Create a new series.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: SeriesPost object with the series data.
 
@@ -724,6 +746,8 @@ class Session:
 
     def series_patch(self: Session, id_: int, data: SeriesPost) -> SeriesPostResponse:
         """Update an existing series.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             id_: The ID of the series to update.
@@ -814,6 +838,8 @@ class Session:
     def issue_post(self: Session, data: IssuePost) -> IssuePostResponse:
         """Create a new issue.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: IssuePost object with the issue data.
 
@@ -837,6 +863,8 @@ class Session:
 
     def issue_patch(self: Session, id_: int, data: IssuePost) -> IssuePostResponse:
         """Update an existing issue.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             id_: The ID of the issue to update.
@@ -884,6 +912,8 @@ class Session:
 
     def credits_post(self: Session, data: list[CreditPost]) -> CreditPostResponse:
         """Create new credits.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             data: A list of CreditPost objects with the credit data.
@@ -951,6 +981,8 @@ class Session:
     def universe_post(self: Session, data: UniversePost) -> UniversePostResponse:
         """Create a new universe.
 
+        Note: This function only works for users with Admin permissions at Metron.
+
         Args:
             data: UniversePost object with the universe data.
 
@@ -976,6 +1008,8 @@ class Session:
         self: Session, id_: int, data: UniversePost
     ) -> UniversePostResponse:
         """Update an existing universe.
+
+        Note: This function only works for users with Admin permissions at Metron.
 
         Args:
             id_: The ID of the universe to update.
