@@ -9,8 +9,9 @@ __all__ = ["Publisher", "PublisherPost"]
 
 from typing import Annotated
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import HttpUrl
 
+from mokkari.schemas import BaseModel
 from mokkari.schemas.base import BaseResource
 
 COUNTY_CODE_LENGTH = 2

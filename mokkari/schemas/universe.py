@@ -7,8 +7,9 @@ This module provides the following classes:
 
 __all__ = ["Universe", "UniversePost", "UniversePostResponse"]
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import HttpUrl
 
+from mokkari.schemas import BaseModel
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.generic import GenericItem
 

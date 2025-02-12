@@ -7,8 +7,9 @@ This module provides the following classes:
 
 __all__ = ["Arc", "ArcPost"]
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import HttpUrl
 
+from mokkari.schemas import BaseModel
 from mokkari.schemas.base import BaseResource
 
 

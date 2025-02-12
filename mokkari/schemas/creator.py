@@ -9,8 +9,9 @@ __all__ = ["Creator", "CreatorPost"]
 
 from datetime import date
 
-from pydantic import BaseModel, HttpUrl, PastDate
+from pydantic import HttpUrl, PastDate
 
+from mokkari.schemas import BaseModel
 from mokkari.schemas.base import BaseResource
 
 
