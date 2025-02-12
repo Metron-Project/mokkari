@@ -10,6 +10,7 @@ from __future__ import annotations
 
 __all__ = ["Session"]
 
+import json
 import platform
 from collections import OrderedDict
 from pathlib import Path
@@ -27,7 +28,14 @@ from mokkari.schemas.character import Character, CharacterPost, CharacterPostRes
 from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
-from mokkari.schemas.issue import BaseIssue, Issue, IssuePost, IssuePostResponse
+from mokkari.schemas.issue import (
+    BaseIssue,
+    CreditPost,
+    CreditPostResponse,
+    Issue,
+    IssuePost,
+    IssuePostResponse,
+)
 from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
@@ -42,6 +50,7 @@ T = TypeVar(
     ArcPost,
     CharacterPost,
     CreatorPost,
+    list[CreditPost],
     IssuePost,
     PublisherPost,
     SeriesPost,
@@ -84,7 +93,8 @@ class Session:
         self.passwd = passwd
         self.header = {
             "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
-            f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
+            f"Mokkari/{__version__} ({platform.system()}; {platform.release()})",
+            "Content-Type": "application/json",
         }
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
@@ -816,6 +826,26 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
+    def credits_post(self: Session, data: list[CreditPost]) -> CreditPostResponse:
+        """Create new credits.
+
+        Args:
+            data: A list of CreditPost objects with the credit data.
+
+        Returns:
+            A list of CreditPostResponse objects.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        resp = self._send("POST", ["credit"], data)
+        adaptor = TypeAdapter(list[CreditPostResponse])
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
     def role_list(
         self: Session, params: dict[str, str | int] | None = None
     ) -> list[GenericItem]:
@@ -1031,12 +1061,17 @@ class Session:
         if params is None:
             params = {}
 
-        data_dict = data.model_dump() if data is not None else None
         files = None
-        if data_dict is not None and "image" in data_dict:  # NOQA: SIM102
-            if img := data_dict.pop("image"):
-                img_path = Path(img)
-                files = {"image": (img_path.name, img_path.read_bytes())}
+        if isinstance(data, list):
+            lst = []
+            lst.extend(item.model_dump() for item in data)
+            data_dict = json.dumps(lst)
+        else:
+            data_dict = data.model_dump() if data is not None else None
+            if data_dict is not None and "image" in data_dict:  # NOQA: SIM102
+                if img := data_dict.pop("image"):
+                    img_path = Path(img)
+                    files = {"image": (img_path.name, img_path.read_bytes())}
 
         try:
             response = requests.request(

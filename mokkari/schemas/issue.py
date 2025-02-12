@@ -4,6 +4,8 @@
 This module provides the following classes:
 
 - Credit
+- CreditPost
+- CreditPostResponse
 - BasicSeries
 - IssueSeries
 - CommonIssue
@@ -18,6 +20,8 @@ __all__ = [
     "BasicSeries",
     "CommonIssue",
     "Credit",
+    "CreditPost",
+    "CreditPostResponse",
     "Issue",
     "IssuePost",
     "IssuePostResponse",
@@ -48,6 +52,35 @@ class Credit(BaseModel):
     id: int
     creator: str
     role: list[GenericItem] = []
+
+
+class CreditPost(BaseModel):
+    """A data model representing a credit to be created.
+
+    Attributes:
+        issue (int): The ID of the issue.
+        creator (int): The ID of the creator.
+        role (list[int]): The IDs of the roles.
+    """
+
+    issue: int
+    creator: int
+    role: list[int]
+
+
+class CreditPostResponse(CreditPost):
+    """A data model representing the response after creating a credit.
+
+    Attributes:
+        id (int): The ID of the credit.
+        issue (int): The ID of the issue.
+        creator (int): The ID of the creator.
+        role (list[int]): The IDs of the roles.
+        modified (datetime): The date and time when the credit was modified.
+    """
+
+    id: int
+    modified: datetime
 
 
 class BasicSeries(BaseModel):
