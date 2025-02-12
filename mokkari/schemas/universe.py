@@ -3,6 +3,8 @@
 This module provides the following classes:
 
 - Universe
+- UniversePost
+- UniversePostResponse
 """
 
 __all__ = ["Universe", "UniversePost", "UniversePostResponse"]

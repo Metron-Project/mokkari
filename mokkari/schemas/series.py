@@ -7,9 +7,18 @@ This module provides the following classes:
 - CommonSeries
 - BaseSeries
 - Series
+- SeriesPost
+- SeriesPostResponse
 """
 
-__all__ = ["AssociatedSeries", "BaseSeries", "CommonSeries", "Series"]
+__all__ = [
+    "AssociatedSeries",
+    "BaseSeries",
+    "CommonSeries",
+    "Series",
+    "SeriesPost",
+    "SeriesPostResponse",
+]
 
 from datetime import datetime
 

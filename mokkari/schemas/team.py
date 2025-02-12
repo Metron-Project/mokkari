@@ -4,6 +4,8 @@
 This module provides the following classes:
 
 - Team
+- TeamPost
+- TeamPostResponse
 """
 
 __all__ = ["Team", "TeamPost", "TeamPostResponse"]
