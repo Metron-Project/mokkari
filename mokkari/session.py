@@ -22,6 +22,7 @@ from pydantic import TypeAdapter, ValidationError
 from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
 
 from mokkari import __version__, exceptions, sqlite_cache
+from mokkari.exceptions import ApiError
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -188,7 +189,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["creator"], data)
+        try:
+            resp = self._send("POST", ["creator"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Creator)
         try:
             result = adaptor.validate_python(resp)
@@ -209,7 +214,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["creator", _id], data)
+        try:
+            resp = self._send("PATCH", ["creator", _id], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Creator)
         try:
             result = adaptor.validate_python(resp)
@@ -273,7 +282,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["character"], data)
+        try:
+            resp = self._send("POST", ["character"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(CharacterPostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -296,7 +309,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["character", _id], data)
+        try:
+            resp = self._send("PATCH", ["character", _id], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(CharacterPostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -378,7 +395,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["publisher"], data)
+        try:
+            resp = self._send("POST", ["publisher"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Publisher)
         try:
             result = adaptor.validate_python(resp)
@@ -399,7 +420,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["publisher", id_], data)
+        try:
+            resp = self._send("PATCH", ["publisher", id_], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Publisher)
         try:
             result = adaptor.validate_python(resp)
@@ -462,7 +487,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["team"], data)
+        try:
+            resp = self._send("POST", ["team"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(TeamPostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -483,7 +512,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["team", id_], data)
+        try:
+            resp = self._send("PATCH", ["team", id_], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(TeamPostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -566,7 +599,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["arc"], data)
+        try:
+            resp = self._send("POST", ["arc"], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Arc)
         try:
             result = adaptor.validate_python(resp)
@@ -587,7 +624,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["arc", id_], data)
+        try:
+            resp = self._send("PATCH", ["arc", id_], data)
+        except exceptions.ApiError as error:
+            raise exceptions.ApiError(error) from error
+
         adaptor = TypeAdapter(Arc)
         try:
             result = adaptor.validate_python(resp)
@@ -669,7 +710,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["series"], data)
+        try:
+            resp = self._send("POST", ["series"], data)
+        except ApiError as err:
+            raise exceptions.ApiError(err) from err
+
         adaptor = TypeAdapter(SeriesPostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -690,7 +735,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["series", id_], data)
+        try:
+            resp = self._send("PATCH", ["series", id_], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
         adaptor = TypeAdapter(SeriesPostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -774,7 +823,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["issue"], data)
+        try:
+            resp = self._send("POST", ["issue"], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
         adaptor = TypeAdapter(IssuePostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -795,7 +848,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["issue", id_], data)
+        try:
+            resp = self._send("PATCH", ["issue", id_], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
         adaptor = TypeAdapter(IssuePostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -837,7 +894,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["credit"], data)
+        try:
+            resp = self._send("POST", ["credit"], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
         adaptor = TypeAdapter(list[CreditPostResponse])
         try:
             result = adaptor.validate_python(resp)
@@ -899,7 +960,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("POST", ["universe"], data)
+        try:
+            resp = self._send("POST", ["universe"], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
         adaptor = TypeAdapter(UniversePostResponse)
         try:
             result = adaptor.validate_python(resp)
@@ -922,7 +987,11 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call or validation.
         """
-        resp = self._send("PATCH", ["universe", id_], data)
+        try:
+            resp = self._send("PATCH", ["universe", id_], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
         adaptor = TypeAdapter(UniversePostResponse)
         try:
             result = adaptor.validate_python(resp)
