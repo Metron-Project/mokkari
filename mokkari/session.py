@@ -11,6 +11,7 @@ from __future__ import annotations
 __all__ = ["Session"]
 
 import json
+import logging
 import platform
 from collections import OrderedDict
 from pathlib import Path
@@ -42,22 +43,11 @@ from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostRes
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 
+LOGGER = logging.getLogger(__name__)
+
 METRON_MINUTE_RATE_LIMIT = 30
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
-
-T = TypeVar(
-    "T",
-    ArcPost,
-    CharacterPost,
-    CreatorPost,
-    list[CreditPost],
-    IssuePost,
-    PublisherPost,
-    SeriesPost,
-    TeamPost,
-    UniversePost,
-)
 
 
 def rate_mapping(*args: any, **kwargs: any) -> tuple[str, int]:  # NOQA: ARG001
@@ -80,6 +70,19 @@ class Session:
     _bucket = InMemoryBucket(_rates)
     _limiter = Limiter(_bucket, raise_when_fail=False, max_delay=Duration.MINUTE)
     decorator = _limiter.as_decorator()
+
+    T = TypeVar(
+        "T",
+        ArcPost,
+        CharacterPost,
+        CreatorPost,
+        list[CreditPost],
+        IssuePost,
+        PublisherPost,
+        SeriesPost,
+        TeamPost,
+        UniversePost,
+    )
 
     def __init__(
         self: Session,
@@ -1160,6 +1163,8 @@ class Session:
         params: dict[str, str | int] | None = None,
         data: T | None = None,
     ) -> Any:
+        LOGGER.debug("Request Method: %s | URL: %s", method, url)
+
         if params is None:
             params = {}
 
@@ -1169,20 +1174,25 @@ class Session:
             lst = []
             lst.extend(item.model_dump() for item in data)
             data_dict = json.dumps(lst)
-            header = self.header["Content-Type"] = "application/json"
+            header["Content-Type"] = "application/json;charset=utf-8"
         else:
             data_dict = data.model_dump() if data is not None else None
             if data_dict is not None and "image" in data_dict:  # NOQA: SIM102
                 if img := data_dict.pop("image"):
                     img_path = Path(img)
                     files = {"image": (img_path.name, img_path.read_bytes())}
+                    LOGGER.debug("Image File: %s", img)
+
+        LOGGER.debug("Header: %s", header)
+        LOGGER.debug("Data: %s", data_dict)
+        LOGGER.debug("Params: %s", params)
 
         try:
             response = requests.request(
                 method,
                 url,
                 params=params,
-                timeout=2.5,
+                timeout=20,
                 auth=(self.username, self.passwd),
                 headers=header,
                 data=data_dict,
