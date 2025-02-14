@@ -1164,24 +1164,26 @@ class Session:
         data: T | None = None,
     ) -> Any:
         LOGGER.debug("Request Method: %s | URL: %s", method, url)
+        LOGGER.debug("Original Header: %s", self.header)
 
         if params is None:
             params = {}
 
         files = None
-        header = self.header
         if isinstance(data, list):
             lst = []
             lst.extend(item.model_dump() for item in data)
             data_dict = json.dumps(lst)
+            header = self.header.copy()
             header["Content-Type"] = "application/json;charset=utf-8"
         else:
-            data_dict = data.model_dump() if data is not None else None
+            data_dict = data.model_dump() if data else None
             if data_dict is not None and "image" in data_dict:  # NOQA: SIM102
                 if img := data_dict.pop("image"):
                     img_path = Path(img)
                     files = {"image": (img_path.name, img_path.read_bytes())}
                     LOGGER.debug("Image File: %s", img)
+            header = self.header
 
         LOGGER.debug("Header: %s", header)
         LOGGER.debug("Data: %s", data_dict)
