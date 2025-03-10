@@ -20,7 +20,7 @@ from urllib.parse import urlencode
 
 import requests
 from pydantic import TypeAdapter, ValidationError
-from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
+from pyrate_limiter import Duration, Limiter, Rate, SQLiteBucket
 
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.exceptions import ApiError
@@ -46,6 +46,7 @@ from mokkari.schemas.universe import Universe, UniversePost, UniversePostRespons
 LOGGER = logging.getLogger(__name__)
 
 METRON_MINUTE_RATE_LIMIT = 30
+METRON_DAY_RATE_LIMIT = 10_000
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
@@ -66,8 +67,9 @@ class Session:
     """
 
     _minute_rate = Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE)
-    _rates: ClassVar[list[Rate]] = [_minute_rate]
-    _bucket = InMemoryBucket(_rates)
+    _day_rate = Rate(METRON_DAY_RATE_LIMIT, Duration.DAY)
+    _rates: ClassVar[list[Rate]] = [_minute_rate, _day_rate]
+    _bucket = SQLiteBucket.init_from_file(_rates)
     _limiter = Limiter(_bucket, raise_when_fail=False, max_delay=Duration.MINUTE)
     decorator = _limiter.as_decorator()
 
