@@ -42,6 +42,7 @@ from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
+from mokkari.schemas.variant import VariantPost, VariantPostResponse
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ class Session:
         CharacterPost,
         CreatorPost,
         list[CreditPost],
+        VariantPost,
         IssuePost,
         PublisherPost,
         SeriesPost,
@@ -935,6 +937,32 @@ class Session:
             raise exceptions.ApiError(err) from err
 
         adaptor = TypeAdapter(list[CreditPostResponse])
+        try:
+            result = adaptor.validate_python(resp)
+        except ValidationError as err:
+            raise exceptions.ApiError(err) from err
+        return result
+
+    def variant_post(self: Session, data: VariantPost) -> VariantPostResponse:
+        """Create a new variant cover.
+
+        Note: This function only works for users with Admin permissions at Metron.
+
+        Args:
+            data: VariantPost object with the variant data.
+
+        Returns:
+            A VariantPostResponse object containing information about the created variant.
+
+        Raises:
+            ApiError: If there is an error during the API call or validation.
+        """
+        try:
+            resp = self._send("POST", ["variant"], data)
+        except exceptions.ApiError as err:
+            raise exceptions.ApiError(err) from err
+
+        adaptor = TypeAdapter(VariantPostResponse)
         try:
             result = adaptor.validate_python(resp)
         except ValidationError as err:
