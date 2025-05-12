@@ -1,14 +1,13 @@
-[tool.poetry]
+[project]
 name = "mokkari"
 version = "3.10.0"
 description = "Python wrapper for Metron API"
-authors = ["Brian Pepple <bdpepple@gmail.com>"]
-license = "GPL-3.0-or-later"
-maintainers = ["Brian Pepple <bdpepple@gmail.com>"]
+authors = [{ name = "Brian Pepple", email = "bdpepple@gmail.com" }]
+requires-python = "~=3.10"
 readme = "README.md"
-packages = [{ include = "mokkari" }]
-exclude = ["*/**/*~"]
-include = [{ path = "tests", format = "sdist" }]
+license = "GPL-3.0-or-later"
+maintainers = [{ name = "Brian Pepple", email = "bdpepple@gmail.com" }]
+keywords = ["comics", "comic", "metadata", "api", "rest"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
@@ -26,46 +25,55 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Operating System :: Microsoft :: Windows",
 ]
-keywords = ["comics", "comic", "metadata", "api", "rest"]
+dependencies = [
+  "requests>=2.26.0,<3",
+  "pydantic>=2.10.3,<3",
+  "pyrate-limiter>=3.7.0,<4",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-requests = "^2.26.0"
-pydantic = "^2.10.3"
-pyrate-limiter = "^3.7.0"
+[project.urls]
+Homepage = "https://github.com/Metron-Project/mokkari"
+"Bug Tracker" = "https://github.com/Metron-Project/mokkari/issues"
 
-[tool.poetry.group.dev.dependencies]
-pre-commit = "^3.5.0"
-tox = "^4.11.3"
+[dependency-groups]
+dev = ["pre-commit>=4", "tox>=4.11.3,<5", "tox-uv>=1.25.0"]
+test = [
+  "coverage[toml]~=7.0",
+  "pytest-cov>=5.0.0,<6",
+  "requests-mock>=1.9.3,<2",
+]
+lint = [
+  "codespell>=2.1.0,<3",
+  "pyright>=1.1.232,<2",
+  "radon[toml]>=6.0.1,<7",
+  "ruff>=0.8.3,<0.9",
+  "types-python-dateutil>=2.8.19,<3",
+  "vulture~=2.3",
+]
+docs = [
+  "mkdocs>=1.6.0,<2",
+  "mkdocs-include-markdown-plugin>=6.2.1,<7",
+  "mkdocs-material>=9.5.30,<10",
+  "mkdocstrings[python]>=0.25.1,<0.26",
+]
 
-[tool.poetry.group.test.dependencies]
-coverage = { extras = ["toml"], version = "^7.0" }
-pytest-cov = "^5.0.0"
-requests-mock = "^1.9.3"
+[tool.uv]
+default-groups = ["dev", "test", "lint", "docs"]
 
-[tool.poetry.group.lint.dependencies]
-codespell = "^2.1.0"
-pyright = "^1.1.232"
-radon = { version = "^6.0.1", extras = ["toml"] }
-ruff = "^0.8.3"
-types-python-dateutil = "^2.8.19"
-vulture = "^2.3"
+[tool.hatch.build.targets.sdist]
+include = ["mokkari", "tests"]
+exclude = ["*/**/*~"]
 
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-mkdocs = "^1.6.0"
-mkdocs-include-markdown-plugin = "^6.2.1"
-mkdocs-material = "^9.5.30"
-mkdocstrings = { extras = ["python"], version = "^0.25.1" }
+[tool.hatch.build.targets.wheel]
+include = ["mokkari"]
+exclude = ["*/**/*~"]
 
 [build-system]
-requires = ["poetry-core>=1.1.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.codespell]
-skip = './cache,./dist,./test-results,.git,.mypy_cache,.pytest_cache,.venv*,node_modules,package-lock.json,poetry.lock,run.spec'
+skip = './cache,./dist,./test-results,.git,.mypy_cache,.pytest_cache,.venv*,node_modules,package-lock.json,uv.lock,run.spec'
 builtin = 'clear,rare,code'
 check-hidden = true
 # Remove 'coverd' when this issue is resolved
@@ -192,10 +200,6 @@ exclude = [
 min_confidence = 61
 sort_by_size = true
 
-[tool.poetry.urls]
-"Homepage" = "https://github.com/Metron-Project/mokkari"
-"Bug Tracker" = "https://github.com/Metron-Project/mokkari/issues"
-
 [tool.coverage.html]
 directory = "test-results/coverage"
 
@@ -227,7 +231,7 @@ exclude = [
   "cache",
   "dist",
   "package-lock.json",
-  "poetry.lock",
+  "uv.lock",
   "test-results",
   "typings",
 ]
@@ -253,3 +257,11 @@ testpaths = "tests"
 
 [tool.radon]
 exclude = "*~,.git/*,.mypy_cache/*,.pytest_cache/*,.venv*,__pycache__/*,cache/*,dist/*,node_modules/*,test-results/*,typings/*"
+
+[tool.tox]
+env_list = ["3.10", "3.11", "3.12", "3.13"]
+min_version = "4.22"
+
+[tool.tox.env_run_base]
+commands = [["pytest"]]
+dependency_groups = ["test"]

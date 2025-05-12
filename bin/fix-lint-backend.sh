@@ -10,13 +10,13 @@ bin/sortignore.sh
 ####################
 ###### Python ######
 ###################
-poetry run ruff check --fix .
-poetry run ruff format .
+uv run ruff check --fix .
+uv run ruff format .
 
 ############################################
 ##### Javascript, JSON, Markdown, YAML #####
 ############################################
-#npm run fix
+npm run fix
 
 ###################
 ###### Shell ######
