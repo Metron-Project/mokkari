@@ -22,9 +22,7 @@ def test_known_imprints(talker: Session) -> None:
     )
     assert vertigo.founded == 1993
     assert vertigo.publisher.name == "DC Comics"
-    assert (
-        vertigo.resource_url.__str__() == "https://metron.cloud/imprint/vertigo-comics/"
-    )
+    assert vertigo.resource_url.__str__() == "https://metron.cloud/imprint/vertigo-comics/"
 
 
 def test_imprint_list(talker: Session) -> None:

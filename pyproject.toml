@@ -97,6 +97,8 @@ known_third_party = [
 
 [tool.ruff]
 extend-exclude = ["typings"]
+line-length = 100
+show-fixes = true
 target-version = "py310"
 
 [tool.ruff.lint]

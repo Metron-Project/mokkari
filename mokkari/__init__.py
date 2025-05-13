@@ -44,6 +44,4 @@ def api(
     if username is None or passwd is None:
         raise exceptions.AuthenticationError
 
-    return session.Session(
-        username, passwd, cache=cache, user_agent=user_agent, dev_mode=dev_mode
-    )
+    return session.Session(username, passwd, cache=cache, user_agent=user_agent, dev_mode=dev_mode)
