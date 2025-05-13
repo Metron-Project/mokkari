@@ -1,10 +1,13 @@
 """Project entry file."""
 
+__all_ = ["__version__", "api"]
+
+from importlib.metadata import version  # noqa: E402
+
 # Keep this at beginning of file to prevent circular import with session
-__version__ = "3.10.0"
+__version__ = version("mokkari")
 
-
-from mokkari import exceptions, session, sqlite_cache
+from mokkari import exceptions, session, sqlite_cache  # noqa: E402
 
 
 def api(
