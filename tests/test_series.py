@@ -32,10 +32,7 @@ def test_known_series(talker: Session) -> None:
     assert death.status == "Completed"
     assert death.publisher.id == 1
     assert death.publisher.name == "Marvel"
-    assert (
-        death.resource_url.__str__()
-        == "https://metron.cloud/series/death-of-the-inhumans-2018/"
-    )
+    assert death.resource_url.__str__() == "https://metron.cloud/series/death-of-the-inhumans-2018/"
 
 
 def test_series_without_year_end(talker: Session) -> None:

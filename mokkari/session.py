@@ -307,9 +307,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def character_patch(
-        self: Session, _id: int, data: CharacterPost
-    ) -> CharacterPostResponse:
+    def character_patch(self: Session, _id: int, data: CharacterPost) -> CharacterPostResponse:
         """Update an existing character.
 
         Note: This function only works for users with Admin permissions at Metron.
@@ -547,9 +545,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def teams_list(
-        self: Session, params: dict[str, str | int] | None = None
-    ) -> list[BaseResource]:
+    def teams_list(self: Session, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of teams based on the provided parameters.
 
         Args:
@@ -663,9 +659,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def arcs_list(
-        self: Session, params: dict[str, str | int] | None = None
-    ) -> list[BaseResource]:
+    def arcs_list(self: Session, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of arcs based on the provided parameters.
 
         Args:
@@ -778,9 +772,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def series_list(
-        self: Session, params: dict[str, str | int] | None = None
-    ) -> list[BaseSeries]:
+    def series_list(self: Session, params: dict[str, str | int] | None = None) -> list[BaseSeries]:
         """Retrieve a list of series based on the provided parameters.
 
         Args:
@@ -895,9 +887,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def issues_list(
-        self: Session, params: dict[str, str | int] | None = None
-    ) -> list[BaseIssue]:
+    def issues_list(self: Session, params: dict[str, str | int] | None = None) -> list[BaseIssue]:
         """Retrieve a list of issues based on the provided parameters.
 
         Args:
@@ -969,9 +959,7 @@ class Session:
             raise exceptions.ApiError(err) from err
         return result
 
-    def role_list(
-        self: Session, params: dict[str, str | int] | None = None
-    ) -> list[GenericItem]:
+    def role_list(self: Session, params: dict[str, str | int] | None = None) -> list[GenericItem]:
         """Retrieve a list of roles based on the provided parameters.
 
         Args:
@@ -1037,9 +1025,7 @@ class Session:
             raise exceptions.ApiError(error) from error
         return result
 
-    def universe_patch(
-        self: Session, id_: int, data: UniversePost
-    ) -> UniversePostResponse:
+    def universe_patch(self: Session, id_: int, data: UniversePost) -> UniversePostResponse:
         """Update an existing universe.
 
         Note: This function only works for users with Admin permissions at Metron.
