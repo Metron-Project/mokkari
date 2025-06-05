@@ -71,7 +71,7 @@ class Session:
     _day_rate = Rate(METRON_DAY_RATE_LIMIT, Duration.DAY)
     _rates: ClassVar[list[Rate]] = [_minute_rate, _day_rate]
     _bucket = SQLiteBucket.init_from_file(_rates)
-    _limiter = Limiter(_bucket, raise_when_fail=False, max_delay=Duration.MINUTE)
+    _limiter = Limiter(_bucket, raise_when_fail=False, max_delay=Duration.DAY)
     decorator = _limiter.as_decorator()
 
     T = TypeVar(
