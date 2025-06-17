@@ -128,6 +128,7 @@ class CommonIssue(BaseModel):
         number (str): The number of the common issue.
         cover_date (date): The cover date of the common issue.
         store_date (date, optional): The store date of the common issue.
+        foc_date (date, optional): The final order cutoff date of the issue.
         image (HttpUrl, optional): The image URL of the common issue.
         cover_hash (str): The hash value of the common issue cover.
         modified (datetime): The date and time when the common issue was last modified.
@@ -137,6 +138,7 @@ class CommonIssue(BaseModel):
     number: str
     cover_date: date
     store_date: date | None = None
+    foc_date: date | None = None
     image: HttpUrl | None = None
     cover_hash: str = ""
     modified: datetime
@@ -219,6 +221,7 @@ class IssuePost(BaseModel):
         name (list[str], optional): The story titles of the issue.
         cover_date (date, optional): The cover date of the issue.
         store_date (date, optional): The store date of the issue.
+        foc_date (date, optional): The final order cutoff date of the issue.
         price (Decimal, optional): The price of the issue.
         rating (int, optional): The ID of the rating of the issue.
         sku (str, optional): The SKU of the issue.
@@ -243,6 +246,7 @@ class IssuePost(BaseModel):
     name: list[str] | None = None
     cover_date: date | None = None
     store_date: date | None = None
+    foc_date: date | None = None
     price: Decimal | None = None
     rating: int | None = None
     sku: str | None = None
@@ -272,6 +276,7 @@ class IssuePostResponse(IssuePost):
         name (list[str], optional): The story titles of the issue.
         cover_date (date, optional): The cover date of the issue.
         store_date (date, optional): The store date of the issue.
+        foc_date (date, optional): The final order cutoff date of the issue.
         price (Decimal, optional): The price of the issue.
         rating (int, optional): The ID of the rating of the issue.
         sku (str, optional): The SKU of the issue.
