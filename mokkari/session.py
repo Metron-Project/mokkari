@@ -589,7 +589,7 @@ class Session:
         return data
 
     @decorator(rate_mapping)
-    def _request_data(
+    def _request_data(  # noqa: C901
         self,
         method: str,
         url: str,
@@ -646,6 +646,10 @@ class Session:
         ) as e:
             msg = f"Connection error: {e!r}"
             raise exceptions.ApiError(msg) from e
+
+        if response.status_code == requests.codes.too_many:
+            msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
+            raise exceptions.RateLimitError(msg)
 
         try:
             response.raise_for_status()
