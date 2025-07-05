@@ -18,6 +18,14 @@ class ApiError(Exception):
         Exception.__init__(self, *args, **kwargs)
 
 
+class RateLimitError(Exception):
+    """Class for any rate limit errors."""
+
+    def __init__(self: ApiError, *args, **kwargs: dict[str, any]) -> None:
+        """Initialize an ApiError."""
+        Exception.__init__(self, *args, **kwargs)
+
+
 class AuthenticationError(Exception):
     """Class for any authentication errors."""
 
