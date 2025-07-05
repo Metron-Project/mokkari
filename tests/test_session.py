@@ -1214,8 +1214,9 @@ def test__retrieve_all_results_without_cache(session: Session) -> None:
 def test__request_data_get(monkeypatch, session):
     # Arrange
     class DummyResp:
-        def __init__(self):
+        def __init__(self, status_code=200):
             self._json = {"foo": "bar"}
+            self.status_code = status_code
 
         def raise_for_status(self):
             pass
@@ -1233,8 +1234,9 @@ def test__request_data_get(monkeypatch, session):
 def test__request_data_post_list(monkeypatch, session):
     # Arrange
     class DummyResp:
-        def __init__(self):
+        def __init__(self, status_code=201):
             self._json = {"foo": "bar"}
+            self.status_code = status_code
 
         def raise_for_status(self):
             pass
@@ -1253,8 +1255,9 @@ def test__request_data_post_list(monkeypatch, session):
 def test__request_data_post_with_image(monkeypatch, session, tmp_path):
     # Arrange
     class DummyResp:
-        def __init__(self):
+        def __init__(self, status_code=201):
             self._json = {"foo": "bar"}
+            self.status_code = status_code
 
         def raise_for_status(self):
             pass
@@ -1283,32 +1286,33 @@ def test__request_data_connection_error(monkeypatch, session):
         session._request_data("GET", "url")
 
 
-def test__request_data_http_error(monkeypatch, session):
-    # Arrange
-    class DummyResp:
-        def raise_for_status(self):
-            raise HTTPError
-
-        def json(self):
-            return {}
-
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
-    # Act & Assert
-    with pytest.raises(exceptions.ApiError):
-        session._request_data("GET", "url")
-
-
 def test__request_data_detail(monkeypatch, session):
     # Arrange
     class DummyResp:
+        def __init__(self, status_code=200):
+            self._json = {"foo": "bar"}
+            self.status_code = status_code
+
         def raise_for_status(self):
-            pass
+            if self.status_code >= 400:
+                msg = f"HTTP {self.status_code} Error"
+                raise HTTPError(msg)
 
         def json(self):
-            return {"detail": "fail"}
+            return self._json
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
-    # Act & Assert
+    # Test successful request (200)
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp(200))
+    out = session._request_data("GET", "url")
+    assert out == {"foo": "bar"}
+
+    # Test another successful status code (201)
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp(201))
+    out = session._request_data("GET", "url")
+    assert out == {"foo": "bar"}
+
+    # Test client error (400) - should raise ApiError
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp(400))
     with pytest.raises(exceptions.ApiError):
         session._request_data("GET", "url")
 
