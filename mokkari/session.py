@@ -12,7 +12,7 @@ import json
 import logging
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Final, TypeVar
 from urllib.parse import urlencode
 
 import requests
@@ -43,16 +43,50 @@ from mokkari.schemas.variant import VariantPost, VariantPostResponse
 LOGGER = logging.getLogger(__name__)
 
 # Constants
-METRON_MINUTE_RATE_LIMIT = 30
-METRON_DAY_RATE_LIMIT = 10_000
+METRON_MINUTE_RATE_LIMIT: Final[int] = 30
+METRON_DAY_RATE_LIMIT: Final[int] = 10_000
+REQUEST_TIMEOUT: Final[int] = 20
+SECONDS_PER_HOUR: Final[int] = 3_600
+SECONDS_PER_MINUTE: Final[int] = 60
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
-REQUEST_TIMEOUT = 20
 
 
 def rate_mapping(*args: Any, **kwargs: Any) -> tuple[str, int]:  # noqa: ARG001
     """Map rate limiting parameters."""
     return "metron", 1
+
+
+def format_time(seconds: str | float) -> str:
+    """Format seconds into a verbose human-readable time string.
+
+    Args:
+        seconds (int or float): Number of seconds to format
+
+    Returns:
+        str: Formatted time string (e.g., "2 hours, 30 minutes, 45 seconds")
+    """
+    total_seconds = int(seconds)
+
+    if total_seconds < 0:
+        return "0 seconds"
+
+    hours = total_seconds // SECONDS_PER_HOUR
+    minutes = (total_seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE
+    remaining_seconds = total_seconds % SECONDS_PER_MINUTE
+
+    parts = []
+
+    if hours > 0:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+
+    if minutes > 0:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+
+    if remaining_seconds > 0 or not parts:
+        parts.append(f"{remaining_seconds} second{'s' if remaining_seconds != 1 else ''}")
+
+    return ", ".join(parts)
 
 
 class Session:
