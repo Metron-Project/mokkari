@@ -596,7 +596,24 @@ class Session:
         params: dict[str, str | int] | None = None,
         data: T | None = None,
     ) -> Any:
-        """Make HTTP request with rate limiting and error handling."""
+        """Send an HTTP request to the API and handle the response.
+
+        This method constructs and sends an HTTP request to the specified URL using the provided method, parameters, and data.
+        It handles authentication, error checking, and response parsing, including rate limiting and connection errors.
+
+        Args:
+            method: The HTTP method to use for the request (e.g., "GET", "POST").
+            url: The URL to send the request to.
+            params: An optional dictionary of query parameters to include in the request.
+            data: Optional data to include in the request body.
+
+        Returns:
+            The parsed response from the API.
+
+        Raises:
+            ApiError: If there is a connection error, HTTP error, or invalid JSON response.
+            RateLimitError: If the API rate limit is exceeded.
+        """
         LOGGER.debug("Request Method: %s | URL: %s", method, url)
         LOGGER.debug("Original Header: %s", self.header)
 
@@ -643,25 +660,24 @@ class Session:
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.ReadTimeout,
-        ) as e:
-            msg = f"Connection error: {e!r}"
-            raise exceptions.ApiError(msg) from e
-
-        if response.status_code == requests.codes.too_many:
-            msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
-            raise exceptions.RateLimitError(msg)
+        ) as err:
+            msg = f"Connection error: {err!r}"
+            raise exceptions.ApiError(msg) from err
 
         try:
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            msg = f"HTTP error: {e!r}"
-            raise exceptions.ApiError(msg) from e
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == requests.codes.too_many:
+                msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
+                raise exceptions.RateLimitError(msg) from err
+            msg = f"HTTP error: {err!r}"
+            raise exceptions.ApiError(msg) from err
 
         try:
             resp = response.json()
-        except ValueError as e:
-            msg = f"Invalid JSON response: {e!r}"
-            raise exceptions.ApiError(msg) from e
+        except ValueError as err:
+            msg = f"Invalid JSON response: {err!r}"
+            raise exceptions.ApiError(msg) from err
 
         if "detail" in resp:
             raise exceptions.ApiError(resp["detail"])
