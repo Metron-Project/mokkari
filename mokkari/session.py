@@ -392,7 +392,6 @@ class Session:
         Raises:
             ApiError: If the creator is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
 
         Examples:
             >>> session = Session("username", "password")
@@ -417,7 +416,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
 
         Examples:
             >>> session = Session("username", "password")
@@ -441,7 +439,6 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
 
         Examples:
             >>> session = Session("username", "password")
@@ -481,7 +478,6 @@ class Session:
         Raises:
             ApiError: If the character is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
 
         Examples:
             >>> session = Session("username", "password")
@@ -568,7 +564,6 @@ class Session:
         Raises:
             ApiError: If the publisher is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         resp = self._get(["publisher", _id])
         return self._validate_response(resp, Publisher)
@@ -632,7 +627,6 @@ class Session:
         Raises:
             ApiError: If the team is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         resp = self._get(["team", _id])
         return self._validate_response(resp, Team)
@@ -651,7 +645,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_post_request(["team"], data, TeamPostResponse)
 
@@ -670,7 +663,6 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_patch_request(["team", _id], data, TeamPostResponse)
 
@@ -712,7 +704,6 @@ class Session:
         Raises:
             ApiError: If the arc is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         resp = self._get(["arc", _id])
         return self._validate_response(resp, Arc)
@@ -731,7 +722,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_post_request(["arc"], data, Arc)
 
@@ -750,7 +740,6 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_patch_request(["arc", _id], data, Arc)
 
@@ -792,7 +781,6 @@ class Session:
         Raises:
             ApiError: If the series is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         resp = self._get(["series", _id])
         return self._validate_response(resp, Series)
@@ -811,7 +799,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_post_request(["series"], data, SeriesPostResponse)
 
@@ -830,7 +817,6 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_patch_request(["series", _id], data, SeriesPostResponse)
 
@@ -873,7 +859,6 @@ class Session:
         Raises:
             ApiError: If the issue is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
 
         Examples:
             >>> session = Session("username", "password")
@@ -897,7 +882,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_post_request(["issue"], data, IssuePostResponse)
 
@@ -916,7 +900,6 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_patch_request(["issue", _id], data, IssuePostResponse)
 
@@ -952,7 +935,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
 
         Examples:
             >>> session = Session("username", "password")
@@ -975,7 +957,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_post_request(["variant"], data, VariantPostResponse)
 
@@ -1005,7 +986,6 @@ class Session:
         Raises:
             ApiError: If the universe is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         resp = self._get(["universe", _id])
         return self._validate_response(resp, Universe)
@@ -1024,7 +1004,6 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_post_request(["universe"], data, UniversePostResponse)
 
@@ -1043,7 +1022,6 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         return self._handle_patch_request(["universe", _id], data, UniversePostResponse)
 
@@ -1073,7 +1051,6 @@ class Session:
         Raises:
             ApiError: If the imprint is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
-            ValidationError: If the Metron API response validation fails.
         """
         resp = self._get(["imprint", _id])
         return self._validate_response(resp, Imprint)
