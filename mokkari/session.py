@@ -1,4 +1,3 @@
-# ruff: noqa: TRY003
 """Session module.
 
 This module provides the following classes:
@@ -10,6 +9,7 @@ __all__ = ["Session"]
 
 import json
 import logging
+import platform
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, ClassVar, Final, TypeVar
@@ -207,8 +207,6 @@ class Session:
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
         """
-        import platform
-
         self.username = username
         self.passwd = passwd
         self.header = {
