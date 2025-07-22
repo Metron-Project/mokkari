@@ -30,8 +30,9 @@ __all__ = [
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import Field, HttpUrl
+from pydantic import Field, HttpUrl, StringConstraints
 
 from mokkari.schemas import BaseModel
 from mokkari.schemas.base import BaseResource
@@ -240,18 +241,18 @@ class IssuePost(BaseModel):
     """
 
     series: int | None = None
-    number: str | None = None
-    alt_number: str | None = None
+    number: Annotated[str, StringConstraints(max_length=25)] | None = None
+    alt_number: Annotated[str, StringConstraints(max_length=25)] | None = None
     title: str | None = None  # Collection Title
-    name: list[str] | None = None
+    name: list[Annotated[str, StringConstraints(max_length=150)]] | None = None
     cover_date: date | None = None
     store_date: date | None = None
     foc_date: date | None = None
     price: Decimal | None = None
     rating: int | None = None
-    sku: str | None = None
-    isbn: str | None = None
-    upc: str | None = None
+    sku: Annotated[str, StringConstraints(max_length=12)] | None = None
+    isbn: Annotated[str, StringConstraints(max_length=13)] | None = None
+    upc: Annotated[str, StringConstraints(max_length=20)] | None = None
     page: int | None = None
     desc: str | None = None
     image: str | None = None
