@@ -6,13 +6,13 @@ authors = [{ name = "Brian Pepple", email = "bdpepple@gmail.com" }]
 requires-python = ">=3.10"
 readme = "README.md"
 license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 maintainers = [{ name = "Brian Pepple", email = "bdpepple@gmail.com" }]
 keywords = ["comics", "comic", "metadata", "api", "rest"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Natural Language :: English",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
