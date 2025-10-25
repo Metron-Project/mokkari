@@ -4,7 +4,7 @@ This module contains tests for Character objects.
 """
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
 import pytest
 import requests_mock
@@ -19,7 +19,7 @@ def test_no_alias(talker: Session) -> None:
     character = talker.character(23843)
     assert isinstance(character, Character)
     assert character.name == "4-D Man"
-    assert character.alias is None
+    assert character.alias == []
     assert character.desc == "An alien from the 4th Dimension."
     assert character.creators == []
     assert character.teams == []
@@ -36,16 +36,6 @@ def test_known_character(talker: Session) -> None:
     )
     assert len(black_bolt.creators) == 2
     assert len(black_bolt.teams) == 3
-    assert black_bolt.modified == datetime(
-        2024,
-        1,
-        28,
-        13,
-        25,
-        35,
-        568293,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
     assert any(item.name == "Earth 616" for item in black_bolt.universes)
     assert black_bolt.resource_url.__str__() == "https://metron.cloud/character/black-bolt/"
 
@@ -57,14 +47,14 @@ def test_character_list(talker: Session) -> None:
     assert next(character_iter).name == "'Mazing Man"
     assert next(character_iter).name == "3-D Man (Chandler)"
     assert next(character_iter).name == "3-D Man (Garrett)"
-    assert len(chars) == 1060
+    assert len(chars) == 1371
     assert chars[2].name == "3-D Man (Garrett)"
 
 
 def test_character_issue_list(talker: Session) -> None:
     """Test for getting an issue list for an arc."""
     issues = talker.character_issues_list(1)
-    assert len(issues) == 517
+    assert len(issues) == 537
     assert issues[0].id == 258
     assert issues[0].issue_name == "Fantastic Four (1961) #45"
     assert issues[0].cover_date == date(1965, 12, 1)

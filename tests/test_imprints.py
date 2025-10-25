@@ -29,12 +29,11 @@ def test_imprint_list(talker: Session) -> None:
     """Test the ImprintList."""
     imprints = talker.imprints_list()
     imprints_iter = iter(imprints)
-    assert next(imprints_iter).name == "Amalgam Comics"
-    assert next(imprints_iter).name == "Archaia"
-    assert next(imprints_iter).name == "Archie Horror"
-    assert next(imprints_iter).name == "Boom! Box"
-    assert len(imprints) == 19
-    assert imprints[3].name == "Boom! Box"
+    assert next(imprints_iter).name == "Abrams Fanfare"
+    assert next(imprints_iter).name == "Action Lab Danger Zone"
+    assert next(imprints_iter).name == "Adventure Comics"
+    assert len(imprints) == 44
+    assert imprints[2].name == "Adventure Comics"
 
 
 def test_bad_imprint(talker: Session) -> None:

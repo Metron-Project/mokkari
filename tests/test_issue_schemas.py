@@ -332,6 +332,7 @@ def test_issue_creation_full_data():
         "title": "The Dark Knight Returns",
         "name": ["Story One", "Story Two"],
         "price": "3.99",
+        "price_currency": "USD",
         "rating": {"id": 1, "name": "T+"},
         "sku": "JUL230001",
         "isbn": "978-1234567890",
@@ -388,6 +389,8 @@ def test_issue_creation_minimal_data():
         "isbn": "",
         "upc": "",
         "desc": "",
+        "price": None,
+        "price_currency": "",
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -430,6 +433,8 @@ def test_issue_field_aliases():
         "upc": "",
         "page": 24,
         "desc": "",
+        "price": None,
+        "price_currency": "",
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -584,6 +589,8 @@ def test_empty_string_handling():
         "isbn": "",
         "upc": "",
         "desc": "",
+        "price": None,
+        "price_currency": "",
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -621,6 +628,8 @@ def test_list_field_types():
         "isbn": "",
         "upc": "",
         "desc": "",
+        "price": None,
+        "price_currency": "",
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -653,6 +662,8 @@ def test_optional_nested_objects():
         "isbn": "",
         "upc": "",
         "desc": "",
+        "price": None,
+        "price_currency": "",
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)

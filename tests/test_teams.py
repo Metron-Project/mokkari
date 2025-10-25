@@ -29,19 +29,17 @@ def test_team_list(talker: Session) -> None:
     """Test the TeamsList."""
     teams = talker.teams_list()
     team_iter = iter(teams)
-    assert next(team_iter).name == "501st Legion"
-    assert next(team_iter).name == "5th Dimensional Imps"
-    assert next(team_iter).name == "A-Force"
-    assert next(team_iter).name == "A-Next"
-    assert next(team_iter).name == "A.I.M."
-    assert len(teams) == 1646
-    assert teams[4].name == "A.I.M."
+    assert next(team_iter).name == "13th Floor Witches"
+    assert next(team_iter).name == "22 Brides"
+    assert next(team_iter).name == "3K X-Men"
+    assert len(teams) == 2315
+    assert teams[2].name == "3K X-Men"
 
 
 def test_team_issue_list(talker: Session) -> None:
     """Test for getting an issue list for an arc."""
     issues = talker.team_issues_list(1)
-    assert len(issues) == 704
+    assert len(issues) == 721
     assert issues[0].id == 258
     assert issues[0].issue_name == "Fantastic Four (1961) #45"
     assert issues[0].cover_date == date(1965, 12, 1)

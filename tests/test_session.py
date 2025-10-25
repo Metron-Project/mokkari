@@ -911,6 +911,8 @@ def test_issue(session: Session) -> None:
                     series_type=GenericItem(id=1, name="One Shot"),
                 ),
                 publisher=GenericItem(id=1, name="DC"),
+                price=None,
+                price_currency="",
                 sku="",
                 isbn="",
                 upc="",

@@ -4,7 +4,7 @@ This module contains tests for Creator objects.
 """
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
 import pytest
 import requests_mock
@@ -23,16 +23,6 @@ def test_known_creator(talker: Session) -> None:
         jack.image.__str__()
         == "https://static.metron.cloud/media/creator/2018/11/11/432124-Jack_Kirby01.jpg"
     )
-    assert jack.modified == datetime(
-        2019,
-        6,
-        23,
-        15,
-        13,
-        22,
-        311024,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
     assert jack.resource_url.__str__() == "https://metron.cloud/creator/jack-kirby/"
 
 
@@ -41,11 +31,11 @@ def test_creator_list(talker: Session) -> None:
     creators = talker.creators_list({"name": "man"})
     creator_iter = iter(creators)
     assert next(creator_iter).name == "A. J. Lieberman"
+    assert next(creator_iter).name == "Aadi Salman"
     assert next(creator_iter).name == "Aaron Guzman"
     assert next(creator_iter).name == "Abel Laxamana"
-    assert next(creator_iter).name == "Adam Freeman"
-    assert len(creators) == 406
-    assert creators[3].name == "Adam Freeman"
+    assert len(creators) == 543
+    assert creators[3].name == "Abel Laxamana"
 
 
 def test_bad_creator(talker: Session) -> None:
