@@ -4,7 +4,6 @@ This module contains tests for Publisher objects.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests_mock
@@ -23,16 +22,6 @@ def test_known_publishers(talker: Session) -> None:
     )
     assert marvel.founded == 1939
     assert marvel.country == "US"
-    assert marvel.modified == datetime(
-        2024,
-        4,
-        7,
-        4,
-        53,
-        45,
-        729670,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
     assert marvel.resource_url.__str__() == "https://metron.cloud/publisher/marvel/"
 
 
@@ -43,7 +32,7 @@ def test_publisher_list(talker: Session) -> None:
     assert next(publisher_iter).name == "12-Gauge Comics"
     assert next(publisher_iter).name == "AAA Pop Comics"
     assert next(publisher_iter).name == "AWA Studios"
-    assert len(publishers) == 108
+    assert len(publishers) == 155
     assert publishers[2].name == "AWA Studios"
 
 

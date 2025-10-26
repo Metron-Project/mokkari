@@ -28,10 +28,10 @@ def test_universe_list(talker: Session) -> None:
     """Test the Universe list."""
     universes = talker.universes_list()
     universes_iter = iter(universes)
+    assert next(universes_iter).name == "2099 AD - Marvel Knights"
     assert next(universes_iter).name == "ABC"
-    assert next(universes_iter).name == "Age of Apocalypse"
-    assert next(universes_iter).name == "Amalgam"
-    assert universes[1].name == "Age of Apocalypse"
+    assert next(universes_iter).name == "AP Superverse"
+    assert universes[2].name == "AP Superverse"
 
 
 def test_bad_universe(talker: Session) -> None:

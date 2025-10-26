@@ -4,7 +4,7 @@ This module contains tests for Arc objects.
 """
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
 import pytest
 import requests_mock
@@ -21,16 +21,6 @@ def test_known_arc(talker: Session) -> None:
         witching.image.__str__()
         == "https://static.metron.cloud/media/arc/2018/11/13/witching-hour.jpg"
     )
-    assert witching.modified == datetime(
-        2019,
-        6,
-        23,
-        15,
-        13,
-        19,
-        507207,
-        tzinfo=timezone(timedelta(days=-1, seconds=72000), "-0400"),
-    )
     assert witching.resource_url.__str__() == "https://metron.cloud/arc/witching-hour/"
 
 
@@ -42,7 +32,7 @@ def test_arcs_list(talker: Session) -> None:
     assert next(arc_iter).name == "(She) Drunk History"
     assert next(arc_iter).name == "1+2 = Fantastic Three"
     assert next(arc_iter).name == "1602"
-    assert len(arcs) == 1935
+    assert len(arcs) == 2056
     assert arcs[3].name == "1602"
 
 

@@ -99,6 +99,12 @@ def test_issue_without_story_title(talker: Session) -> None:
     assert redemption.store_date == date(2021, 5, 19)
     assert "Christa Faust" in [c.creator for c in redemption.credits]
 
+def test_issue_with_variant_price(talker: Session) -> None:
+    """Test an issue that has variants with prices."""
+    black_cat = talker.issue(156270)
+    assert len(black_cat.variants) > 0
+    assert black_cat.variants[0].price == Decimal("3.99")
+
 
 def test_issueslist(talker: Session) -> None:
     """Test the IssueList."""
@@ -118,7 +124,7 @@ def test_issueslist_with_params(talker: Session) -> None:
         "series_name": "Kang",
     }
     issues = talker.issues_list(params=params)
-    assert len(issues) == 6
+    assert len(issues) == 7
     assert issues[1].issue_name == "Kang The Conqueror (2021) #1"
     assert issues[1].cover_date == date(2021, 10, 1)
 
@@ -128,6 +134,7 @@ def test_issue_with_upc_sku_price(talker: Session) -> None:
     usca_3 = talker.issue(36812)
     assert usca_3.series.name == "The United States of Captain America"
     assert usca_3.number == "3"
+    assert usca_3.price_currency == "USD"
     assert usca_3.price == Decimal("4.99")
     assert usca_3.sku == "JUN210696"
     assert usca_3.upc == "75960620100600311"
@@ -137,6 +144,7 @@ def test_issue_without_upc_sku_price(talker: Session) -> None:
     """Test issue without upc, sku, and price values."""
     bullets = talker.issue(89134)
     assert bullets.price is None
+    assert bullets.price_currency == ""
     assert bullets.sku == ""
     assert bullets.upc == ""
 

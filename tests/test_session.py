@@ -4,6 +4,7 @@ This module contains tests for Session objects.
 """
 
 import datetime
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -911,6 +912,8 @@ def test_issue(session: Session) -> None:
                     series_type=GenericItem(id=1, name="One Shot"),
                 ),
                 publisher=GenericItem(id=1, name="DC"),
+                price=None,
+                price_currency="",
                 sku="",
                 isbn="",
                 upc="",
@@ -1007,13 +1010,13 @@ def test_credits_post(session: Session) -> None:
 
 def test_variant_post(session: Session) -> None:
     # Arrange
-    data = VariantPost(name="Variant A", issue=1, image="/home/test/image.jpg")
+    data = VariantPost(name="Variant A", issue=1, image="/home/test/image.jpg", price=Decimal("3.99"))
     with (
         patch.object(session, "_send", return_value={"id": 1, "name": "Variant A"}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
             return_value=VariantPostResponse(
-                id=1, name="Variant A", issue=1, image="/home/test/image.jpg"
+                id=1, name="Variant A", issue=1, image="/home/test/image.jpg", price=Decimal("3.99"), price_currency="USD"
             ),
         ),
     ):

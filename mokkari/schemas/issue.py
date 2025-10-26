@@ -168,6 +168,7 @@ class Issue(CommonIssue):
         collection_title (str): The title of the issue collection.
         story_titles (list[str]): The titles of the stories in the issue.
         price (Decimal, optional): The price of the issue.
+        price_currency (str): The currency type for the price field.
         rating (GenericItem): The rating of the issue.
         sku (str): The stock keeping unit (SKU) of the issue.
         isbn (str): The International Standard Book Number (ISBN) of the issue.
@@ -193,6 +194,7 @@ class Issue(CommonIssue):
     collection_title: str = Field(alias="title")
     story_titles: list[str] = Field(alias="name")
     price: Decimal | None = None
+    price_currency: str
     rating: GenericItem
     sku: str
     isbn: str

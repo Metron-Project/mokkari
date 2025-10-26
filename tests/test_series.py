@@ -55,16 +55,16 @@ def test_series_list(talker: Session) -> None:
     series = talker.series_list({"name": "batman"})
     series_iter = iter(series)
     assert next(series_iter).id == 8477
+    assert next(series_iter).id == 13742
+    assert next(series_iter).id == 13637
     assert next(series_iter).id == 2547
-    assert next(series_iter).id == 5959
-    assert next(series_iter).id == 7972
-    assert next(series_iter).id == 2481
-    assert len(series) == 295
-    assert series[3].id == 7972
+    assert next(series_iter).id == 11897
+    assert len(series) == 393
+    assert series[3].id == 2547
     assert series[3].volume == 1
-    assert series[3].issue_count == 6
-    assert series[4].id == 2481
-    assert series[4].display_name == "Batman (1940)"
+    assert series[3].issue_count == 14
+    assert series[4].id == 11897
+    assert series[4].display_name == "All Star Batman & Robin, The Boy Wonder (2005)"
     assert series[4].volume == 1
 
 
