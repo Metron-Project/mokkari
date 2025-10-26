@@ -99,6 +99,12 @@ def test_issue_without_story_title(talker: Session) -> None:
     assert redemption.store_date == date(2021, 5, 19)
     assert "Christa Faust" in [c.creator for c in redemption.credits]
 
+def test_issue_with_variant_price(talker: Session) -> None:
+    """Test an issue that has variants with prices."""
+    black_cat = talker.issue(156270)
+    assert len(black_cat.variants) > 0
+    assert black_cat.variants[0].price == Decimal("3.99")
+
 
 def test_issueslist(talker: Session) -> None:
     """Test the IssueList."""
