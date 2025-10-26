@@ -8,6 +8,7 @@ This module provides the following classes:
 __all__ = ["Variant", "VariantPost", "VariantPostResponse"]
 
 from decimal import Decimal
+
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
