@@ -327,41 +327,18 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
 
-    def _handle_post_request(self, endpoint: list[str], data: Any, response_class: type) -> Any:
-        """Handle POST request with consistent error handling and validation.
-
-        This internal method provides a standardized way to handle POST requests
-        with proper error handling and response validation.
-
-        Args:
-            endpoint: The API endpoint path segments.
-            data: The data to send in the POST request.
-            response_class: The expected response class for validation.
-
-        Returns:
-            Any: The validated response object.
-
-        Raises:
-            ApiError: If the request fails or validation fails.
-        """
-        try:
-            resp = self._send("POST", endpoint, data)
-        except exceptions.ApiError as error:
-            raise exceptions.ApiError(error) from error
-
-        return self._validate_response(resp, response_class)
-
-    def _handle_patch_request(
-        self, endpoint: list[str | int], data: Any, response_class: type
+    def _handle_write_request(
+        self, method: str, endpoint: list[str | int], data: Any, response_class: type
     ) -> Any:
-        """Handle PATCH request with consistent error handling and validation.
+        """Handle POST or PATCH request with consistent error handling and validation.
 
-        This internal method provides a standardized way to handle PATCH requests
-        with proper error handling and response validation.
+        This internal method provides a standardized way to handle write requests
+        (POST and PATCH) with proper response validation.
 
         Args:
+            method: HTTP method to use ("POST" or "PATCH").
             endpoint: The API endpoint path segments.
-            data: The data to send in the PATCH request.
+            data: The data to send in the request.
             response_class: The expected response class for validation.
 
         Returns:
@@ -370,11 +347,7 @@ class Session:
         Raises:
             ApiError: If the request fails or validation fails.
         """
-        try:
-            resp = self._send("PATCH", endpoint, data)
-        except exceptions.ApiError as error:
-            raise exceptions.ApiError(error) from error
-
+        resp = self._send(method, endpoint, data)
         return self._validate_response(resp, response_class)
 
     # Generic resource methods
@@ -415,7 +388,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request([resource_name], data, response_class)
+        return self._handle_write_request("POST", [resource_name], data, response_class)
 
     def _patch_resource(self, resource_name: str, _id: int, data: Any, response_class: type) -> Any:
         """Update an existing resource in the database.
@@ -435,7 +408,7 @@ class Session:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_patch_request([resource_name, _id], data, response_class)
+        return self._handle_write_request("PATCH", [resource_name, _id], data, response_class)
 
     def _list_resources(
         self, resource_name: str, params: dict[str, str | int] | None, response_class: type
@@ -1007,7 +980,7 @@ class Session:
             >>> credits_ = [CreditPost(issue=1, creator=1, role=[1])]
             >>> new_credits = session.credits_post(credits_)
         """
-        return self._handle_post_request(["credit"], data, list[CreditPostResponse])
+        return self._handle_write_request("POST", ["credit"], data, list[CreditPostResponse])
 
     def variant_post(self, data: VariantPost) -> VariantPostResponse:
         """Create a new variant cover for an issue.
@@ -1024,7 +997,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request(["variant"], data, VariantPostResponse)
+        return self._handle_write_request("POST", ["variant"], data, VariantPostResponse)
 
     def role_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
         """Retrieve a list of available creator roles.
