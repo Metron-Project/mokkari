@@ -1164,8 +1164,123 @@ class Session:
 
         return data
 
+    def _prepare_request_payload(
+        self, data: T | None
+    ) -> tuple[dict[str, str], dict[str, tuple[str, bytes]] | None, str | dict[str, Any] | None]:
+        """Prepare request payload, handling data serialization and file uploads.
+
+        Args:
+            data: Optional data to include in the request body.
+
+        Returns:
+            tuple: A tuple of (header, files, data_dict) where header contains HTTP headers,
+                  files contains file uploads, and data_dict contains the request body data.
+        """
+        files = None
+        data_dict = None
+        header = self.header.copy()
+
+        if isinstance(data, list):
+            # Handle list data (e.g., credits)
+            lst = [item.model_dump() for item in data]
+            data_dict = json.dumps(lst)
+            header["Content-Type"] = "application/json;charset=utf-8"
+        elif data is not None:
+            # Handle single object data
+            data_dict = data.model_dump()
+
+            # Handle image uploads
+            if data_dict and "image" in data_dict and (img := data_dict.pop("image")):
+                img_path = Path(img)
+                if img_path.exists():
+                    files = {"image": (img_path.name, img_path.read_bytes())}
+                    LOGGER.debug("Image File: %s", img)
+                else:
+                    LOGGER.warning("Image file not found: %s", img)
+
+        LOGGER.debug("Header: %s", header)
+        LOGGER.debug("Data: %s", data_dict)
+
+        return header, files, data_dict
+
+    def _execute_http_request(  # noqa: PLR0913
+        self,
+        method: str,
+        url: str,
+        params: dict[str, str | int],
+        header: dict[str, str],
+        data_dict: str | dict[str, Any] | None,
+        files: dict[str, tuple[str, bytes]] | None,
+    ) -> requests.Response:
+        """Execute the HTTP request with proper error handling.
+
+        Args:
+            method: HTTP method to use ("GET", "POST", "PATCH").
+            url: The complete URL to send the request to.
+            params: Query parameters to include in the request.
+            header: HTTP headers to send with the request.
+            data_dict: The request body data.
+            files: Optional file uploads.
+
+        Returns:
+            requests.Response: The HTTP response object.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+        """
+        try:
+            return requests.request(
+                method,
+                url,
+                params=params,
+                timeout=REQUEST_TIMEOUT,
+                auth=(self.username, self.passwd),
+                headers=header,
+                data=data_dict,
+                files=files,
+            )
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout,
+        ) as err:
+            msg = f"Connection error: {err!r}"
+            raise exceptions.ApiError(msg) from err
+
+    def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:
+        """Handle HTTP response, parsing JSON and checking for errors.
+
+        Args:
+            response: The HTTP response object to process.
+
+        Returns:
+            dict[str, Any]: The parsed JSON response data.
+
+        Raises:
+            RateLimitError: When the API rate limit is exceeded.
+            ApiError: For HTTP errors, invalid JSON, or API error responses.
+        """
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == requests.codes.too_many:
+                msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
+                raise exceptions.RateLimitError(msg) from err
+            msg = f"HTTP error: {err!r}"
+            raise exceptions.ApiError(msg) from err
+
+        try:
+            resp = response.json()
+        except ValueError as err:
+            msg = f"Invalid JSON response: {err!r}"
+            raise exceptions.ApiError(msg) from err
+
+        if "detail" in resp:
+            raise exceptions.ApiError(resp["detail"])
+
+        return resp
+
     @decorator(rate_mapping)
-    def _request_data(  # noqa: C901
+    def _request_data(
         self,
         method: str,
         url: str,
@@ -1202,69 +1317,16 @@ class Session:
         if params is None:
             params = {}
 
-        files = None
-        data_dict = None
-        header = self.header.copy()
+        # Prepare request payload (data serialization and file handling)
+        header, files, data_dict = self._prepare_request_payload(data)
 
-        if isinstance(data, list):
-            # Handle list data (e.g., credits)
-            lst = [item.model_dump() for item in data]
-            data_dict = json.dumps(lst)
-            header["Content-Type"] = "application/json;charset=utf-8"
-        elif data is not None:
-            # Handle single object data
-            data_dict = data.model_dump()
-
-            # Handle image uploads
-            if data_dict and "image" in data_dict and (img := data_dict.pop("image")):
-                img_path = Path(img)
-                if img_path.exists():
-                    files = {"image": (img_path.name, img_path.read_bytes())}
-                    LOGGER.debug("Image File: %s", img)
-                else:
-                    LOGGER.warning("Image file not found: %s", img)
-
-        LOGGER.debug("Header: %s", header)
-        LOGGER.debug("Data: %s", data_dict)
         LOGGER.debug("Params: %s", params)
 
-        try:
-            response = requests.request(
-                method,
-                url,
-                params=params,
-                timeout=REQUEST_TIMEOUT,
-                auth=(self.username, self.passwd),
-                headers=header,
-                data=data_dict,
-                files=files,
-            )
-        except (
-            requests.exceptions.ConnectionError,
-            requests.exceptions.ReadTimeout,
-        ) as err:
-            msg = f"Connection error: {err!r}"
-            raise exceptions.ApiError(msg) from err
+        # Execute HTTP request
+        response = self._execute_http_request(method, url, params, header, data_dict, files)
 
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == requests.codes.too_many:
-                msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
-                raise exceptions.RateLimitError(msg) from err
-            msg = f"HTTP error: {err!r}"
-            raise exceptions.ApiError(msg) from err
-
-        try:
-            resp = response.json()
-        except ValueError as err:
-            msg = f"Invalid JSON response: {err!r}"
-            raise exceptions.ApiError(msg) from err
-
-        if "detail" in resp:
-            raise exceptions.ApiError(resp["detail"])
-
-        return resp
+        # Handle response (parse JSON and check for errors)
+        return self._handle_http_response(response)
 
     def _get_results_from_cache(self, key: str) -> Any | None:
         """Retrieve cached response data using the specified key.
