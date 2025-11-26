@@ -52,6 +52,24 @@ METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
 
+class ResourceEndpoint:
+    """Constants for API resource endpoint names.
+
+    These constants define the valid endpoint names used throughout the Session class
+    for accessing different resource types in the Metron API.
+    """
+
+    ARC: Final[str] = "arc"
+    CHARACTER: Final[str] = "character"
+    CREATOR: Final[str] = "creator"
+    IMPRINT: Final[str] = "imprint"
+    ISSUE: Final[str] = "issue"
+    PUBLISHER: Final[str] = "publisher"
+    SERIES: Final[str] = "series"
+    TEAM: Final[str] = "team"
+    UNIVERSE: Final[str] = "universe"
+
+
 def rate_mapping(*args: Any, **kwargs: Any) -> tuple[str, int]:  # noqa: ARG001
     """Map rate limiting parameters for the rate limiter.
 
@@ -327,41 +345,18 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
 
-    def _handle_post_request(self, endpoint: list[str], data: Any, response_class: type) -> Any:
-        """Handle POST request with consistent error handling and validation.
-
-        This internal method provides a standardized way to handle POST requests
-        with proper error handling and response validation.
-
-        Args:
-            endpoint: The API endpoint path segments.
-            data: The data to send in the POST request.
-            response_class: The expected response class for validation.
-
-        Returns:
-            Any: The validated response object.
-
-        Raises:
-            ApiError: If the request fails or validation fails.
-        """
-        try:
-            resp = self._send("POST", endpoint, data)
-        except exceptions.ApiError as error:
-            raise exceptions.ApiError(error) from error
-
-        return self._validate_response(resp, response_class)
-
-    def _handle_patch_request(
-        self, endpoint: list[str | int], data: Any, response_class: type
+    def _handle_write_request(
+        self, method: str, endpoint: list[str | int], data: Any, response_class: type
     ) -> Any:
-        """Handle PATCH request with consistent error handling and validation.
+        """Handle POST or PATCH request with consistent error handling and validation.
 
-        This internal method provides a standardized way to handle PATCH requests
-        with proper error handling and response validation.
+        This internal method provides a standardized way to handle write requests
+        (POST and PATCH) with proper response validation.
 
         Args:
+            method: HTTP method to use ("POST" or "PATCH").
             endpoint: The API endpoint path segments.
-            data: The data to send in the PATCH request.
+            data: The data to send in the request.
             response_class: The expected response class for validation.
 
         Returns:
@@ -370,12 +365,109 @@ class Session:
         Raises:
             ApiError: If the request fails or validation fails.
         """
-        try:
-            resp = self._send("PATCH", endpoint, data)
-        except exceptions.ApiError as error:
-            raise exceptions.ApiError(error) from error
-
+        resp = self._send(method, endpoint, data)
         return self._validate_response(resp, response_class)
+
+    # Generic resource methods
+    def _get_resource(self, resource_name: str, _id: int, response_class: type) -> Any:
+        """Retrieve a single resource by ID.
+
+        Generic method for retrieving any resource type from the API.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            _id: The unique identifier for the resource.
+            response_class: The Pydantic model class for response validation.
+
+        Returns:
+            Any: The validated resource object.
+
+        Raises:
+            ApiError: If the resource is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        resp = self._get([resource_name, _id])
+        return self._validate_response(resp, response_class)
+
+    def _post_resource(self, resource_name: str, data: Any, response_class: type) -> Any:
+        """Create a new resource in the database.
+
+        Generic method for creating any resource type via POST request.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            data: The data object to send in the POST request.
+            response_class: The Pydantic model class for response validation.
+
+        Returns:
+            Any: The validated response object.
+
+        Raises:
+            ApiError: If creation fails or if user lacks permissions.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        return self._handle_write_request("POST", [resource_name], data, response_class)
+
+    def _patch_resource(self, resource_name: str, _id: int, data: Any, response_class: type) -> Any:
+        """Update an existing resource in the database.
+
+        Generic method for updating any resource type via PATCH request.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            _id: The unique identifier for the resource to update.
+            data: The data object to send in the PATCH request.
+            response_class: The Pydantic model class for response validation.
+
+        Returns:
+            Any: The validated response object.
+
+        Raises:
+            ApiError: If update fails or if user lacks permissions.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        return self._handle_write_request("PATCH", [resource_name, _id], data, response_class)
+
+    def _list_resources(
+        self, resource_name: str, params: dict[str, str | int] | None, response_class: type
+    ) -> list[Any]:
+        """Retrieve a list of resources with optional filtering.
+
+        Generic method for listing any resource type with pagination support.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            params: Optional dictionary of query parameters for filtering results.
+            response_class: The Pydantic model class for validating list items.
+
+        Returns:
+            list[Any]: A list of validated resource objects.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        resp = self._get_results([resource_name], params)
+        return self._validate_list_response(resp, response_class)
+
+    def _get_resource_issues(self, resource_name: str, _id: int) -> list[BaseIssue]:
+        """Retrieve a list of issues associated with a specific resource.
+
+        Generic method for getting issue lists for characters, teams, or arcs.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'character', 'team', 'arc').
+            _id: The unique identifier for the resource.
+
+        Returns:
+            list[BaseIssue]: A list of BaseIssue objects associated with the resource.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        resp = self._get_results([resource_name, _id, "issue_list"])
+        return self._validate_list_response(resp, BaseIssue)
 
     # Creator methods
     def creator(self, _id: int) -> Creator:
@@ -397,8 +489,7 @@ class Session:
             >>> print(creator.name)
             >>> print(creator.birth_date)
         """
-        resp = self._get(["creator", _id])
-        return self._validate_response(resp, Creator)
+        return self._get_resource(ResourceEndpoint.CREATOR, _id, Creator)
 
     def creator_post(self, data: CreatorPost) -> Creator:
         """Create a new creator in the database.
@@ -420,7 +511,7 @@ class Session:
             >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
             >>> new_creator = session.creator_post(creator_data)
         """
-        return self._handle_post_request(["creator"], data, Creator)
+        return self._post_resource(ResourceEndpoint.CREATOR, data, Creator)
 
     def creator_patch(self, _id: int, data: CreatorPost) -> Creator:
         """Update an existing creator in the database.
@@ -443,7 +534,7 @@ class Session:
             >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
             >>> updated_creator = session.creator_patch(1, creator_data)
         """
-        return self._handle_patch_request(["creator", _id], data, Creator)
+        return self._patch_resource(ResourceEndpoint.CREATOR, _id, data, Creator)
 
     def creators_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of creators with optional filtering.
@@ -460,8 +551,7 @@ class Session:
             >>> creators = session.creators_list({"name": "Stan Lee"})
             >>> all_creators = session.creators_list()
         """
-        resp = self._get_results(["creator"], params)
-        return self._validate_list_response(resp, BaseResource)
+        return self._list_resources(ResourceEndpoint.CREATOR, params, BaseResource)
 
     # Character methods
     def character(self, _id: int) -> Character:
@@ -483,8 +573,7 @@ class Session:
             >>> print(character.name)
             >>> print(character.alias)
         """
-        resp = self._get(["character", _id])
-        return self._validate_response(resp, Character)
+        return self._get_resource(ResourceEndpoint.CHARACTER, _id, Character)
 
     def character_post(self, data: CharacterPost) -> CharacterPostResponse:
         """Create a new character in the database.
@@ -500,7 +589,7 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
         """
-        return self._handle_post_request(["character"], data, CharacterPostResponse)
+        return self._post_resource(ResourceEndpoint.CHARACTER, data, CharacterPostResponse)
 
     def character_patch(self, _id: int, data: CharacterPost) -> CharacterPostResponse:
         """Update an existing character in the database.
@@ -517,7 +606,7 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
         """
-        return self._handle_patch_request(["character", _id], data, CharacterPostResponse)
+        return self._patch_resource(ResourceEndpoint.CHARACTER, _id, data, CharacterPostResponse)
 
     def characters_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of characters with optional filtering.
@@ -529,8 +618,7 @@ class Session:
         Returns:
             list[BaseResource]: A list of BaseResource objects representing characters.
         """
-        resp = self._get_results(["character"], params)
-        return self._validate_list_response(resp, BaseResource)
+        return self._list_resources(ResourceEndpoint.CHARACTER, params, BaseResource)
 
     def character_issues_list(self, _id: int) -> list[BaseIssue]:
         """Retrieve a list of issues featuring a specific character.
@@ -546,8 +634,7 @@ class Session:
             >>> issues = session.character_issues_list(1)
             >>> print(f"Character appears in {len(issues)} issues")
         """
-        resp = self._get_results(["character", _id, "issue_list"])
-        return self._validate_list_response(resp, BaseIssue)
+        return self._get_resource_issues(ResourceEndpoint.CHARACTER, _id)
 
     # Publisher methods
     def publisher(self, _id: int) -> Publisher:
@@ -563,8 +650,7 @@ class Session:
             ApiError: If the publisher is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        resp = self._get(["publisher", _id])
-        return self._validate_response(resp, Publisher)
+        return self._get_resource(ResourceEndpoint.PUBLISHER, _id, Publisher)
 
     def publisher_post(self, data: PublisherPost) -> Publisher:
         """Create a new publisher in the database.
@@ -580,7 +666,7 @@ class Session:
         Raises:
             ApiError: If creation fails or if user lacks permissions.
         """
-        return self._handle_post_request(["publisher"], data, Publisher)
+        return self._post_resource(ResourceEndpoint.PUBLISHER, data, Publisher)
 
     def publisher_patch(self, _id: int, data: PublisherPost) -> Publisher:
         """Update an existing publisher in the database.
@@ -597,7 +683,7 @@ class Session:
         Raises:
             ApiError: If update fails or if user lacks permissions.
         """
-        return self._handle_patch_request(["publisher", _id], data, Publisher)
+        return self._patch_resource(ResourceEndpoint.PUBLISHER, _id, data, Publisher)
 
     def publishers_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of publishers with optional filtering.
@@ -609,8 +695,7 @@ class Session:
         Returns:
             list[BaseResource]: A list of BaseResource objects representing publishers.
         """
-        resp = self._get_results(["publisher"], params)
-        return self._validate_list_response(resp, BaseResource)
+        return self._list_resources(ResourceEndpoint.PUBLISHER, params, BaseResource)
 
     # Team methods
     def team(self, _id: int) -> Team:
@@ -626,8 +711,7 @@ class Session:
             ApiError: If the team is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        resp = self._get(["team", _id])
-        return self._validate_response(resp, Team)
+        return self._get_resource(ResourceEndpoint.TEAM, _id, Team)
 
     def team_post(self, data: TeamPost) -> TeamPostResponse:
         """Create a new team in the database.
@@ -644,7 +728,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request(["team"], data, TeamPostResponse)
+        return self._post_resource(ResourceEndpoint.TEAM, data, TeamPostResponse)
 
     def team_patch(self, _id: int, data: TeamPost) -> TeamPostResponse:
         """Update an existing team in the database.
@@ -662,7 +746,7 @@ class Session:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_patch_request(["team", _id], data, TeamPostResponse)
+        return self._patch_resource(ResourceEndpoint.TEAM, _id, data, TeamPostResponse)
 
     def teams_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of teams with optional filtering.
@@ -674,8 +758,7 @@ class Session:
         Returns:
             list[BaseResource]: A list of BaseResource objects representing teams.
         """
-        resp = self._get_results(["team"], params)
-        return self._validate_list_response(resp, BaseResource)
+        return self._list_resources(ResourceEndpoint.TEAM, params, BaseResource)
 
     def team_issues_list(self, _id: int) -> list[BaseIssue]:
         """Retrieve a list of issues featuring a specific team.
@@ -686,8 +769,7 @@ class Session:
         Returns:
             list[BaseIssue]: A list of BaseIssue objects representing issues featuring the team.
         """
-        resp = self._get_results(["team", _id, "issue_list"])
-        return self._validate_list_response(resp, BaseIssue)
+        return self._get_resource_issues(ResourceEndpoint.TEAM, _id)
 
     # Arc methods
     def arc(self, _id: int) -> Arc:
@@ -703,8 +785,7 @@ class Session:
             ApiError: If the arc is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        resp = self._get(["arc", _id])
-        return self._validate_response(resp, Arc)
+        return self._get_resource(ResourceEndpoint.ARC, _id, Arc)
 
     def arc_post(self, data: ArcPost) -> Arc:
         """Create a new story arc in the database.
@@ -721,7 +802,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request(["arc"], data, Arc)
+        return self._post_resource(ResourceEndpoint.ARC, data, Arc)
 
     def arc_patch(self, _id: int, data: ArcPost) -> Arc:
         """Update an existing story arc in the database.
@@ -739,7 +820,7 @@ class Session:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_patch_request(["arc", _id], data, Arc)
+        return self._patch_resource(ResourceEndpoint.ARC, _id, data, Arc)
 
     def arcs_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of story arcs with optional filtering.
@@ -751,8 +832,7 @@ class Session:
         Returns:
             list[BaseResource]: A list of BaseResource objects representing arcs.
         """
-        resp = self._get_results(["arc"], params)
-        return self._validate_list_response(resp, BaseResource)
+        return self._list_resources(ResourceEndpoint.ARC, params, BaseResource)
 
     def arc_issues_list(self, _id: int) -> list[BaseIssue]:
         """Retrieve a list of issues that are part of a specific story arc.
@@ -763,8 +843,7 @@ class Session:
         Returns:
             list[BaseIssue]: A list of BaseIssue objects representing issues in the arc.
         """
-        resp = self._get_results(["arc", _id, "issue_list"])
-        return self._validate_list_response(resp, BaseIssue)
+        return self._get_resource_issues(ResourceEndpoint.ARC, _id)
 
     # Series methods
     def series(self, _id: int) -> Series:
@@ -780,8 +859,7 @@ class Session:
             ApiError: If the series is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        resp = self._get(["series", _id])
-        return self._validate_response(resp, Series)
+        return self._get_resource(ResourceEndpoint.SERIES, _id, Series)
 
     def series_post(self, data: SeriesPost) -> SeriesPostResponse:
         """Create a new series in the database.
@@ -798,7 +876,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request(["series"], data, SeriesPostResponse)
+        return self._post_resource(ResourceEndpoint.SERIES, data, SeriesPostResponse)
 
     def series_patch(self, _id: int, data: SeriesPost) -> SeriesPostResponse:
         """Update an existing series in the database.
@@ -816,7 +894,7 @@ class Session:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_patch_request(["series", _id], data, SeriesPostResponse)
+        return self._patch_resource(ResourceEndpoint.SERIES, _id, data, SeriesPostResponse)
 
     def series_list(self, params: dict[str, str | int] | None = None) -> list[BaseSeries]:
         """Retrieve a list of series with optional filtering.
@@ -828,8 +906,7 @@ class Session:
         Returns:
             list[BaseSeries]: A list of BaseSeries objects representing series.
         """
-        resp = self._get_results(["series"], params)
-        return self._validate_list_response(resp, BaseSeries)
+        return self._list_resources(ResourceEndpoint.SERIES, params, BaseSeries)
 
     def series_type_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
         """Retrieve a list of available series types.
@@ -863,8 +940,7 @@ class Session:
             >>> issue = session.issue(1)
             >>> print(f"Issue #{issue.number} of {issue.series.name}")
         """
-        resp = self._get(["issue", _id])
-        return self._validate_response(resp, Issue)
+        return self._get_resource(ResourceEndpoint.ISSUE, _id, Issue)
 
     def issue_post(self, data: IssuePost) -> IssuePostResponse:
         """Create a new issue in the database.
@@ -881,7 +957,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request(["issue"], data, IssuePostResponse)
+        return self._post_resource(ResourceEndpoint.ISSUE, data, IssuePostResponse)
 
     def issue_patch(self, _id: int, data: IssuePost) -> IssuePostResponse:
         """Update an existing issue in the database.
@@ -899,7 +975,7 @@ class Session:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_patch_request(["issue", _id], data, IssuePostResponse)
+        return self._patch_resource(ResourceEndpoint.ISSUE, _id, data, IssuePostResponse)
 
     def issues_list(self, params: dict[str, str | int] | None = None) -> list[BaseIssue]:
         """Retrieve a list of issues with optional filtering.
@@ -916,8 +992,7 @@ class Session:
             >>> issues = session.issues_list({"series": 1})
             >>> recent_issues = session.issues_list({"modified_gt": "2023-01-01"})
         """
-        resp = self._get_results(["issue"], params)
-        return self._validate_list_response(resp, BaseIssue)
+        return self._list_resources(ResourceEndpoint.ISSUE, params, BaseIssue)
 
     def credits_post(self, data: list[CreditPost]) -> list[CreditPostResponse]:
         """Create new credits for issues in bulk.
@@ -939,7 +1014,7 @@ class Session:
             >>> credits_ = [CreditPost(issue=1, creator=1, role=[1])]
             >>> new_credits = session.credits_post(credits_)
         """
-        return self._handle_post_request(["credit"], data, list[CreditPostResponse])
+        return self._handle_write_request("POST", ["credit"], data, list[CreditPostResponse])
 
     def variant_post(self, data: VariantPost) -> VariantPostResponse:
         """Create a new variant cover for an issue.
@@ -956,7 +1031,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request(["variant"], data, VariantPostResponse)
+        return self._handle_write_request("POST", ["variant"], data, VariantPostResponse)
 
     def role_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
         """Retrieve a list of available creator roles.
@@ -985,8 +1060,7 @@ class Session:
             ApiError: If the universe is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        resp = self._get(["universe", _id])
-        return self._validate_response(resp, Universe)
+        return self._get_resource(ResourceEndpoint.UNIVERSE, _id, Universe)
 
     def universe_post(self, data: UniversePost) -> UniversePostResponse:
         """Create a new universe in the database.
@@ -1003,7 +1077,7 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_post_request(["universe"], data, UniversePostResponse)
+        return self._post_resource(ResourceEndpoint.UNIVERSE, data, UniversePostResponse)
 
     def universe_patch(self, _id: int, data: UniversePost) -> UniversePostResponse:
         """Update an existing universe in the database.
@@ -1021,7 +1095,7 @@ class Session:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_patch_request(["universe", _id], data, UniversePostResponse)
+        return self._patch_resource(ResourceEndpoint.UNIVERSE, _id, data, UniversePostResponse)
 
     def universes_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of universes with optional filtering.
@@ -1033,8 +1107,7 @@ class Session:
         Returns:
             list[BaseResource]: A list of BaseResource objects representing universes.
         """
-        resp = self._get_results(["universe"], params)
-        return self._validate_list_response(resp, BaseResource)
+        return self._list_resources(ResourceEndpoint.UNIVERSE, params, BaseResource)
 
     # Imprint methods
     def imprint(self, _id: int) -> Imprint:
@@ -1050,8 +1123,7 @@ class Session:
             ApiError: If the imprint is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        resp = self._get(["imprint", _id])
-        return self._validate_response(resp, Imprint)
+        return self._get_resource(ResourceEndpoint.IMPRINT, _id, Imprint)
 
     def imprints_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of imprints with optional filtering.
@@ -1063,8 +1135,7 @@ class Session:
         Returns:
             list[BaseResource]: A list of BaseResource objects representing imprints.
         """
-        resp = self._get_results(["imprint"], params)
-        return self._validate_list_response(resp, BaseResource)
+        return self._list_resources(ResourceEndpoint.IMPRINT, params, BaseResource)
 
     def _get_results(
         self,
@@ -1127,8 +1198,123 @@ class Session:
 
         return data
 
+    def _prepare_request_payload(
+        self, data: T | None
+    ) -> tuple[dict[str, str], dict[str, tuple[str, bytes]] | None, str | dict[str, Any] | None]:
+        """Prepare request payload, handling data serialization and file uploads.
+
+        Args:
+            data: Optional data to include in the request body.
+
+        Returns:
+            tuple: A tuple of (header, files, data_dict) where header contains HTTP headers,
+                  files contains file uploads, and data_dict contains the request body data.
+        """
+        files = None
+        data_dict = None
+        header = self.header.copy()
+
+        if isinstance(data, list):
+            # Handle list data (e.g., credits)
+            lst = [item.model_dump() for item in data]
+            data_dict = json.dumps(lst)
+            header["Content-Type"] = "application/json;charset=utf-8"
+        elif data is not None:
+            # Handle single object data
+            data_dict = data.model_dump()
+
+            # Handle image uploads
+            if data_dict and "image" in data_dict and (img := data_dict.pop("image")):
+                img_path = Path(img)
+                if img_path.exists():
+                    files = {"image": (img_path.name, img_path.read_bytes())}
+                    LOGGER.debug("Image File: %s", img)
+                else:
+                    LOGGER.warning("Image file not found: %s", img)
+
+        LOGGER.debug("Header: %s", header)
+        LOGGER.debug("Data: %s", data_dict)
+
+        return header, files, data_dict
+
+    def _execute_http_request(  # noqa: PLR0913
+        self,
+        method: str,
+        url: str,
+        params: dict[str, str | int],
+        header: dict[str, str],
+        data_dict: str | dict[str, Any] | None,
+        files: dict[str, tuple[str, bytes]] | None,
+    ) -> requests.Response:
+        """Execute the HTTP request with proper error handling.
+
+        Args:
+            method: HTTP method to use ("GET", "POST", "PATCH").
+            url: The complete URL to send the request to.
+            params: Query parameters to include in the request.
+            header: HTTP headers to send with the request.
+            data_dict: The request body data.
+            files: Optional file uploads.
+
+        Returns:
+            requests.Response: The HTTP response object.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+        """
+        try:
+            return requests.request(
+                method,
+                url,
+                params=params,
+                timeout=REQUEST_TIMEOUT,
+                auth=(self.username, self.passwd),
+                headers=header,
+                data=data_dict,
+                files=files,
+            )
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout,
+        ) as err:
+            msg = f"Connection error: {err!r}"
+            raise exceptions.ApiError(msg) from err
+
+    def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:
+        """Handle HTTP response, parsing JSON and checking for errors.
+
+        Args:
+            response: The HTTP response object to process.
+
+        Returns:
+            dict[str, Any]: The parsed JSON response data.
+
+        Raises:
+            RateLimitError: When the API rate limit is exceeded.
+            ApiError: For HTTP errors, invalid JSON, or API error responses.
+        """
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == requests.codes.too_many:
+                msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
+                raise exceptions.RateLimitError(msg) from err
+            msg = f"HTTP error: {err!r}"
+            raise exceptions.ApiError(msg) from err
+
+        try:
+            resp = response.json()
+        except ValueError as err:
+            msg = f"Invalid JSON response: {err!r}"
+            raise exceptions.ApiError(msg) from err
+
+        if "detail" in resp:
+            raise exceptions.ApiError(resp["detail"])
+
+        return resp
+
     @decorator(rate_mapping)
-    def _request_data(  # noqa: C901
+    def _request_data(
         self,
         method: str,
         url: str,
@@ -1165,69 +1351,16 @@ class Session:
         if params is None:
             params = {}
 
-        files = None
-        data_dict = None
-        header = self.header.copy()
+        # Prepare request payload (data serialization and file handling)
+        header, files, data_dict = self._prepare_request_payload(data)
 
-        if isinstance(data, list):
-            # Handle list data (e.g., credits)
-            lst = [item.model_dump() for item in data]
-            data_dict = json.dumps(lst)
-            header["Content-Type"] = "application/json;charset=utf-8"
-        elif data is not None:
-            # Handle single object data
-            data_dict = data.model_dump()
-
-            # Handle image uploads
-            if data_dict and "image" in data_dict and (img := data_dict.pop("image")):
-                img_path = Path(img)
-                if img_path.exists():
-                    files = {"image": (img_path.name, img_path.read_bytes())}
-                    LOGGER.debug("Image File: %s", img)
-                else:
-                    LOGGER.warning("Image file not found: %s", img)
-
-        LOGGER.debug("Header: %s", header)
-        LOGGER.debug("Data: %s", data_dict)
         LOGGER.debug("Params: %s", params)
 
-        try:
-            response = requests.request(
-                method,
-                url,
-                params=params,
-                timeout=REQUEST_TIMEOUT,
-                auth=(self.username, self.passwd),
-                headers=header,
-                data=data_dict,
-                files=files,
-            )
-        except (
-            requests.exceptions.ConnectionError,
-            requests.exceptions.ReadTimeout,
-        ) as err:
-            msg = f"Connection error: {err!r}"
-            raise exceptions.ApiError(msg) from err
+        # Execute HTTP request
+        response = self._execute_http_request(method, url, params, header, data_dict, files)
 
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == requests.codes.too_many:
-                msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
-                raise exceptions.RateLimitError(msg) from err
-            msg = f"HTTP error: {err!r}"
-            raise exceptions.ApiError(msg) from err
-
-        try:
-            resp = response.json()
-        except ValueError as err:
-            msg = f"Invalid JSON response: {err!r}"
-            raise exceptions.ApiError(msg) from err
-
-        if "detail" in resp:
-            raise exceptions.ApiError(resp["detail"])
-
-        return resp
+        # Handle response (parse JSON and check for errors)
+        return self._handle_http_response(response)
 
     def _get_results_from_cache(self, key: str) -> Any | None:
         """Retrieve cached response data using the specified key.
