@@ -432,6 +432,25 @@ class Session:
         resp = self._get_results([resource_name], params)
         return self._validate_list_response(resp, response_class)
 
+    def _get_resource_issues(self, resource_name: str, _id: int) -> list[BaseIssue]:
+        """Retrieve a list of issues associated with a specific resource.
+
+        Generic method for getting issue lists for characters, teams, or arcs.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'character', 'team', 'arc').
+            _id: The unique identifier for the resource.
+
+        Returns:
+            list[BaseIssue]: A list of BaseIssue objects associated with the resource.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        resp = self._get_results([resource_name, _id, "issue_list"])
+        return self._validate_list_response(resp, BaseIssue)
+
     # Creator methods
     def creator(self, _id: int) -> Creator:
         """Retrieve detailed information about a creator by ID.
@@ -597,8 +616,7 @@ class Session:
             >>> issues = session.character_issues_list(1)
             >>> print(f"Character appears in {len(issues)} issues")
         """
-        resp = self._get_results(["character", _id, "issue_list"])
-        return self._validate_list_response(resp, BaseIssue)
+        return self._get_resource_issues("character", _id)
 
     # Publisher methods
     def publisher(self, _id: int) -> Publisher:
@@ -733,8 +751,7 @@ class Session:
         Returns:
             list[BaseIssue]: A list of BaseIssue objects representing issues featuring the team.
         """
-        resp = self._get_results(["team", _id, "issue_list"])
-        return self._validate_list_response(resp, BaseIssue)
+        return self._get_resource_issues("team", _id)
 
     # Arc methods
     def arc(self, _id: int) -> Arc:
@@ -808,8 +825,7 @@ class Session:
         Returns:
             list[BaseIssue]: A list of BaseIssue objects representing issues in the arc.
         """
-        resp = self._get_results(["arc", _id, "issue_list"])
-        return self._validate_list_response(resp, BaseIssue)
+        return self._get_resource_issues("arc", _id)
 
     # Series methods
     def series(self, _id: int) -> Series:
