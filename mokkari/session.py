@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 import requests
 from pydantic import TypeAdapter, ValidationError
 from pyrate_limiter import Duration, Limiter, Rate, SQLiteBucket
+from pyrate_limiter.exceptions import BucketFullException, LimiterDelayException
 
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc, ArcPost
@@ -68,21 +69,6 @@ class ResourceEndpoint:
     SERIES: Final[str] = "series"
     TEAM: Final[str] = "team"
     UNIVERSE: Final[str] = "universe"
-
-
-def rate_mapping(*args: Any, **kwargs: Any) -> tuple[str, int]:  # noqa: ARG001
-    """Map rate limiting parameters for the rate limiter.
-
-    This function provides a consistent rate limiting key for all API requests.
-
-    Args:
-        *args: Variable length argument list (unused).
-        **kwargs: Arbitrary keyword arguments (unused).
-
-    Returns:
-        tuple[str, int]: A tuple containing the rate limiting key and count.
-    """
-    return "metron", 1
 
 
 def format_time(seconds: str | float) -> str:
@@ -137,10 +123,14 @@ class Session:
     - 30 requests per minute
     - 10,000 requests per day
 
+    **Important**: When rate limits are exceeded, a RateLimitError is raised immediately
+    without making the API request. Applications must catch and handle this exception
+    appropriately (see examples below).
+
     Features:
 
     - Automatic authentication with username/password
-    - Built-in rate limiting and retry logic
+    - Built-in rate limiting with clear error messages
     - Optional SQLite caching for improved performance
     - Comprehensive error handling and validation
     - Support for both read and write operations (write operations require admin permissions)
@@ -176,9 +166,38 @@ class Session:
         Development mode:
         >>> session = Session("username", "password", dev_mode=True)
 
+        Handling rate limits:
+        >>> import time
+        >>> from mokkari.exceptions import RateLimitError
+        >>> session = Session("username", "password")
+        >>> try:
+        ...     issue = session.issue(1)
+        ... except RateLimitError as e:
+        ...     print(f"Rate limited: {e}")
+        ...     # Option 1: Inform user and abort
+        ...     # Option 2: Wait and retry (see below)
+
+        Retry with exponential backoff:
+        >>> import time
+        >>> from mokkari.exceptions import RateLimitError
+        >>> session = Session("username", "password")
+        >>> max_retries = 3
+        >>> for attempt in range(max_retries):
+        ...     try:
+        ...         issue = session.issue(1)
+        ...         break
+        ...     except RateLimitError as e:
+        ...         if attempt < max_retries - 1:
+        ...             wait_time = 2 ** attempt * 60  # Exponential backoff
+        ...             print(f"Rate limited, waiting {wait_time}s...")
+        ...             time.sleep(wait_time)
+        ...         else:
+        ...             print(f"Failed after {max_retries} attempts: {e}")
+        ...             raise
+
     Raises:
         ApiError: For general API errors, authentication failures, or network issues.
-        RateLimitError: When API rate limits are exceeded.
+        RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
         CacheError: For cache-related errors.
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
@@ -187,8 +206,7 @@ class Session:
     _day_rate = Rate(METRON_DAY_RATE_LIMIT, Duration.DAY)
     _rates: ClassVar[list[Rate]] = [_minute_rate, _day_rate]
     _bucket = SQLiteBucket.init_from_file(_rates)
-    _limiter = Limiter(_bucket, raise_when_fail=False, max_delay=Duration.DAY)
-    decorator = _limiter.as_decorator()
+    _limiter = Limiter(_bucket, raise_when_fail=True, max_delay=0)
 
     T = TypeVar(
         "T",
@@ -1313,8 +1331,7 @@ class Session:
 
         return resp
 
-    @decorator(rate_mapping)
-    def _request_data(
+    def _request_data(  # noqa: C901
         self,
         method: str,
         url: str,
@@ -1338,11 +1355,11 @@ class Session:
 
         Raises:
             ApiError: For connection errors, HTTP errors, or invalid JSON responses.
-            RateLimitError: When the API rate limit is exceeded.
+            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
 
         Notes:
             - Automatically handles image file uploads when 'image' field is present in data
-            - Implements exponential backoff for rate limiting
+            - Implements local rate limiting to prevent exceeding API quotas
             - Supports both single objects and lists of objects for POST requests
         """
         LOGGER.debug("Request Method: %s | URL: %s", method, url)
@@ -1350,6 +1367,55 @@ class Session:
 
         if params is None:
             params = {}
+
+        # Check rate limits before making the request
+        try:
+            self._limiter.try_acquire("metron", 1)
+        except (BucketFullException, LimiterDelayException) as exc:
+            # Determine which rate limit was hit and provide detailed error message
+            # Extract delay from exception attributes or meta_info
+            delay = 0
+
+            # Try to get delay from exception attributes first (LimiterDelayException)
+            if hasattr(exc, "actual_delay"):
+                delay = float(exc.actual_delay) / 1000  # Convert ms to seconds
+            # Fall back to meta_info (BucketFullException or custom fields)
+            elif hasattr(exc, "meta_info") and exc.meta_info:
+                # Try remaining_time first, then actual_delay
+                if "remaining_time" in exc.meta_info:
+                    delay = float(exc.meta_info["remaining_time"])
+                elif "actual_delay" in exc.meta_info:
+                    delay = float(exc.meta_info["actual_delay"]) / 1000  # Convert ms to seconds
+
+            # If we still don't have a delay, try parsing from exception message
+            if delay == 0 and hasattr(exc, "args") and exc.args:
+                msg_str = str(exc.args[0])
+                if "actual=" in msg_str:
+                    try:
+                        delay = (
+                            float(msg_str.split("actual=")[1].split(",")[0]) / 1000
+                        )  # Convert ms to seconds
+                    except (IndexError, ValueError):
+                        delay = 60  # Default to 1 minute if parsing fails
+
+            # Check which limit was exceeded by looking at the delay time
+            if delay < SECONDS_PER_HOUR:  # Minute rate limit
+                limit_type = "minute"
+                limit_value = METRON_MINUTE_RATE_LIMIT
+                msg = (
+                    f"Rate limit exceeded: You have reached the {limit_value} requests per {limit_type} limit. "
+                    f"Please wait {format_time(delay)} before making another request."
+                )
+            else:  # Daily rate limit
+                limit_type = "day"
+                limit_value = METRON_DAY_RATE_LIMIT
+                msg = (
+                    f"Rate limit exceeded: You have reached the {limit_value:,} requests per {limit_type} limit. "
+                    f"Please wait {format_time(delay)} before making another request."
+                )
+
+            LOGGER.warning(msg)
+            raise exceptions.RateLimitError(msg) from exc
 
         # Prepare request payload (data serialization and file handling)
         header, files, data_dict = self._prepare_request_payload(data)

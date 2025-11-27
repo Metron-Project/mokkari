@@ -9,6 +9,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import HttpUrl, ValidationError
+from pyrate_limiter import Duration, Rate
+from pyrate_limiter.abstracts.rate import RateItem
+from pyrate_limiter.exceptions import BucketFullException, LimiterDelayException
 from requests.exceptions import ConnectionError as ConnError, HTTPError
 
 from mokkari import exceptions
@@ -1332,3 +1335,142 @@ def test__get_results_from_cache_none(session: Session) -> None:
     out = session._get_results_from_cache("key")
     # Assert
     assert out is None
+
+
+# ============================================================================
+# Rate Limiting Tests
+# ============================================================================
+
+
+def test_rate_limit_minute_exceeded(session: Session) -> None:
+    """Test that minute rate limit raises RateLimitError with correct message."""
+    # Arrange
+    # Create exception that simulates minute rate limit (60 seconds = 1 minute)
+    rate_item = RateItem("metron", 1)
+    rate = Rate(30, Duration.MINUTE)
+    exc = LimiterDelayException(rate_item, rate, actual_delay=60000, max_delay=0)
+
+    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+        # Act & Assert
+        with pytest.raises(exceptions.RateLimitError) as excinfo:
+            session._request_data("GET", "https://test.com/api/issue/1")
+
+        # Verify error message content
+        error_msg = str(excinfo.value)
+        assert "Rate limit exceeded" in error_msg
+        assert "30 requests per minute" in error_msg
+        assert "Please wait" in error_msg
+        assert "1 minute" in error_msg
+
+
+def test_rate_limit_day_exceeded(session: Session) -> None:
+    """Test that daily rate limit raises RateLimitError with correct message."""
+    # Arrange
+    # Create exception that simulates daily rate limit (24 hours = 86400 seconds)
+    rate_item = RateItem("metron", 1)
+    rate = Rate(10000, Duration.DAY)
+    exc = LimiterDelayException(rate_item, rate, actual_delay=86400000, max_delay=0)
+
+    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+        # Act & Assert
+        with pytest.raises(exceptions.RateLimitError) as excinfo:
+            session._request_data("GET", "https://test.com/api/issue/1")
+
+        # Verify error message content
+        error_msg = str(excinfo.value)
+        assert "Rate limit exceeded" in error_msg
+        assert "10,000 requests per day" in error_msg
+        assert "Please wait" in error_msg
+        assert "24 hours" in error_msg
+
+
+def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
+    """Test that rate limit prevents HTTP request from being made."""
+    # Arrange
+    rate_item = RateItem("metron", 1)
+    rate = Rate(30, Duration.MINUTE)
+    exc = LimiterDelayException(rate_item, rate, actual_delay=60000, max_delay=0)
+
+    # Mock HTTP request to track if it's called
+    mock_request_called = {"called": False}
+
+    def mock_request(*args, **kwargs):
+        mock_request_called["called"] = True
+        return MagicMock()
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+        # Act & Assert
+        with pytest.raises(exceptions.RateLimitError):
+            session._request_data("GET", "https://test.com/api/issue/1")
+
+        # Verify HTTP request was NOT made
+        assert not mock_request_called["called"], (
+            "HTTP request should not be made when rate limited"
+        )
+
+
+def test_rate_limit_bucket_full_exception(session: Session) -> None:
+    """Test handling of BucketFullException from pyrate-limiter."""
+    # Arrange
+    # Create BucketFullException
+    rate_item = RateItem("metron", 1)
+    rate = Rate(30, Duration.MINUTE)
+    exc = BucketFullException(rate_item, rate)
+    # Manually set remaining_time in meta_info
+    exc.meta_info["remaining_time"] = 90.5
+
+    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+        # Act & Assert
+        with pytest.raises(exceptions.RateLimitError) as excinfo:
+            session._request_data("GET", "https://test.com/api/issue/1")
+
+        # Verify error message is formatted correctly
+        error_msg = str(excinfo.value)
+        assert "Rate limit exceeded" in error_msg
+        assert "30 requests per minute" in error_msg
+        assert "1 minute, 30 seconds" in error_msg
+
+
+def test_rate_limit_format_time_hours(session: Session) -> None:
+    """Test that rate limit error message correctly formats hours."""
+    # Arrange
+    # Create exception with 2.5 hours delay (9000 seconds = 2h 30m)
+    rate_item = RateItem("metron", 1)
+    rate = Rate(10000, Duration.DAY)
+    exc = LimiterDelayException(rate_item, rate, actual_delay=9000000, max_delay=0)
+
+    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+        # Act & Assert
+        with pytest.raises(exceptions.RateLimitError) as excinfo:
+            session._request_data("GET", "https://test.com/api/issue/1")
+
+        # Verify time formatting
+        error_msg = str(excinfo.value)
+        assert "2 hours, 30 minutes" in error_msg
+
+
+def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> None:
+    """Test that requests proceed normally when rate limit is not exceeded."""
+
+    # Arrange
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1, "name": "Test"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    # Mock limiter to allow request (no exception)
+    with patch.object(session._limiter, "try_acquire", return_value=None):
+        # Act
+        result = session._request_data("GET", "https://test.com/api/issue/1")
+
+        # Assert
+        assert result == {"id": 1, "name": "Test"}
