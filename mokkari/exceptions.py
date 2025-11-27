@@ -2,9 +2,10 @@
 
 This module provides the following classes:
 
-- ApiError
-- AuthenticationError
-- CacheError
+- ApiError: General API errors, authentication failures, or network issues
+- RateLimitError: Raised when API rate limits are exceeded
+- AuthenticationError: Missing or invalid authentication credentials
+- CacheError: Errors related to cache operations
 """
 
 from __future__ import annotations
@@ -19,10 +20,38 @@ class ApiError(Exception):
 
 
 class RateLimitError(Exception):
-    """Class for any rate limit errors."""
+    """Exception raised when API rate limits are exceeded.
 
-    def __init__(self: ApiError, *args, **kwargs: dict[str, any]) -> None:
-        """Initialize an ApiError."""
+    This exception is raised when either the per-minute (30 requests) or per-day
+    (10,000 requests) rate limit is exceeded. The exception message includes:
+    - Which rate limit was exceeded (minute or day)
+    - The specific limit value
+    - Human-readable wait time before the next request can be made
+
+    The rate limiting is enforced locally before making API requests, preventing
+    unnecessary HTTP calls that would fail on the server side.
+
+    Note:
+        Applications should catch this exception and implement appropriate retry
+        logic or inform users about the rate limit. See the Session class
+        documentation for examples of handling this exception.
+
+    Examples:
+        >>> from mokkari import Session
+        >>> from mokkari.exceptions import RateLimitError
+        >>> import time
+        >>> session = Session("username", "password")
+        >>> try:
+        ...     issue = session.issue(1)
+        ... except RateLimitError as e:
+        ...     # Error message format:
+        ...     # "Rate limit exceeded: You have reached the 30 requests per minute limit.
+        ...     #  Please wait 1 minute, 30 seconds before making another request."
+        ...     print(f"Rate limited: {e}")
+    """
+
+    def __init__(self: RateLimitError, *args, **kwargs: dict[str, any]) -> None:
+        """Initialize a RateLimitError."""
         Exception.__init__(self, *args, **kwargs)
 
 
