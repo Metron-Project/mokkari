@@ -1362,6 +1362,9 @@ def test_rate_limit_minute_exceeded(session: Session) -> None:
         assert "Please wait" in error_msg
         assert "1 minute" in error_msg
 
+        # Verify retry_after attribute is set correctly (60000 ms = 60 seconds)
+        assert excinfo.value.retry_after == 60.0
+
 
 def test_rate_limit_day_exceeded(session: Session) -> None:
     """Test that daily rate limit raises RateLimitError with correct message."""
@@ -1382,6 +1385,9 @@ def test_rate_limit_day_exceeded(session: Session) -> None:
         assert "10,000 requests per day" in error_msg
         assert "Please wait" in error_msg
         assert "24 hours" in error_msg
+
+        # Verify retry_after attribute is set correctly (86400000 ms = 86400 seconds)
+        assert excinfo.value.retry_after == 86400.0
 
 
 def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:

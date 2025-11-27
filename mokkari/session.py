@@ -1315,8 +1315,11 @@ class Session:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             if err.response.status_code == requests.codes.too_many:
-                msg = f"Metron API Rate Limit exceeded, need to wait for {format_time(response.headers['Retry-After'])}."
-                raise exceptions.RateLimitError(msg) from err
+                retry_after = float(response.headers.get("Retry-After", 0))
+                msg = (
+                    f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
+                )
+                raise exceptions.RateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r}"
             raise exceptions.ApiError(msg) from err
 
@@ -1415,7 +1418,7 @@ class Session:
                 )
 
             LOGGER.warning(msg)
-            raise exceptions.RateLimitError(msg) from exc
+            raise exceptions.RateLimitError(msg, retry_after=delay) from exc
 
         # Prepare request payload (data serialization and file handling)
         header, files, data_dict = self._prepare_request_payload(data)

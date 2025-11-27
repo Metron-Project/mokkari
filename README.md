@@ -37,6 +37,38 @@ for i in this_week:
 print(asm_68.desc)
 ```
 
+## Rate Limiting
+
+The API has rate limits of 30 requests per minute and 10,000 requests per day.
+Mokkari automatically enforces these limits locally to prevent unnecessary API
+calls. When a rate limit is exceeded, a `RateLimitError` is raised.
+
+### Handling Rate Limits
+
+The `RateLimitError` includes a `retry_after` attribute that tells you exactly
+how many seconds to wait before making another request:
+
+```python
+import mokkari
+from mokkari.exceptions import RateLimitError
+import time
+
+m = mokkari.api(username, password)
+
+try:
+    issue = m.issue(31660)
+except RateLimitError as e:
+    # Display user-friendly message
+    print(f"Rate limited: {e}")
+
+    # Programmatically wait for the exact time needed
+    print(f"Waiting {e.retry_after} seconds...")
+    time.sleep(e.retry_after)
+
+    # Retry the request
+    issue = m.issue(31660)
+```
+
 ## Documentation
 
 [Read the project documentation](https://mokkari.readthedocs.io/en/stable/?badge=latest)
