@@ -32,6 +32,7 @@ from mokkari.schemas.issue import (
     IssueSeries,
 )
 from mokkari.schemas.publisher import Publisher, PublisherPost
+from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
 from mokkari.schemas.series import Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
@@ -1167,6 +1168,173 @@ def test_imprints_list(session: Session) -> None:
         result = session.imprints_list()
         # Assert
         assert isinstance(result, list)
+
+
+def test_reading_list(session: Session) -> None:
+    # Arrange
+    resp = {
+        "id": 1,
+        "name": "My Reading List",
+        "slug": "my-reading-list",
+        "user": {"id": 1, "username": "testuser"},
+        "desc": "A test reading list",
+        "is_private": False,
+        "attribution_source": "CBRO",
+        "attribution_url": "https://example.com/list",
+        "items_url": "https://api.example.com/reading_list/1/items/",
+        "resource_url": "https://api.example.com/reading_list/1/",
+        "modified": "2023-01-01T12:00:00Z",
+    }
+    with (
+        patch.object(session, "_get", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=ReadingListRead(
+                id=1,
+                name="My Reading List",
+                slug="my-reading-list",
+                user={"id": 1, "username": "testuser"},
+                desc="A test reading list",
+                is_private=False,
+                attribution_source="CBRO",
+                attribution_url=HttpUrl("https://example.com/list"),
+                items_url="https://api.example.com/reading_list/1/items/",
+                resource_url="https://api.example.com/reading_list/1/",
+                modified=datetime.datetime.now(),
+            ),
+        ),
+    ):
+        # Act
+        result = session.reading_list(1)
+        # Assert
+        assert isinstance(result, ReadingListRead)
+        assert result.name == "My Reading List"
+
+
+def test_reading_lists_list(session: Session) -> None:
+    # Arrange
+    resp = {
+        "results": [
+            {
+                "id": 1,
+                "name": "My Reading List",
+                "slug": "my-reading-list",
+                "user": {"id": 1, "username": "testuser"},
+                "is_private": False,
+                "attribution_source": "CBRO",
+                "modified": "2023-01-01T12:00:00Z",
+            }
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                ReadingListList(
+                    id=1,
+                    name="My Reading List",
+                    slug="my-reading-list",
+                    user={"id": 1, "username": "testuser"},
+                    is_private=False,
+                    attribution_source="CBRO",
+                    modified=datetime.datetime.now(),
+                )
+            ],
+        ),
+    ):
+        # Act
+        result = session.reading_lists_list()
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].name == "My Reading List"
+
+
+def test_reading_lists_list_with_params(session: Session) -> None:
+    # Arrange
+    params = {"username": "testuser", "is_private": False}
+    resp = {
+        "results": [
+            {
+                "id": 1,
+                "name": "Public List",
+                "slug": "public-list",
+                "user": {"id": 1, "username": "testuser"},
+                "is_private": False,
+                "modified": "2023-01-01T12:00:00Z",
+            }
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                ReadingListList(
+                    id=1,
+                    name="Public List",
+                    slug="public-list",
+                    user={"id": 1, "username": "testuser"},
+                    is_private=False,
+                    modified=datetime.datetime.now(),
+                )
+            ],
+        ),
+    ):
+        # Act
+        result = session.reading_lists_list(params)
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 1
+
+
+def test_reading_list_items(session: Session) -> None:
+    # Arrange
+    resp = {
+        "results": [
+            {
+                "id": 1,
+                "issue": {
+                    "id": 100,
+                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                    "number": "1",
+                    "cover_date": "2023-01-01",
+                    "modified": "2023-01-01T12:00:00Z",
+                },
+                "order": 1,
+            }
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                ReadingListItem(
+                    id=1,
+                    issue={
+                        "id": 100,
+                        "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                        "number": "1",
+                        "cover_date": datetime.date(2023, 1, 1),
+                        "modified": datetime.datetime.now(),
+                    },
+                    order=1,
+                )
+            ],
+        ),
+    ):
+        # Act
+        result = session.reading_list_items(1)
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].order == 1
+        assert result[0].issue.number == "1"
 
 
 @pytest.mark.parametrize(

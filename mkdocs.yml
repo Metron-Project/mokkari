@@ -51,6 +51,7 @@ nav:
       - Imprint: mokkari/schemas/imprint.md
       - Issue: mokkari/schemas/issue.md
       - Publisher: mokkari/schemas/publisher.md
+      - Reading List: mokkari/schemas/reading_list.md
       - Reprint: mokkari/schemas/reprint.md
       - Series: mokkari/schemas/series.md
       - Team: mokkari/schemas/team.md
