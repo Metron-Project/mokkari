@@ -166,7 +166,7 @@ class Session:
         Development mode:
         >>> session = Session("username", "password", dev_mode=True)
 
-        Handling rate limits:
+        Handling rate limits - simple retry:
         >>> import time
         >>> from mokkari.exceptions import RateLimitError
         >>> session = Session("username", "password")
@@ -174,26 +174,36 @@ class Session:
         ...     issue = session.issue(1)
         ... except RateLimitError as e:
         ...     print(f"Rate limited: {e}")
-        ...     # Option 1: Inform user and abort
-        ...     # Option 2: Wait and retry (see below)
+        ...     print(f"Waiting {format_time(e.retry_after)}...")
+        ...     time.sleep(e.retry_after)
+        ...     issue = session.issue(1)  # Retry after waiting
 
-        Retry with exponential backoff:
+        Handling minute vs daily rate limits:
         >>> import time
         >>> from mokkari.exceptions import RateLimitError
         >>> session = Session("username", "password")
-        >>> max_retries = 3
-        >>> for attempt in range(max_retries):
-        ...     try:
-        ...         issue = session.issue(1)
-        ...         break
-        ...     except RateLimitError as e:
-        ...         if attempt < max_retries - 1:
-        ...             wait_time = 2 ** attempt * 60  # Exponential backoff
-        ...             print(f"Rate limited, waiting {wait_time}s...")
-        ...             time.sleep(wait_time)
-        ...         else:
-        ...             print(f"Failed after {max_retries} attempts: {e}")
-        ...             raise
+        >>> def fetch_with_rate_limit_handling(issue_id):
+        ...     while True:
+        ...         try:
+        ...             return session.issue(issue_id)
+        ...         except RateLimitError as e:
+        ...             if "per minute" in str(e):
+        ...                 # Minute limit - automatically wait and retry
+        ...                 print(f"{e}")
+        ...                 print(f"Waiting {format_time(e.retry_after)}...")
+        ...                 time.sleep(e.retry_after)
+        ...                 continue
+        ...             elif "per day" in str(e):
+        ...                 # Daily limit - ask user whether to wait or quit
+        ...                 response = input(f"Wait {format_time(e.retry_after)}? (y/n): ")
+        ...                 if response.lower() == 'y':
+        ...                     time.sleep(e.retry_after)
+        ...                     continue
+        ...                 else:
+        ...                     raise
+        ...             else:
+        ...                 raise
+        >>> issue = fetch_with_rate_limit_handling(1)
 
     Raises:
         ApiError: For general API errors, authentication failures, or network issues.
