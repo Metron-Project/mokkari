@@ -36,6 +36,7 @@ from mokkari.schemas.issue import (
     IssuePostResponse,
 )
 from mokkari.schemas.publisher import Publisher, PublisherPost
+from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
 from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
@@ -66,6 +67,7 @@ class ResourceEndpoint:
     IMPRINT: Final[str] = "imprint"
     ISSUE: Final[str] = "issue"
     PUBLISHER: Final[str] = "publisher"
+    READING_LIST: Final[str] = "reading_list"
     SERIES: Final[str] = "series"
     TEAM: Final[str] = "team"
     UNIVERSE: Final[str] = "universe"
@@ -1164,6 +1166,73 @@ class Session:
             list[BaseResource]: A list of BaseResource objects representing imprints.
         """
         return self._list_resources(ResourceEndpoint.IMPRINT, params, BaseResource)
+
+    # Reading List methods
+    def reading_list(self, _id: int) -> ReadingListRead:
+        """Retrieve detailed information about a reading list by ID.
+
+        Note: This endpoint requires authentication. Users can access:
+        - Authenticated users: Public lists + own lists
+        - Admin users: Public lists + own lists + Metron's lists
+
+        Args:
+            _id: The unique identifier for the reading list.
+
+        Returns:
+            ReadingListRead: A ReadingListRead object containing detailed reading list information.
+
+        Raises:
+            ApiError: If the reading list is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        return self._get_resource(ResourceEndpoint.READING_LIST, _id, ReadingListRead)
+
+    def reading_lists_list(
+        self, params: dict[str, str | int] | None = None
+    ) -> list[ReadingListList]:
+        """Retrieve a list of reading lists with optional filtering.
+
+        Note: This endpoint requires authentication. Users can access:
+        - Authenticated users: Public lists + own lists
+        - Admin users: Public lists + own lists + Metron's lists
+
+        Args:
+            params: Optional dictionary of query parameters for filtering results.
+                   Common parameters include:
+                   - 'name': Filter by reading list name
+                   - 'user': Filter by user ID
+                   - 'username': Filter by username
+                   - 'is_private': Filter by privacy status (boolean)
+                   - 'attribution_source': Filter by attribution source (CBRO, CMRO, CBH, etc.)
+                   - 'modified_gt': Filter by modification date (greater than)
+
+        Returns:
+            list[ReadingListList]: A list of ReadingListList objects representing reading lists.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        return self._list_resources(ResourceEndpoint.READING_LIST, params, ReadingListList)
+
+    def reading_list_items(self, _id: int) -> list[ReadingListItem]:
+        """Retrieve a paginated list of items for a specific reading list.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            _id: The unique identifier for the reading list.
+
+        Returns:
+            list[ReadingListItem]: A list of ReadingListItem objects representing items
+                                   in the reading list.
+
+        Raises:
+            ApiError: If the reading list is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        resp = self._get_results([ResourceEndpoint.READING_LIST, _id, "items"])
+        return self._validate_list_response(resp, ReadingListItem)
 
     def _get_results(
         self,
