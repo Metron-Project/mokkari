@@ -127,7 +127,7 @@ class ReadingListList(BaseModel):
 
     @field_validator("attribution_source", mode="before")
     @classmethod
-    def convert_empty_string_to_none(cls, v: str | None) -> str | None:
+    def convert_empty_string_to_none(_cls, v: str | None) -> str | None:  # noqa: N804
         """Convert empty strings to None for attribution_source.
 
         The API may return an empty string when there is no attribution source,
