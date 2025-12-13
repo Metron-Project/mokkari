@@ -22,7 +22,7 @@ __all__ = [
 from datetime import date, datetime
 from enum import Enum
 
-from pydantic import Field, HttpUrl
+from pydantic import Field, HttpUrl, field_validator
 
 from mokkari.schemas import BaseModel
 from mokkari.schemas.issue import BasicSeries
@@ -124,6 +124,24 @@ class ReadingListList(BaseModel):
     is_private: bool = False
     attribution_source: AttributionSource | None = None
     modified: datetime
+
+    @field_validator("attribution_source", mode="before")
+    @classmethod
+    def convert_empty_string_to_none(cls, v: str | None) -> str | None:
+        """Convert empty strings to None for attribution_source.
+
+        The API may return an empty string when there is no attribution source,
+        but we want to store this as None internally.
+
+        Args:
+            v: The value to validate
+
+        Returns:
+            None if the value is an empty string, otherwise the original value
+        """
+        if v == "":
+            return None
+        return v
 
 
 class ReadingListRead(BaseModel):

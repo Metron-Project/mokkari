@@ -284,6 +284,27 @@ def test_reading_list_read_invalid_url():
         ReadingListRead(**data)
 
 
+def test_reading_list_read_empty_attribution_source(user_data):
+    """Test ReadingListRead accepts empty string for attribution_source.
+
+    Since attribution_source is a plain str field (not an enum) in ReadingListRead,
+    empty strings should be valid.
+    """
+    data = {
+        "id": 175,
+        "user": user_data,
+        "name": "Star Wars: Crimson Reign",
+        "slug": "star-wars-crimson-reign",
+        "attribution_source": "",
+        "items_url": "https://api.example.com/reading_list/175/items/",
+        "resource_url": "https://api.example.com/reading_list/175/",
+        "modified": "2025-12-13T00:44:51.789220-05:00",
+    }
+    reading_list = ReadingListRead(**data)
+    assert reading_list.id == 175
+    assert reading_list.attribution_source == ""
+
+
 # Edge cases and integration tests
 def test_private_reading_list(user_data):
     """Test creating a private reading list."""
@@ -313,3 +334,39 @@ def test_reading_list_with_different_attribution_sources(user_data):
         }
         reading_list = ReadingListList(**data)
         assert reading_list.attribution_source.value == source
+
+
+def test_reading_list_list_empty_attribution_source(user_data):
+    """Test that empty string attribution_source is converted to None.
+
+    This handles the case where the API returns an empty string instead of null
+    for the attribution_source field.
+    """
+    data = {
+        "id": 175,
+        "name": "Star Wars: Crimson Reign",
+        "slug": "star-wars-crimson-reign",
+        "user": user_data,
+        "is_private": False,
+        "attribution_source": "",
+        "modified": "2025-12-13T00:44:51.789220-05:00",
+    }
+    reading_list = ReadingListList(**data)
+    assert reading_list.id == 175
+    assert reading_list.name == "Star Wars: Crimson Reign"
+    assert reading_list.attribution_source is None
+
+
+def test_reading_list_list_invalid_attribution_source(user_data):
+    """Test that invalid attribution sources raise ValidationError."""
+    data = {
+        "id": 1,
+        "name": "Test List",
+        "slug": "test-list",
+        "user": user_data,
+        "attribution_source": "INVALID",
+        "modified": "2023-01-01T12:00:00Z",
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        ReadingListList(**data)
+    assert "attribution_source" in str(exc_info.value)
