@@ -24,6 +24,13 @@ from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
+from mokkari.schemas.collection import (
+    CollectionList,
+    CollectionRead,
+    CollectionStats,
+    MissingIssue,
+    MissingSeries,
+)
 from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
@@ -63,6 +70,7 @@ class ResourceEndpoint:
 
     ARC: Final[str] = "arc"
     CHARACTER: Final[str] = "character"
+    COLLECTION: Final[str] = "collection"
     CREATOR: Final[str] = "creator"
     IMPRINT: Final[str] = "imprint"
     ISSUE: Final[str] = "issue"
@@ -1233,6 +1241,136 @@ class Session:
         """
         resp = self._get_results([ResourceEndpoint.READING_LIST, _id, "items"])
         return self._validate_list_response(resp, ReadingListItem)
+
+    # Collection methods
+    def collection(self, _id: int) -> CollectionRead:
+        """Retrieve detailed information about a collection item by ID.
+
+        Note: This endpoint requires authentication. Users can only access their own collection items.
+
+        Args:
+            _id: The unique identifier for the collection item.
+
+        Returns:
+            CollectionRead: A CollectionRead object containing detailed collection item information.
+
+        Raises:
+            ApiError: If the collection item is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> collection_item = session.collection(1)
+            >>> print(f"Issue: {collection_item.issue.series.name} #{collection_item.issue.number}")
+        """
+        return self._get_resource(ResourceEndpoint.COLLECTION, _id, CollectionRead)
+
+    def collections_list(self, params: dict[str, str | int] | None = None) -> list[CollectionList]:
+        """Retrieve a list of collection items with optional filtering.
+
+        Note: This endpoint requires authentication. Users can only access their own collection items.
+
+        Args:
+            params: Optional dictionary of query parameters for filtering results.
+                   Common parameters include:
+                   - 'book_format': Filter by format (PRINT, DIGITAL, BOTH)
+                   - 'grade': Filter by comic book grade (CGC scale)
+                   - 'grading_company': Filter by grading company (CGC, CBCS, PGX)
+                   - 'is_read': Filter by read status (boolean)
+                   - 'issue__series': Filter by series ID
+                   - 'modified_gt': Filter by modification date (greater than)
+                   - 'purchase_date': Filter by purchase date
+                   - 'rating': Filter by star rating (1-5)
+
+        Returns:
+            list[CollectionList]: A list of CollectionList objects representing collection items.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> collection = session.collections_list({"is_read": False})
+            >>> unread = [item for item in collection if not item.is_read]
+        """
+        return self._list_resources(ResourceEndpoint.COLLECTION, params, CollectionList)
+
+    def collection_missing_issues(self, series_id: int) -> list[MissingIssue]:
+        """Retrieve a list of missing issues for a specific series.
+
+        Returns issues from a series that are not in the authenticated user's collection.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            series_id: The unique identifier for the series.
+
+        Returns:
+            list[MissingIssue]: A list of MissingIssue objects representing issues
+                               not in the user's collection.
+
+        Raises:
+            ApiError: If the series is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> missing = session.collection_missing_issues(1)
+            >>> print(f"Missing {len(missing)} issues from this series")
+        """
+        resp = self._get_results([ResourceEndpoint.COLLECTION, "missing_issues", series_id])
+        return self._validate_list_response(resp, MissingIssue)
+
+    def collection_missing_series(self) -> list[MissingSeries]:
+        """Retrieve a list of series where the user has some issues but is missing others.
+
+        Returns series where the authenticated user owns at least one issue but not
+        all issues in the series.
+
+        Note: This endpoint requires authentication.
+
+        Returns:
+            list[MissingSeries]: A list of MissingSeries objects representing series
+                                with incomplete collections.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> incomplete_series = session.collection_missing_series()
+            >>> for series in incomplete_series:
+            ...     print(f"Series: {series.name} ({series.year_began})")
+        """
+        resp = self._get_results([ResourceEndpoint.COLLECTION, "missing_series"])
+        return self._validate_list_response(resp, MissingSeries)
+
+    def collection_stats(self) -> CollectionStats:
+        """Retrieve statistics about the authenticated user's collection.
+
+        Returns comprehensive statistics including total items, total value,
+        read/unread counts, and breakdowns by format.
+
+        Note: This endpoint requires authentication.
+
+        Returns:
+            CollectionStats: A CollectionStats object containing collection statistics.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> stats = session.collection_stats()
+            >>> print(f"Total items: {stats.total_items}")
+            >>> print(f"Total value: {stats.total_value}")
+            >>> print(f"Read: {stats.read_count}, Unread: {stats.unread_count}")
+        """
+        resp = self._get([ResourceEndpoint.COLLECTION, "stats"])
+        return self._validate_response(resp, CollectionStats)
 
     def _get_results(
         self,
