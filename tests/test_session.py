@@ -18,6 +18,13 @@ from mokkari import exceptions
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
+from mokkari.schemas.collection import (
+    CollectionList,
+    CollectionRead,
+    CollectionStats,
+    MissingIssue,
+    MissingSeries,
+)
 from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
@@ -1335,6 +1342,327 @@ def test_reading_list_items(session: Session) -> None:
         assert len(result) == 1
         assert result[0].order == 1
         assert result[0].issue.number == "1"
+
+
+def test_collection(session: Session) -> None:
+    # Arrange
+    resp = {
+        "id": 1,
+        "user": {"id": 1, "username": "testuser"},
+        "issue": {
+            "id": 100,
+            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "number": "1",
+            "cover_date": "2023-01-01",
+            "modified": "2023-01-01T12:00:00Z",
+        },
+        "quantity": 1,
+        "book_format": "PRINT",
+        "grade": 9.8,
+        "grading_company": "CGC",
+        "purchase_date": "2023-01-15",
+        "purchase_price": "49.99",
+        "purchase_store": "Local Comic Shop",
+        "storage_location": "Box 1",
+        "notes": "First appearance",
+        "is_read": True,
+        "date_read": "2023-01-20",
+        "rating": 5,
+        "resource_url": "https://api.example.com/collection/1/",
+        "created_on": "2023-01-01T10:00:00Z",
+        "modified": "2023-01-01T12:00:00Z",
+    }
+    with (
+        patch.object(session, "_get", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=CollectionRead(
+                id=1,
+                user={"id": 1, "username": "testuser"},
+                issue={
+                    "id": 100,
+                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                    "number": "1",
+                    "cover_date": datetime.date(2023, 1, 1),
+                    "modified": datetime.datetime.now(),
+                },
+                quantity=1,
+                book_format="PRINT",
+                grade=9.8,
+                grading_company="CGC",
+                purchase_date=datetime.date(2023, 1, 15),
+                purchase_price=Decimal("49.99"),
+                purchase_store="Local Comic Shop",
+                storage_location="Box 1",
+                notes="First appearance",
+                is_read=True,
+                date_read=datetime.date(2023, 1, 20),
+                rating=5,
+                resource_url="https://api.example.com/collection/1/",
+                created_on=datetime.datetime.now(),
+                modified=datetime.datetime.now(),
+            ),
+        ),
+    ):
+        # Act
+        result = session.collection(1)
+        # Assert
+        assert isinstance(result, CollectionRead)
+        assert result.id == 1
+        assert result.book_format == "PRINT"
+
+
+def test_collections_list(session: Session) -> None:
+    # Arrange
+    resp = {
+        "results": [
+            {
+                "id": 1,
+                "user": {"id": 1, "username": "testuser"},
+                "issue": {
+                    "id": 100,
+                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                    "number": "1",
+                    "cover_date": "2023-01-01",
+                    "modified": "2023-01-01T12:00:00Z",
+                },
+                "quantity": 1,
+                "book_format": "PRINT",
+                "grading_company": "CGC",
+                "is_read": True,
+                "modified": "2023-01-01T12:00:00Z",
+            }
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                CollectionList(
+                    id=1,
+                    user={"id": 1, "username": "testuser"},
+                    issue={
+                        "id": 100,
+                        "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                        "number": "1",
+                        "cover_date": datetime.date(2023, 1, 1),
+                        "modified": datetime.datetime.now(),
+                    },
+                    quantity=1,
+                    book_format="PRINT",
+                    grading_company="CGC",
+                    is_read=True,
+                    modified=datetime.datetime.now(),
+                )
+            ],
+        ),
+    ):
+        # Act
+        result = session.collections_list()
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].book_format == "PRINT"
+
+
+def test_collections_list_with_params(session: Session) -> None:
+    # Arrange
+    params = {"is_read": False, "book_format": "DIGITAL"}
+    resp = {
+        "results": [
+            {
+                "id": 2,
+                "user": {"id": 1, "username": "testuser"},
+                "issue": {
+                    "id": 101,
+                    "series": {"name": "Superman", "volume": 1, "year_began": 1938},
+                    "number": "1",
+                    "cover_date": "2023-02-01",
+                    "modified": "2023-02-01T12:00:00Z",
+                },
+                "quantity": 1,
+                "book_format": "DIGITAL",
+                "grading_company": "",
+                "is_read": False,
+                "modified": "2023-02-01T12:00:00Z",
+            }
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                CollectionList(
+                    id=2,
+                    user={"id": 1, "username": "testuser"},
+                    issue={
+                        "id": 101,
+                        "series": {"name": "Superman", "volume": 1, "year_began": 1938},
+                        "number": "1",
+                        "cover_date": datetime.date(2023, 2, 1),
+                        "modified": datetime.datetime.now(),
+                    },
+                    quantity=1,
+                    book_format="DIGITAL",
+                    grading_company="",
+                    is_read=False,
+                    modified=datetime.datetime.now(),
+                )
+            ],
+        ),
+    ):
+        # Act
+        result = session.collections_list(params)
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].book_format == "DIGITAL"
+        assert result[0].is_read is False
+
+
+def test_collection_missing_issues(session: Session) -> None:
+    # Arrange
+    resp = {
+        "results": [
+            {
+                "id": 200,
+                "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                "number": "2",
+                "cover_date": "2023-02-01",
+                "store_date": "2023-01-15",
+            },
+            {
+                "id": 201,
+                "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                "number": "3",
+                "cover_date": "2023-03-01",
+            },
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                MissingIssue(
+                    id=200,
+                    series={"name": "Batman", "volume": 1, "year_began": 1940},
+                    number="2",
+                    cover_date=datetime.date(2023, 2, 1),
+                    store_date=datetime.date(2023, 1, 15),
+                ),
+                MissingIssue(
+                    id=201,
+                    series={"name": "Batman", "volume": 1, "year_began": 1940},
+                    number="3",
+                    cover_date=datetime.date(2023, 3, 1),
+                ),
+            ],
+        ),
+    ):
+        # Act
+        result = session.collection_missing_issues(1)
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0].number == "2"
+        assert result[1].number == "3"
+
+
+def test_collection_missing_series(session: Session) -> None:
+    # Arrange
+    resp = {
+        "results": [
+            {
+                "id": 1,
+                "name": "Batman",
+                "sort_name": "Batman",
+                "year_began": 1940,
+                "year_end": 2011,
+            },
+            {
+                "id": 2,
+                "name": "Superman",
+                "sort_name": "Superman",
+                "year_began": 1938,
+            },
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                MissingSeries(
+                    id=1,
+                    name="Batman",
+                    sort_name="Batman",
+                    year_began=1940,
+                    year_end=2011,
+                ),
+                MissingSeries(
+                    id=2,
+                    name="Superman",
+                    sort_name="Superman",
+                    year_began=1938,
+                ),
+            ],
+        ),
+    ):
+        # Act
+        result = session.collection_missing_series()
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0].name == "Batman"
+        assert result[1].name == "Superman"
+
+
+def test_collection_stats(session: Session) -> None:
+    # Arrange
+    resp = {
+        "total_items": 200,
+        "total_quantity": 250,
+        "total_value": "5000.00",
+        "read_count": 150,
+        "unread_count": 50,
+        "by_format": [
+            {"book_format": "PRINT", "count": 180},
+            {"book_format": "DIGITAL", "count": 20},
+        ],
+    }
+    with (
+        patch.object(session, "_get", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=CollectionStats(
+                total_items=200,
+                total_quantity=250,
+                total_value="5000.00",
+                read_count=150,
+                unread_count=50,
+                by_format=[
+                    {"book_format": "PRINT", "count": 180},
+                    {"book_format": "DIGITAL", "count": 20},
+                ],
+            ),
+        ),
+    ):
+        # Act
+        result = session.collection_stats()
+        # Assert
+        assert isinstance(result, CollectionStats)
+        assert result.total_items == 200
+        assert result.total_quantity == 250
+        assert result.read_count == 150
+        assert result.unread_count == 50
+        assert len(result.by_format) == 2
 
 
 @pytest.mark.parametrize(
