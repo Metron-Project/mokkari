@@ -165,7 +165,7 @@ class ReadingListRead(BaseModel):
     is_private: bool = False
     attribution_source: str
     attribution_url: HttpUrl | None = Field(default=None, max_length=200)
-    average_rating: float
+    average_rating: float | None = None
     rating_count: int
     items_url: str
     resource_url: str

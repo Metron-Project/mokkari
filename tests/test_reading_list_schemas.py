@@ -345,6 +345,28 @@ def test_reading_list_read_empty_attribution_source(user_data):
     assert reading_list.attribution_source == ""
 
 
+def test_reading_list_no_average_rating(user_data):
+    """Test ReadingListRead accepts None for average rating.
+
+    If there are no ratings the average rating is None.
+    """
+    data = {
+        "id": 175,
+        "user": user_data,
+        "name": "Star Wars: Crimson Reign",
+        "slug": "star-wars-crimson-reign",
+        "attribution_source": "",
+        "average_rating": None,
+        "rating_count": 0,
+        "items_url": "https://api.example.com/reading_list/175/items/",
+        "resource_url": "https://api.example.com/reading_list/175/",
+        "modified": "2025-12-13T00:44:51.789220-05:00",
+    }
+    reading_list = ReadingListRead(**data)
+    assert reading_list.id == 175
+    assert reading_list.average_rating is None
+
+
 # Edge cases and integration tests
 def test_private_reading_list(user_data):
     """Test creating a private reading list."""
