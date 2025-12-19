@@ -2,7 +2,6 @@
 
 This module provides the following classes:
 
-- User
 - AttributionSource
 - ReadingListIssue
 - ReadingListItem
@@ -16,7 +15,6 @@ __all__ = [
     "ReadingListItem",
     "ReadingListList",
     "ReadingListRead",
-    "User",
 ]
 
 from datetime import date, datetime
@@ -26,18 +24,7 @@ from pydantic import Field, HttpUrl, field_validator
 
 from mokkari.schemas import BaseModel
 from mokkari.schemas.issue import BasicSeries
-
-
-class User(BaseModel):
-    """A data model representing a user.
-
-    Attributes:
-        id (int): The unique identifier of the user.
-        username (str): The username of the user (150 characters or fewer).
-    """
-
-    id: int
-    username: str
+from mokkari.schemas.user import User
 
 
 class AttributionSource(str, Enum):
@@ -96,11 +83,13 @@ class ReadingListItem(BaseModel):
         id (int): The unique identifier of the reading list item.
         issue (ReadingListIssue): The issue associated with this reading list item.
         order (int, optional): Position of this issue in the reading list.
+        issue_type (str): The type of the issue.
     """
 
     id: int
     issue: ReadingListIssue
     order: int | None = None
+    issue_type: str
 
 
 class ReadingListList(BaseModel):
@@ -114,6 +103,8 @@ class ReadingListList(BaseModel):
         is_private (bool): Whether this list is private (only visible to the owner).
         attribution_source (AttributionSource, optional): Source where this reading list
             information was obtained.
+        average_rating (float): The average rating of the reading list.
+        rating_count (int): The number of ratings for the reading list.
         modified (datetime): The date and time when the reading list was last modified.
     """
 
@@ -123,6 +114,8 @@ class ReadingListList(BaseModel):
     user: User
     is_private: bool = False
     attribution_source: AttributionSource | None = None
+    average_rating: float
+    rating_count: int
     modified: datetime
 
     @field_validator("attribution_source", mode="before")
@@ -157,6 +150,8 @@ class ReadingListRead(BaseModel):
         attribution_source (str): Source where this reading list information was obtained.
         attribution_url (HttpUrl, optional): URL of the specific page where this reading
             list was obtained.
+        average_rating (float): The average rating of the reading list.
+        rating_count (int): The number of ratings for the reading list.
         items_url (str): URL to the paginated items endpoint.
         resource_url (str): URL of the reading list resource.
         modified (datetime): The date and time when the reading list was last modified.
@@ -170,6 +165,8 @@ class ReadingListRead(BaseModel):
     is_private: bool = False
     attribution_source: str
     attribution_url: HttpUrl | None = Field(default=None, max_length=200)
+    average_rating: float
+    rating_count: int
     items_url: str
     resource_url: str
     modified: datetime

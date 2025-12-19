@@ -1,0 +1,11 @@
+:::mokkari.schemas.collection.BookFormat
+:::mokkari.schemas.collection.CollectionFormatStat
+:::mokkari.schemas.collection.CollectionIssue
+:::mokkari.schemas.collection.CollectionList
+:::mokkari.schemas.collection.CollectionRead
+:::mokkari.schemas.collection.CollectionStats
+:::mokkari.schemas.collection.Grade
+:::mokkari.schemas.collection.GradingCompany
+:::mokkari.schemas.collection.MissingIssue
+:::mokkari.schemas.collection.MissingSeries
+:::mokkari.schemas.collection.Rating

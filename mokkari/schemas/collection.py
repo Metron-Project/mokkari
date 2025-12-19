@@ -2,7 +2,6 @@
 
 This module provides the following classes:
 
-- User
 - BookFormat
 - GradingCompany
 - Grade
@@ -28,7 +27,6 @@ __all__ = [
     "MissingIssue",
     "MissingSeries",
     "Rating",
-    "User",
 ]
 
 from datetime import date, datetime
@@ -39,18 +37,7 @@ from pydantic import Field
 
 from mokkari.schemas import BaseModel
 from mokkari.schemas.issue import BasicSeries
-
-
-class User(BaseModel):
-    """A data model representing a user.
-
-    Attributes:
-        id (int): The unique identifier of the user.
-        username (str): The username of the user (150 characters or fewer).
-    """
-
-    id: int
-    username: str
+from mokkari.schemas.user import User
 
 
 class BookFormat(str, Enum):
