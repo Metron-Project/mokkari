@@ -46,6 +46,7 @@ nav:
       - Arc: mokkari/schemas/arc.md
       - BaseResource: mokkari/schemas/base.md
       - Character: mokkari/schemas/character.md
+      - Collection: mokkari/schemas/collection.md
       - Creator: mokkari/schemas/creator.md
       - GenericItem: mokkari/schemas/generic.md
       - Imprint: mokkari/schemas/imprint.md
@@ -56,6 +57,7 @@ nav:
       - Series: mokkari/schemas/series.md
       - Team: mokkari/schemas/team.md
       - Universe: mokkari/schemas/universe.md
+      - User: mokkari/schemas/user.md
       - Variant: mokkari/schemas/variant.md
 
 plugins:
