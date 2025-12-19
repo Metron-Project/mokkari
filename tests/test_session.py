@@ -19,6 +19,8 @@ from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
 from mokkari.schemas.collection import (
+    CollectionFormatStat,
+    CollectionIssue,
     CollectionList,
     CollectionRead,
     CollectionStats,
@@ -39,10 +41,17 @@ from mokkari.schemas.issue import (
     IssueSeries,
 )
 from mokkari.schemas.publisher import Publisher, PublisherPost
-from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
+from mokkari.schemas.reading_list import (
+    AttributionSource,
+    ReadingListIssue,
+    ReadingListItem,
+    ReadingListList,
+    ReadingListRead,
+)
 from mokkari.schemas.series import Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
+from mokkari.schemas.user import User
 from mokkari.schemas.variant import VariantPost, VariantPostResponse
 from mokkari.session import Session
 
@@ -1188,6 +1197,8 @@ def test_reading_list(session: Session) -> None:
         "is_private": False,
         "attribution_source": "CBRO",
         "attribution_url": "https://example.com/list",
+        "average_rating": 4.5,
+        "rating_count": 10,
         "items_url": "https://api.example.com/reading_list/1/items/",
         "resource_url": "https://api.example.com/reading_list/1/",
         "modified": "2023-01-01T12:00:00Z",
@@ -1200,11 +1211,13 @@ def test_reading_list(session: Session) -> None:
                 id=1,
                 name="My Reading List",
                 slug="my-reading-list",
-                user={"id": 1, "username": "testuser"},
+                user=User(id=1, username="testuser"),
                 desc="A test reading list",
                 is_private=False,
                 attribution_source="CBRO",
                 attribution_url=HttpUrl("https://example.com/list"),
+                average_rating=4.5,
+                rating_count=10,
                 items_url="https://api.example.com/reading_list/1/items/",
                 resource_url="https://api.example.com/reading_list/1/",
                 modified=datetime.datetime.now(),
@@ -1228,7 +1241,9 @@ def test_reading_lists_list(session: Session) -> None:
                 "slug": "my-reading-list",
                 "user": {"id": 1, "username": "testuser"},
                 "is_private": False,
-                "attribution_source": "CBRO",
+                "attribution_source": AttributionSource.CBRO,
+                "average_rating": 4.5,
+                "rating_count": 10,
                 "modified": "2023-01-01T12:00:00Z",
             }
         ],
@@ -1243,9 +1258,11 @@ def test_reading_lists_list(session: Session) -> None:
                     id=1,
                     name="My Reading List",
                     slug="my-reading-list",
-                    user={"id": 1, "username": "testuser"},
+                    user=User(id=1, username="testuser"),
                     is_private=False,
-                    attribution_source="CBRO",
+                    attribution_source=AttributionSource.CBRO,
+                    average_rating=4.5,
+                    rating_count=10,
                     modified=datetime.datetime.now(),
                 )
             ],
@@ -1270,6 +1287,8 @@ def test_reading_lists_list_with_params(session: Session) -> None:
                 "slug": "public-list",
                 "user": {"id": 1, "username": "testuser"},
                 "is_private": False,
+                "average_rating": 4.5,
+                "rating_count": 10,
                 "modified": "2023-01-01T12:00:00Z",
             }
         ],
@@ -1284,8 +1303,10 @@ def test_reading_lists_list_with_params(session: Session) -> None:
                     id=1,
                     name="Public List",
                     slug="public-list",
-                    user={"id": 1, "username": "testuser"},
+                    user=User(id=1, username="testuser"),
                     is_private=False,
+                    average_rating=4.5,
+                    rating_count=10,
                     modified=datetime.datetime.now(),
                 )
             ],
@@ -1323,14 +1344,15 @@ def test_reading_list_items(session: Session) -> None:
             return_value=[
                 ReadingListItem(
                     id=1,
-                    issue={
-                        "id": 100,
-                        "series": {"name": "Batman", "volume": 1, "year_began": 1940},
-                        "number": "1",
-                        "cover_date": datetime.date(2023, 1, 1),
-                        "modified": datetime.datetime.now(),
-                    },
+                    issue=ReadingListIssue(
+                        id=100,
+                        series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                        number="1",
+                        cover_date=datetime.date(2023, 1, 1),
+                        modified=datetime.datetime.now(),
+                    ),
                     order=1,
+                    issue_type="Core Issue",
                 )
             ],
         ),
@@ -1378,14 +1400,14 @@ def test_collection(session: Session) -> None:
             "mokkari.session.TypeAdapter.validate_python",
             return_value=CollectionRead(
                 id=1,
-                user={"id": 1, "username": "testuser"},
-                issue={
-                    "id": 100,
-                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
-                    "number": "1",
-                    "cover_date": datetime.date(2023, 1, 1),
-                    "modified": datetime.datetime.now(),
-                },
+                user=User(id=1, username="testuser"),
+                issue=CollectionIssue(
+                    id=100,
+                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    number="1",
+                    cover_date=datetime.date(2023, 1, 1),
+                    modified=datetime.datetime.now(),
+                ),
                 quantity=1,
                 book_format="PRINT",
                 grade=9.8,
@@ -1442,14 +1464,14 @@ def test_collections_list(session: Session) -> None:
             return_value=[
                 CollectionList(
                     id=1,
-                    user={"id": 1, "username": "testuser"},
-                    issue={
-                        "id": 100,
-                        "series": {"name": "Batman", "volume": 1, "year_began": 1940},
-                        "number": "1",
-                        "cover_date": datetime.date(2023, 1, 1),
-                        "modified": datetime.datetime.now(),
-                    },
+                    user=User(id=1, username="testuser"),
+                    issue=CollectionIssue(
+                        id=100,
+                        series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                        number="1",
+                        cover_date=datetime.date(2023, 1, 1),
+                        modified=datetime.datetime.now(),
+                    ),
                     quantity=1,
                     book_format="PRINT",
                     grading_company="CGC",
@@ -1498,14 +1520,14 @@ def test_collections_list_with_params(session: Session) -> None:
             return_value=[
                 CollectionList(
                     id=2,
-                    user={"id": 1, "username": "testuser"},
-                    issue={
-                        "id": 101,
-                        "series": {"name": "Superman", "volume": 1, "year_began": 1938},
-                        "number": "1",
-                        "cover_date": datetime.date(2023, 2, 1),
-                        "modified": datetime.datetime.now(),
-                    },
+                    user=User(id=1, username="testuser"),
+                    issue=CollectionIssue(
+                        id=101,
+                        series=BasicSeries(name="Superman", volume=1, year_began=1938),
+                        number="1",
+                        cover_date=datetime.date(2023, 2, 1),
+                        modified=datetime.datetime.now(),
+                    ),
                     quantity=1,
                     book_format="DIGITAL",
                     grading_company="",
@@ -1551,14 +1573,14 @@ def test_collection_missing_issues(session: Session) -> None:
             return_value=[
                 MissingIssue(
                     id=200,
-                    series={"name": "Batman", "volume": 1, "year_began": 1940},
+                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
                     number="2",
                     cover_date=datetime.date(2023, 2, 1),
                     store_date=datetime.date(2023, 1, 15),
                 ),
                 MissingIssue(
                     id=201,
-                    series={"name": "Batman", "volume": 1, "year_began": 1940},
+                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
                     number="3",
                     cover_date=datetime.date(2023, 3, 1),
                 ),
@@ -1648,8 +1670,8 @@ def test_collection_stats(session: Session) -> None:
                 read_count=150,
                 unread_count=50,
                 by_format=[
-                    {"book_format": "PRINT", "count": 180},
-                    {"book_format": "DIGITAL", "count": 20},
+                    CollectionFormatStat(book_format="PRINT", count=180),
+                    CollectionFormatStat(book_format="DIGITAL", count=20),
                 ],
             ),
         ),

@@ -46,7 +46,7 @@ def reading_list_issue_data(basic_series_data):
 @pytest.fixture
 def reading_list_item_data(reading_list_issue_data):
     """Sample reading list item data."""
-    return {"id": 1, "issue": reading_list_issue_data, "order": 1}
+    return {"id": 1, "issue": reading_list_issue_data, "order": 1, "issue_type": "issue"}
 
 
 @pytest.fixture
@@ -59,6 +59,8 @@ def reading_list_list_data(user_data):
         "user": user_data,
         "is_private": False,
         "attribution_source": "CBRO",
+        "average_rating": 4.5,
+        "rating_count": 10,
         "modified": "2023-01-01T12:00:00Z",
     }
 
@@ -75,6 +77,8 @@ def reading_list_read_data(user_data):
         "is_private": False,
         "attribution_source": "CBRO",
         "attribution_url": "https://example.com/reading-list",
+        "average_rating": 4.5,
+        "rating_count": 10,
         "items_url": "https://api.example.com/reading_list/1/items/",
         "resource_url": "https://api.example.com/reading_list/1/",
         "modified": "2023-01-01T12:00:00Z",
@@ -166,7 +170,7 @@ def test_reading_list_item_creation(reading_list_item_data):
 
 def test_reading_list_item_creation_minimal(reading_list_issue_data):
     """Test creating a ReadingListItem with minimal required data."""
-    data = {"id": 1, "issue": reading_list_issue_data}
+    data = {"id": 1, "issue": reading_list_issue_data, "issue_type": "issue"}
     item = ReadingListItem(**data)
     assert item.id == 1
     assert item.order is None
@@ -175,8 +179,36 @@ def test_reading_list_item_creation_minimal(reading_list_issue_data):
 def test_reading_list_item_validation_missing_issue():
     """Test ReadingListItem validation with missing issue."""
     with pytest.raises(ValidationError) as exc_info:
-        ReadingListItem(id=1)  # Missing issue
+        ReadingListItem(id=1, issue_type="issue")  # Missing issue
     assert "issue" in str(exc_info.value)
+
+
+def test_reading_list_item_validation_missing_issue_type(reading_list_issue_data):
+    """Test ReadingListItem validation with missing issue_type."""
+    with pytest.raises(ValidationError) as exc_info:
+        ReadingListItem(id=1, issue=reading_list_issue_data)  # Missing issue_type
+    assert "issue_type" in str(exc_info.value)
+
+
+def test_reading_list_item_empty_issue_type(reading_list_issue_data):
+    """Test ReadingListItem accepts empty string for issue_type.
+
+    The API may return an empty string for issue_type, so we verify
+    that it's accepted by the model.
+    """
+    data = {"id": 1, "issue": reading_list_issue_data, "issue_type": ""}
+    item = ReadingListItem(**data)
+    assert item.id == 1
+    assert item.issue_type == ""
+
+
+def test_reading_list_item_various_issue_types(reading_list_issue_data):
+    """Test ReadingListItem with various issue_type values."""
+    issue_types = ["issue", "annual", "hardcover", "trade paperback", "digital"]
+    for issue_type in issue_types:
+        data = {"id": 1, "issue": reading_list_issue_data, "issue_type": issue_type}
+        item = ReadingListItem(**data)
+        assert item.issue_type == issue_type
 
 
 # ReadingListList model tests
@@ -200,6 +232,8 @@ def test_reading_list_list_creation_minimal(user_data):
         "name": "My Reading List",
         "slug": "my-reading-list",
         "user": user_data,
+        "average_rating": 0.0,
+        "rating_count": 0,
         "modified": "2023-01-01T12:00:00Z",
     }
     reading_list = ReadingListList(**data)
@@ -243,6 +277,8 @@ def test_reading_list_read_creation_minimal(user_data):
         "name": "My Reading List",
         "slug": "my-reading-list",
         "attribution_source": "CBRO",
+        "average_rating": 0.0,
+        "rating_count": 0,
         "items_url": "https://api.example.com/reading_list/1/items/",
         "resource_url": "https://api.example.com/reading_list/1/",
         "modified": "2023-01-01T12:00:00Z",
@@ -276,6 +312,8 @@ def test_reading_list_read_invalid_url():
         "slug": "my-reading-list",
         "attribution_source": "CBRO",
         "attribution_url": "not_a_valid_url",
+        "average_rating": 0.0,
+        "rating_count": 0,
         "items_url": "https://api.example.com/reading_list/1/items/",
         "resource_url": "https://api.example.com/reading_list/1/",
         "modified": "2023-01-01T12:00:00Z",
@@ -296,6 +334,8 @@ def test_reading_list_read_empty_attribution_source(user_data):
         "name": "Star Wars: Crimson Reign",
         "slug": "star-wars-crimson-reign",
         "attribution_source": "",
+        "average_rating": 0.0,
+        "rating_count": 0,
         "items_url": "https://api.example.com/reading_list/175/items/",
         "resource_url": "https://api.example.com/reading_list/175/",
         "modified": "2025-12-13T00:44:51.789220-05:00",
@@ -314,6 +354,8 @@ def test_private_reading_list(user_data):
         "slug": "my-private-list",
         "user": user_data,
         "is_private": True,
+        "average_rating": 0.0,
+        "rating_count": 0,
         "modified": "2023-01-01T12:00:00Z",
     }
     reading_list = ReadingListList(**data)
@@ -330,6 +372,8 @@ def test_reading_list_with_different_attribution_sources(user_data):
             "slug": "test-list",
             "user": user_data,
             "attribution_source": source,
+            "average_rating": 0.0,
+            "rating_count": 0,
             "modified": "2023-01-01T12:00:00Z",
         }
         reading_list = ReadingListList(**data)
@@ -349,6 +393,8 @@ def test_reading_list_list_empty_attribution_source(user_data):
         "user": user_data,
         "is_private": False,
         "attribution_source": "",
+        "average_rating": 0.0,
+        "rating_count": 0,
         "modified": "2025-12-13T00:44:51.789220-05:00",
     }
     reading_list = ReadingListList(**data)
@@ -365,6 +411,8 @@ def test_reading_list_list_invalid_attribution_source(user_data):
         "slug": "test-list",
         "user": user_data,
         "attribution_source": "INVALID",
+        "average_rating": 0.0,
+        "rating_count": 0,
         "modified": "2023-01-01T12:00:00Z",
     }
     with pytest.raises(ValidationError) as exc_info:
