@@ -440,3 +440,24 @@ def test_reading_list_list_invalid_attribution_source(user_data):
     with pytest.raises(ValidationError) as exc_info:
         ReadingListList(**data)
     assert "attribution_source" in str(exc_info.value)
+
+
+def test_reading_list_list_no_average_rating(user_data):
+    """Test ReadingListList accepts None for average rating.
+
+    If there are no ratings the average rating is None.
+    """
+    data = {
+        "id": 175,
+        "name": "Star Wars: Crimson Reign",
+        "slug": "star-wars-crimson-reign",
+        "user": user_data,
+        "is_private": False,
+        "attribution_source": "",
+        "average_rating": None,
+        "rating_count": 0,
+        "modified": "2025-12-13T00:44:51.789220-05:00",
+    }
+    reading_list = ReadingListList(**data)
+    assert reading_list.id == 175
+    assert reading_list.average_rating is None

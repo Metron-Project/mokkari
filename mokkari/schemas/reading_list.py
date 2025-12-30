@@ -103,7 +103,7 @@ class ReadingListList(BaseModel):
         is_private (bool): Whether this list is private (only visible to the owner).
         attribution_source (AttributionSource, optional): Source where this reading list
             information was obtained.
-        average_rating (float): The average rating of the reading list.
+        average_rating (float, optional): The average rating of the reading list.
         rating_count (int): The number of ratings for the reading list.
         modified (datetime): The date and time when the reading list was last modified.
     """
@@ -114,7 +114,7 @@ class ReadingListList(BaseModel):
     user: User
     is_private: bool = False
     attribution_source: AttributionSource | None = None
-    average_rating: float
+    average_rating: float | None = None
     rating_count: int
     modified: datetime
 
