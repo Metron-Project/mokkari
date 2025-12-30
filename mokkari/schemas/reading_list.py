@@ -170,3 +170,21 @@ class ReadingListRead(BaseModel):
     items_url: str
     resource_url: str
     modified: datetime
+
+    @field_validator("attribution_url", mode="before")
+    @classmethod
+    def convert_empty_string_to_none(_cls, v: str | None) -> str | None:  # noqa: N804
+        """Convert empty strings to None for attribution_url.
+
+        The API may return an empty string when there is no attribution URL,
+        but we want to store this as None internally.
+
+        Args:
+            v: The value to validate
+
+        Returns:
+            None if the value is an empty string, otherwise the original value
+        """
+        if v == "":
+            return None
+        return v

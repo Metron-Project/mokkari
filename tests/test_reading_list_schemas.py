@@ -367,6 +367,30 @@ def test_reading_list_no_average_rating(user_data):
     assert reading_list.average_rating is None
 
 
+def test_reading_list_read_empty_attribution_url(user_data):
+    """Test that empty string attribution_url is converted to None.
+
+    This handles the case where the API returns an empty string instead of null
+    for the attribution_url field.
+    """
+    data = {
+        "id": 197,
+        "user": user_data,
+        "name": "Test Reading List",
+        "slug": "test-reading-list",
+        "attribution_source": "CBRO",
+        "attribution_url": "",
+        "average_rating": 0.0,
+        "rating_count": 0,
+        "items_url": "https://api.example.com/reading_list/197/items/",
+        "resource_url": "https://api.example.com/reading_list/197/",
+        "modified": "2025-12-30T12:00:00Z",
+    }
+    reading_list = ReadingListRead(**data)
+    assert reading_list.id == 197
+    assert reading_list.attribution_url is None
+
+
 # Edge cases and integration tests
 def test_private_reading_list(user_data):
     """Test creating a private reading list."""
