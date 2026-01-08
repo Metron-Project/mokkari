@@ -30,6 +30,8 @@ from mokkari.schemas.collection import (
     CollectionStats,
     MissingIssue,
     MissingSeries,
+    ScrobbleRequest,
+    ScrobbleResponse,
 )
 from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
@@ -237,6 +239,7 @@ class Session:
         VariantPost,
         IssuePost,
         PublisherPost,
+        ScrobbleRequest,
         SeriesPost,
         TeamPost,
         UniversePost,
@@ -1371,6 +1374,49 @@ class Session:
         """
         resp = self._get([ResourceEndpoint.COLLECTION, "stats"])
         return self._validate_response(resp, CollectionStats)
+
+    def collection_scrobble(self, data: ScrobbleRequest) -> ScrobbleResponse:
+        """Mark an issue as read (scrobble).
+
+        This endpoint marks an issue as read and optionally provides a rating.
+        If the issue is not already in the user's collection, it will be
+        automatically added with default values.
+
+        Note: This endpoint requires authentication. Users can only scrobble issues
+        to their own collection.
+
+        Args:
+            data: ScrobbleRequest object containing the issue_id and optional
+                  date_read and rating.
+
+        Returns:
+            ScrobbleResponse: A ScrobbleResponse object containing the updated
+                            collection item information and a 'created' flag
+                            indicating whether a new collection item was created.
+
+        Raises:
+            ApiError: If the issue is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> from datetime import datetime
+            >>> scrobble_data = ScrobbleRequest(
+            ...     issue_id=1,
+            ...     date_read=datetime.now(),
+            ...     rating=5
+            ... )
+            >>> result = session.collection_scrobble(scrobble_data)
+            >>> print(f"Issue marked as read: {result.issue.series.name} #{result.issue.number}")
+            >>> print(f"New item created: {result.created}")
+
+            Mark as read without rating:
+            >>> scrobble_data = ScrobbleRequest(issue_id=1)
+            >>> result = session.collection_scrobble(scrobble_data)
+        """
+        return self._handle_write_request(
+            "POST", [ResourceEndpoint.COLLECTION, "scrobble"], data, ScrobbleResponse
+        )
 
     def _get_results(
         self,

@@ -13,6 +13,8 @@ This module provides the following classes:
 - MissingSeries
 - CollectionFormatStat
 - CollectionStats
+- ScrobbleRequest
+- ScrobbleResponse
 """
 
 __all__ = [
@@ -27,6 +29,8 @@ __all__ = [
     "MissingIssue",
     "MissingSeries",
     "Rating",
+    "ScrobbleRequest",
+    "ScrobbleResponse",
 ]
 
 from datetime import date, datetime
@@ -308,3 +312,44 @@ class CollectionStats(BaseModel):
     read_count: int
     unread_count: int
     by_format: list[CollectionFormatStat] = Field(default_factory=list)
+
+
+class ScrobbleRequest(BaseModel):
+    """A data model representing a request to mark an issue as read.
+
+    This is used to "scrobble" an issue, marking it as read and optionally
+    providing a rating. If the issue is not in the collection, it will be
+    automatically added.
+
+    Attributes:
+        issue_id (int): The unique identifier of the issue to mark as read.
+        date_read (datetime, optional): Date and time when the issue was read.
+            If not provided, the current date/time will be used.
+        rating (int, optional): Star rating (1-5) for this issue.
+    """
+
+    issue_id: int
+    date_read: datetime | None = None
+    rating: int | None = Field(None, ge=1, le=5)
+
+
+class ScrobbleResponse(BaseModel):
+    """A data model representing the response from a scrobble operation.
+
+    Attributes:
+        id (int): The unique identifier of the collection item.
+        issue (CollectionIssue): The issue that was scrobbled.
+        is_read (bool): Whether the issue has been read (always True after scrobbling).
+        date_read (datetime, optional): Date and time when the issue was read.
+        rating (int, optional): Star rating (1-5) for this issue.
+        created (bool): Whether a new collection item was created (True) or an existing one was updated (False).
+        modified (datetime): The date and time when the collection item was last modified.
+    """
+
+    id: int
+    issue: CollectionIssue
+    is_read: bool
+    date_read: datetime | None = None
+    rating: int | None = None
+    created: bool
+    modified: datetime
