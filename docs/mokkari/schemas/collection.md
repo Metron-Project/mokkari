@@ -9,3 +9,5 @@
 :::mokkari.schemas.collection.MissingIssue
 :::mokkari.schemas.collection.MissingSeries
 :::mokkari.schemas.collection.Rating
+:::mokkari.schemas.collection.ScrobbleRequest
+:::mokkari.schemas.collection.ScrobbleResponse
