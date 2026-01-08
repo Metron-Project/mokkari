@@ -26,6 +26,8 @@ from mokkari.schemas.collection import (
     CollectionStats,
     MissingIssue,
     MissingSeries,
+    ScrobbleRequest,
+    ScrobbleResponse,
 )
 from mokkari.schemas.creator import Creator, CreatorPost
 from mokkari.schemas.generic import GenericItem
@@ -1685,6 +1687,108 @@ def test_collection_stats(session: Session) -> None:
         assert result.read_count == 150
         assert result.unread_count == 50
         assert len(result.by_format) == 2
+
+
+def test_collection_scrobble(session: Session) -> None:
+    # Arrange
+    scrobble_request = ScrobbleRequest(
+        issue_id=1,
+        date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+        rating=5,
+    )
+    resp = {
+        "id": 100,
+        "issue": {
+            "id": 1,
+            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "number": "1",
+            "cover_date": "2024-01-01",
+            "store_date": "2023-12-15",
+            "modified": "2024-01-01T12:00:00Z",
+        },
+        "is_read": True,
+        "date_read": "2024-01-20T14:30:00Z",
+        "rating": 5,
+        "created": True,
+        "modified": "2024-01-20T14:30:00Z",
+    }
+    with (
+        patch.object(session, "_send", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=ScrobbleResponse(
+                id=100,
+                issue=CollectionIssue(
+                    id=1,
+                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    number="1",
+                    cover_date=datetime.date(2024, 1, 1),
+                    store_date=datetime.date(2023, 12, 15),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                ),
+                is_read=True,
+                date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+                rating=5,
+                created=True,
+                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+            ),
+        ),
+    ):
+        # Act
+        result = session.collection_scrobble(scrobble_request)
+        # Assert
+        assert isinstance(result, ScrobbleResponse)
+        assert result.id == 100
+        assert result.issue.id == 1
+        assert result.is_read is True
+        assert result.rating == 5
+        assert result.created is True
+
+
+def test_collection_scrobble_minimal(session: Session) -> None:
+    # Arrange
+    scrobble_request = ScrobbleRequest(issue_id=1)
+    resp = {
+        "id": 100,
+        "issue": {
+            "id": 1,
+            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "number": "1",
+            "cover_date": "2024-01-01",
+            "modified": "2024-01-01T12:00:00Z",
+        },
+        "is_read": True,
+        "created": False,
+        "modified": "2024-01-20T14:30:00Z",
+    }
+    with (
+        patch.object(session, "_send", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=ScrobbleResponse(
+                id=100,
+                issue=CollectionIssue(
+                    id=1,
+                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    number="1",
+                    cover_date=datetime.date(2024, 1, 1),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                ),
+                is_read=True,
+                created=False,
+                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+            ),
+        ),
+    ):
+        # Act
+        result = session.collection_scrobble(scrobble_request)
+        # Assert
+        assert isinstance(result, ScrobbleResponse)
+        assert result.id == 100
+        assert result.is_read is True
+        assert result.created is False
+        assert result.date_read is None
+        assert result.rating is None
 
 
 @pytest.mark.parametrize(

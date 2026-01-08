@@ -18,6 +18,8 @@ from mokkari.schemas.collection import (
     MissingIssue,
     MissingSeries,
     Rating,
+    ScrobbleRequest,
+    ScrobbleResponse,
     User,
 )
 
@@ -322,3 +324,126 @@ def test_collection_stats_empty_format_list():
     }
     stats = CollectionStats(**data)
     assert stats.by_format == []
+
+
+# ScrobbleRequest tests
+def test_scrobble_request_valid_data():
+    """Test ScrobbleRequest model with valid data."""
+    data = {
+        "issue_id": 1,
+        "date_read": "2024-01-20T14:30:00Z",
+        "rating": 5,
+    }
+    scrobble = ScrobbleRequest(**data)
+    assert scrobble.issue_id == 1
+    assert scrobble.date_read.year == 2024
+    assert scrobble.date_read.month == 1
+    assert scrobble.date_read.day == 20
+    assert scrobble.date_read.hour == 14
+    assert scrobble.date_read.minute == 30
+    assert scrobble.rating == 5
+
+
+def test_scrobble_request_minimal_data():
+    """Test ScrobbleRequest with only required field."""
+    data = {"issue_id": 1}
+    scrobble = ScrobbleRequest(**data)
+    assert scrobble.issue_id == 1
+    assert scrobble.date_read is None
+    assert scrobble.rating is None
+
+
+def test_scrobble_request_with_rating_only():
+    """Test ScrobbleRequest with issue_id and rating."""
+    data = {"issue_id": 42, "rating": 3}
+    scrobble = ScrobbleRequest(**data)
+    assert scrobble.issue_id == 42
+    assert scrobble.rating == 3
+    assert scrobble.date_read is None
+
+
+def test_scrobble_request_invalid_rating_too_low():
+    """Test ScrobbleRequest with rating below minimum."""
+    data = {"issue_id": 1, "rating": 0}
+    with pytest.raises(ValidationError) as exc_info:
+        ScrobbleRequest(**data)
+    assert "rating" in str(exc_info.value)
+
+
+def test_scrobble_request_invalid_rating_too_high():
+    """Test ScrobbleRequest with rating above maximum."""
+    data = {"issue_id": 1, "rating": 6}
+    with pytest.raises(ValidationError) as exc_info:
+        ScrobbleRequest(**data)
+    assert "rating" in str(exc_info.value)
+
+
+def test_scrobble_request_missing_required_field():
+    """Test ScrobbleRequest with missing required field."""
+    with pytest.raises(ValidationError):
+        ScrobbleRequest()
+
+
+# ScrobbleResponse tests
+def test_scrobble_response_valid_data(collection_issue_data):
+    """Test ScrobbleResponse model with valid data."""
+    data = {
+        "id": 1,
+        "issue": collection_issue_data,
+        "is_read": True,
+        "date_read": "2024-01-20T14:30:00Z",
+        "rating": 5,
+        "created": True,
+        "modified": "2024-01-20T14:30:00Z",
+    }
+    response = ScrobbleResponse(**data)
+    assert response.id == 1
+    assert response.issue.id == 1
+    assert response.is_read is True
+    assert response.date_read.year == 2024
+    assert response.date_read.month == 1
+    assert response.date_read.day == 20
+    assert response.rating == 5
+    assert response.created is True
+    assert response.modified.year == 2024
+
+
+def test_scrobble_response_update_existing(collection_issue_data):
+    """Test ScrobbleResponse for updating an existing item."""
+    data = {
+        "id": 42,
+        "issue": collection_issue_data,
+        "is_read": True,
+        "date_read": "2024-01-20T14:30:00Z",
+        "rating": 4,
+        "created": False,
+        "modified": "2024-01-20T14:30:00Z",
+    }
+    response = ScrobbleResponse(**data)
+    assert response.id == 42
+    assert response.created is False
+    assert response.rating == 4
+
+
+def test_scrobble_response_without_optional_fields(collection_issue_data):
+    """Test ScrobbleResponse without optional fields."""
+    data = {
+        "id": 1,
+        "issue": collection_issue_data,
+        "is_read": True,
+        "created": True,
+        "modified": "2024-01-20T14:30:00Z",
+    }
+    response = ScrobbleResponse(**data)
+    assert response.date_read is None
+    assert response.rating is None
+
+
+def test_scrobble_response_missing_required_fields(collection_issue_data):
+    """Test ScrobbleResponse with missing required fields."""
+    data = {
+        "id": 1,
+        "issue": collection_issue_data,
+    }
+    with pytest.raises(ValidationError):
+        ScrobbleResponse(**data)
