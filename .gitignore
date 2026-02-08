@@ -88,3 +88,6 @@ venv/
 venv.bak/
 .webassets-cache
 wheels/
+# AI agents
+.claude/
+CLAUDE.md
