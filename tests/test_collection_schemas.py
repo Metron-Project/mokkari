@@ -18,6 +18,7 @@ from mokkari.schemas.collection import (
     MissingIssue,
     MissingSeries,
     Rating,
+    ReadDate,
     ScrobbleRequest,
     ScrobbleResponse,
     User,
@@ -63,6 +64,10 @@ def collection_list_data(user_data, collection_issue_data):
         "grading_company": "CGC",
         "purchase_date": "2024-01-15",
         "is_read": True,
+        "read_dates": [
+            {"id": 1, "read_date": "2024-01-20T14:30:00Z", "created_on": "2024-01-20T14:30:00Z"},
+        ],
+        "read_count": 1,
         "rating": 5,
         "modified": "2024-01-01T12:00:00Z",
     }
@@ -85,7 +90,11 @@ def collection_read_data(user_data, collection_issue_data):
         "storage_location": "Box 1",
         "notes": "First appearance",
         "is_read": True,
-        "date_read": "2024-01-20",
+        "date_read": "2024-01-20T14:30:00Z",
+        "read_dates": [
+            {"id": 1, "read_date": "2024-01-20T14:30:00Z", "created_on": "2024-01-20T14:30:00Z"},
+        ],
+        "read_count": 1,
         "rating": 5,
         "resource_url": "https://metron.cloud/api/collection/1/",
         "created_on": "2024-01-01T10:00:00Z",
@@ -138,6 +147,22 @@ def test_rating_enum():
     assert Rating.FIVE.value == 5
 
 
+# ReadDate tests
+def test_read_date_valid_data():
+    """Test ReadDate model with valid data."""
+    data = {
+        "id": 1,
+        "read_date": "2024-01-20T14:30:00Z",
+        "created_on": "2024-01-20T14:30:00Z",
+    }
+    rd = ReadDate(**data)
+    assert rd.id == 1
+    assert rd.read_date.year == 2024
+    assert rd.read_date.month == 1
+    assert rd.read_date.day == 20
+    assert rd.read_date.hour == 14
+
+
 # CollectionIssue tests
 def test_collection_issue_valid_data(collection_issue_data):
     """Test CollectionIssue model with valid data."""
@@ -173,6 +198,9 @@ def test_collection_list_valid_data(collection_list_data):
     assert collection.book_format == "PRINT"
     assert collection.grade == 9.8
     assert collection.is_read is True
+    assert len(collection.read_dates) == 1
+    assert collection.read_dates[0].id == 1
+    assert collection.read_count == 1
     assert collection.rating == 5
 
 
@@ -210,7 +238,12 @@ def test_collection_read_valid_data(collection_read_data):
     assert collection.storage_location == "Box 1"
     assert collection.notes == "First appearance"
     assert collection.is_read is True
-    assert collection.date_read == date(2024, 1, 20)
+    assert collection.date_read.year == 2024
+    assert collection.date_read.month == 1
+    assert collection.date_read.day == 20
+    assert collection.date_read.hour == 14
+    assert len(collection.read_dates) == 1
+    assert collection.read_count == 1
     assert collection.rating == 5
 
 

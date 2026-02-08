@@ -6,6 +6,7 @@ This module provides the following classes:
 - GradingCompany
 - Grade
 - Rating
+- ReadDate
 - CollectionIssue
 - CollectionList
 - CollectionRead
@@ -29,6 +30,7 @@ __all__ = [
     "MissingIssue",
     "MissingSeries",
     "Rating",
+    "ReadDate",
     "ScrobbleRequest",
     "ScrobbleResponse",
 ]
@@ -152,6 +154,20 @@ class Rating(int, Enum):
     FIVE = 5
 
 
+class ReadDate(BaseModel):
+    """A data model representing a read date entry.
+
+    Attributes:
+        id (int): The unique identifier of the read date entry.
+        read_date (datetime): Date and time when the issue was read.
+        created_on (datetime): The date and time when the read date entry was created.
+    """
+
+    id: int
+    read_date: datetime
+    created_on: datetime
+
+
 class CollectionIssue(BaseModel):
     """A data model representing an issue in a collection (without image and cover_hash).
 
@@ -185,6 +201,8 @@ class CollectionList(BaseModel):
         grading_company (str): Professional grading company.
         purchase_date (date, optional): Date when the issue was purchased.
         is_read (bool): Whether the issue has been read.
+        read_dates (list[ReadDate]): List of read date entries for this issue.
+        read_count (int): Number of times this issue has been read.
         rating (int, optional): Star rating (1-5) for this issue.
         modified (datetime): The date and time when the collection item was last modified.
     """
@@ -198,6 +216,8 @@ class CollectionList(BaseModel):
     grading_company: str
     purchase_date: date | None = None
     is_read: bool
+    read_dates: list[ReadDate] = Field(default_factory=list)
+    read_count: int = 0
     rating: int | None = None
     modified: datetime
 
@@ -219,7 +239,9 @@ class CollectionRead(BaseModel):
         storage_location (str): Physical location where the issue is stored.
         notes (str): Additional notes about this collection item.
         is_read (bool): Whether the issue has been read.
-        date_read (date, optional): Date when the issue was read.
+        date_read (datetime, optional): Date and time when the issue was last read.
+        read_dates (list[ReadDate]): List of read date entries for this issue.
+        read_count (int): Number of times this issue has been read.
         rating (int, optional): Star rating (1-5) for this issue.
         resource_url (str): URL of the collection item resource.
         created_on (datetime): The date and time when the collection item was created.
@@ -239,7 +261,9 @@ class CollectionRead(BaseModel):
     storage_location: str = ""
     notes: str = ""
     is_read: bool
-    date_read: date | None = None
+    date_read: datetime | None = None
+    read_dates: list[ReadDate] = Field(default_factory=list)
+    read_count: int = 0
     rating: int | None = None
     resource_url: str
     created_on: datetime
