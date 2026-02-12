@@ -2102,3 +2102,198 @@ def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> 
 
         # Assert
         assert result == {"id": 1, "name": "Test"}
+
+
+# ============================================================================
+# Conditional Request (If-Modified-Since) Tests
+# ============================================================================
+
+
+def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) -> None:
+    """Test that passing if_modified_since returns None when server responds 304."""
+
+    # Arrange
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 304
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    with patch.object(session._limiter, "try_acquire", return_value=None):
+        # Act
+        result = session.arc(
+            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        )
+
+    # Assert
+    assert result is None
+
+
+def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch) -> None:
+    """Test that passing if_modified_since returns the resource when data has changed."""
+
+    # Arrange
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1, "name": "Updated Arc"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    with (
+        patch.object(session._limiter, "try_acquire", return_value=None),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=Arc(
+                id=1,
+                name="Updated Arc",
+                desc="",
+                resource_url=HttpUrl("https://foo.bar"),
+                modified=datetime.datetime.now(),
+            ),
+        ),
+    ):
+        # Act
+        result = session.arc(
+            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        )
+
+    # Assert
+    assert isinstance(result, Arc)
+    assert result.name == "Updated Arc"
+
+
+def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
+    """Test that if_modified_since sends the correctly formatted If-Modified-Since header."""
+    # Arrange
+    captured_kwargs = {}
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 304
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+    def mock_request(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return DummyResp()
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    with patch.object(session._limiter, "try_acquire", return_value=None):
+        # Act
+        session.arc(
+            1,
+            if_modified_since=datetime.datetime(2025, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+        )
+
+    # Assert — verify the header was formatted as RFC 7231
+    assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
+
+
+def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monkeypatch) -> None:
+    """Test that a naive datetime (no tzinfo) is treated as UTC."""
+    # Arrange
+    captured_kwargs = {}
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 304
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+    def mock_request(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return DummyResp()
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    with patch.object(session._limiter, "try_acquire", return_value=None):
+        # Act — pass a naive datetime
+        session.arc(1, if_modified_since=datetime.datetime(2025, 6, 15, 8, 30, 0))  # noqa: DTZ001
+
+    # Assert — should be formatted as UTC
+    assert captured_kwargs["headers"]["If-Modified-Since"] == "Sun, 15 Jun 2025 08:30:00 GMT"
+
+
+def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeypatch) -> None:
+    """Test that if_modified_since skips the cache entirely."""
+    # Arrange
+    session.cache = dummy_cache
+    # Pre-populate cache
+    cache_key = "https://metron.cloud/api/arc/1/"
+    dummy_cache.store(cache_key, {"id": 1, "name": "Cached"})
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1, "name": "Fresh"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    with (
+        patch.object(session._limiter, "try_acquire", return_value=None),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=Arc(
+                id=1,
+                name="Fresh",
+                desc="",
+                resource_url=HttpUrl("https://foo.bar"),
+                modified=datetime.datetime.now(),
+            ),
+        ),
+    ):
+        # Act — with if_modified_since, cache should be ignored
+        result = session.arc(
+            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        )
+
+    # Assert — got the fresh data, not the cached
+    assert isinstance(result, Arc)
+    assert result.name == "Fresh"
+
+
+def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> None:
+    """Test that without if_modified_since, the normal cache flow is used."""
+    # Arrange
+    session.cache = dummy_cache
+    cache_key = "https://metron.cloud/api/arc/1/"
+    dummy_cache.store(cache_key, {"id": 1, "name": "Cached Arc"})
+
+    with patch(
+        "mokkari.session.TypeAdapter.validate_python",
+        return_value=Arc(
+            id=1,
+            name="Cached Arc",
+            desc="",
+            resource_url=HttpUrl("https://foo.bar"),
+            modified=datetime.datetime.now(),
+        ),
+    ):
+        # Act — no if_modified_since, should use cache
+        result = session.arc(1)
+
+    # Assert
+    assert isinstance(result, Arc)
+    assert result.name == "Cached Arc"
