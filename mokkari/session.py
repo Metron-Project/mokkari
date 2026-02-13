@@ -11,6 +11,9 @@ import json
 import logging
 import platform
 from collections import OrderedDict
+from datetime import datetime, timezone
+from email.utils import format_datetime as format_http_datetime
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any, ClassVar, Final, TypeVar
 from urllib.parse import urlencode
@@ -410,23 +413,47 @@ class Session:
         return self._validate_response(resp, response_class)
 
     # Generic resource methods
-    def _get_resource(self, resource_name: str, _id: int, response_class: type) -> Any:
+    def _get_resource(
+        self,
+        resource_name: str,
+        _id: int,
+        response_class: type,
+        if_modified_since: datetime | None = None,
+    ) -> Any:
         """Retrieve a single resource by ID.
 
-        Generic method for retrieving any resource type from the API.
+        When ``if_modified_since`` is provided the request includes an
+        ``If-Modified-Since`` header and may return ``None`` (304 Not Modified).
+        Otherwise the regular cache-aware flow is used.
 
         Args:
             resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
             _id: The unique identifier for the resource.
             response_class: The Pydantic model class for response validation.
+            if_modified_since: Optional datetime; when given, the server may return
+                304 Not Modified and this method returns ``None``.
 
         Returns:
-            Any: The validated resource object.
+            The validated resource object, or ``None`` when a 304 is received.
 
         Raises:
             ApiError: If the resource is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
+        if if_modified_since is not None:
+            url = self.api_url.format("/".join(str(e) for e in [resource_name, _id]))
+            if if_modified_since.tzinfo is None:
+                if_modified_since = if_modified_since.replace(tzinfo=timezone.utc)
+            else:
+                if_modified_since = if_modified_since.astimezone(timezone.utc)
+            header_value = format_http_datetime(if_modified_since, usegmt=True)
+            data = self._fetch_detail(url, header_value)
+            if data is None:
+                return None
+            if "detail" in data:
+                raise exceptions.ApiError(data["detail"])
+            return self._validate_response(data, response_class)
+
         resp = self._get([resource_name, _id])
         return self._validate_response(resp, response_class)
 
@@ -511,14 +538,17 @@ class Session:
         return self._validate_list_response(resp, BaseIssue)
 
     # Creator methods
-    def creator(self, _id: int) -> Creator:
+    def creator(self, _id: int, if_modified_since: datetime | None = None) -> Creator | None:
         """Retrieve detailed information about a creator by ID.
 
         Args:
             _id: The unique identifier for the creator.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
+                Typically you would pass a previously fetched creator's ``modified`` field.
 
         Returns:
-            Creator: A Creator object containing detailed information about the creator.
+            A Creator object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the creator is not found or if there's an API error.
@@ -528,9 +558,12 @@ class Session:
             >>> session = Session("username", "password")
             >>> creator = session.creator(1)
             >>> print(creator.name)
-            >>> print(creator.birth_date)
+            >>> # Later, check if updated:
+            >>> updated = session.creator(1, if_modified_since=creator.modified)
+            >>> if updated is None:
+            ...     print("Not modified")
         """
-        return self._get_resource(ResourceEndpoint.CREATOR, _id, Creator)
+        return self._get_resource(ResourceEndpoint.CREATOR, _id, Creator, if_modified_since)
 
     def creator_post(self, data: CreatorPost) -> Creator:
         """Create a new creator in the database.
@@ -595,14 +628,16 @@ class Session:
         return self._list_resources(ResourceEndpoint.CREATOR, params, BaseResource)
 
     # Character methods
-    def character(self, _id: int) -> Character:
+    def character(self, _id: int, if_modified_since: datetime | None = None) -> Character | None:
         """Retrieve detailed information about a character by ID.
 
         Args:
             _id: The unique identifier for the character.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Character: A Character object containing detailed character information.
+            A Character object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the character is not found or if there's an API error.
@@ -612,9 +647,8 @@ class Session:
             >>> session = Session("username", "password")
             >>> character = session.character(1)
             >>> print(character.name)
-            >>> print(character.alias)
         """
-        return self._get_resource(ResourceEndpoint.CHARACTER, _id, Character)
+        return self._get_resource(ResourceEndpoint.CHARACTER, _id, Character, if_modified_since)
 
     def character_post(self, data: CharacterPost) -> CharacterPostResponse:
         """Create a new character in the database.
@@ -678,20 +712,22 @@ class Session:
         return self._get_resource_issues(ResourceEndpoint.CHARACTER, _id)
 
     # Publisher methods
-    def publisher(self, _id: int) -> Publisher:
+    def publisher(self, _id: int, if_modified_since: datetime | None = None) -> Publisher | None:
         """Retrieve detailed information about a publisher by ID.
 
         Args:
             _id: The unique identifier for the publisher.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Publisher: A Publisher object containing detailed publisher information.
+            A Publisher object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the publisher is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._get_resource(ResourceEndpoint.PUBLISHER, _id, Publisher)
+        return self._get_resource(ResourceEndpoint.PUBLISHER, _id, Publisher, if_modified_since)
 
     def publisher_post(self, data: PublisherPost) -> Publisher:
         """Create a new publisher in the database.
@@ -739,20 +775,22 @@ class Session:
         return self._list_resources(ResourceEndpoint.PUBLISHER, params, BaseResource)
 
     # Team methods
-    def team(self, _id: int) -> Team:
+    def team(self, _id: int, if_modified_since: datetime | None = None) -> Team | None:
         """Retrieve detailed information about a team by ID.
 
         Args:
             _id: The unique identifier for the team.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Team: A Team object containing detailed team information.
+            A Team object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the team is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._get_resource(ResourceEndpoint.TEAM, _id, Team)
+        return self._get_resource(ResourceEndpoint.TEAM, _id, Team, if_modified_since)
 
     def team_post(self, data: TeamPost) -> TeamPostResponse:
         """Create a new team in the database.
@@ -813,20 +851,22 @@ class Session:
         return self._get_resource_issues(ResourceEndpoint.TEAM, _id)
 
     # Arc methods
-    def arc(self, _id: int) -> Arc:
+    def arc(self, _id: int, if_modified_since: datetime | None = None) -> Arc | None:
         """Retrieve detailed information about a story arc by ID.
 
         Args:
             _id: The unique identifier for the arc.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Arc: An Arc object containing detailed arc information.
+            An Arc object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the arc is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._get_resource(ResourceEndpoint.ARC, _id, Arc)
+        return self._get_resource(ResourceEndpoint.ARC, _id, Arc, if_modified_since)
 
     def arc_post(self, data: ArcPost) -> Arc:
         """Create a new story arc in the database.
@@ -887,20 +927,22 @@ class Session:
         return self._get_resource_issues(ResourceEndpoint.ARC, _id)
 
     # Series methods
-    def series(self, _id: int) -> Series:
+    def series(self, _id: int, if_modified_since: datetime | None = None) -> Series | None:
         """Retrieve detailed information about a series by ID.
 
         Args:
             _id: The unique identifier for the series.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Series: A Series object containing detailed series information.
+            A Series object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the series is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._get_resource(ResourceEndpoint.SERIES, _id, Series)
+        return self._get_resource(ResourceEndpoint.SERIES, _id, Series, if_modified_since)
 
     def series_post(self, data: SeriesPost) -> SeriesPostResponse:
         """Create a new series in the database.
@@ -962,15 +1004,16 @@ class Session:
         return self._validate_list_response(resp, GenericItem)
 
     # Issue methods
-    def issue(self, _id: int) -> Issue:
+    def issue(self, _id: int, if_modified_since: datetime | None = None) -> Issue | None:
         """Retrieve detailed information about an issue by ID.
 
         Args:
             _id: The unique identifier for the issue.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Issue: An Issue object containing detailed issue information including
-                  series, characters, credits, and other metadata.
+            An Issue object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the issue is not found or if there's an API error.
@@ -980,8 +1023,12 @@ class Session:
             >>> session = Session("username", "password")
             >>> issue = session.issue(1)
             >>> print(f"Issue #{issue.number} of {issue.series.name}")
+            >>> # Later, check if updated:
+            >>> updated = session.issue(1, if_modified_since=issue.modified)
+            >>> if updated is None:
+            ...     print("Not modified")
         """
-        return self._get_resource(ResourceEndpoint.ISSUE, _id, Issue)
+        return self._get_resource(ResourceEndpoint.ISSUE, _id, Issue, if_modified_since)
 
     def issue_post(self, data: IssuePost) -> IssuePostResponse:
         """Create a new issue in the database.
@@ -1088,20 +1135,22 @@ class Session:
         return self._validate_list_response(resp, GenericItem)
 
     # Universe methods
-    def universe(self, _id: int) -> Universe:
+    def universe(self, _id: int, if_modified_since: datetime | None = None) -> Universe | None:
         """Retrieve detailed information about a universe by ID.
 
         Args:
             _id: The unique identifier for the universe.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Universe: A Universe object containing detailed universe information.
+            A Universe object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the universe is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._get_resource(ResourceEndpoint.UNIVERSE, _id, Universe)
+        return self._get_resource(ResourceEndpoint.UNIVERSE, _id, Universe, if_modified_since)
 
     def universe_post(self, data: UniversePost) -> UniversePostResponse:
         """Create a new universe in the database.
@@ -1151,20 +1200,22 @@ class Session:
         return self._list_resources(ResourceEndpoint.UNIVERSE, params, BaseResource)
 
     # Imprint methods
-    def imprint(self, _id: int) -> Imprint:
+    def imprint(self, _id: int, if_modified_since: datetime | None = None) -> Imprint | None:
         """Retrieve detailed information about an imprint by ID.
 
         Args:
             _id: The unique identifier for the imprint.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            Imprint: An Imprint object containing detailed imprint information.
+            An Imprint object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the imprint is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._get_resource(ResourceEndpoint.IMPRINT, _id, Imprint)
+        return self._get_resource(ResourceEndpoint.IMPRINT, _id, Imprint, if_modified_since)
 
     def imprints_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
         """Retrieve a list of imprints with optional filtering.
@@ -1179,7 +1230,9 @@ class Session:
         return self._list_resources(ResourceEndpoint.IMPRINT, params, BaseResource)
 
     # Reading List methods
-    def reading_list(self, _id: int) -> ReadingListRead:
+    def reading_list(
+        self, _id: int, if_modified_since: datetime | None = None
+    ) -> ReadingListRead | None:
         """Retrieve detailed information about a reading list by ID.
 
         Note: This endpoint requires authentication. Users can access:
@@ -1188,15 +1241,19 @@ class Session:
 
         Args:
             _id: The unique identifier for the reading list.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            ReadingListRead: A ReadingListRead object containing detailed reading list information.
+            A ReadingListRead object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the reading list is not found or if there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._get_resource(ResourceEndpoint.READING_LIST, _id, ReadingListRead)
+        return self._get_resource(
+            ResourceEndpoint.READING_LIST, _id, ReadingListRead, if_modified_since
+        )
 
     def reading_lists_list(
         self, params: dict[str, str | int] | None = None
@@ -1246,16 +1303,20 @@ class Session:
         return self._validate_list_response(resp, ReadingListItem)
 
     # Collection methods
-    def collection(self, _id: int) -> CollectionRead:
+    def collection(
+        self, _id: int, if_modified_since: datetime | None = None
+    ) -> CollectionRead | None:
         """Retrieve detailed information about a collection item by ID.
 
         Note: This endpoint requires authentication. Users can only access their own collection items.
 
         Args:
             _id: The unique identifier for the collection item.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            CollectionRead: A CollectionRead object containing detailed collection item information.
+            A CollectionRead object, or ``None`` if the resource has not been modified.
 
         Raises:
             ApiError: If the collection item is not found or if there's an API error.
@@ -1266,7 +1327,9 @@ class Session:
             >>> collection_item = session.collection(1)
             >>> print(f"Issue: {collection_item.issue.series.name} #{collection_item.issue.number}")
         """
-        return self._get_resource(ResourceEndpoint.COLLECTION, _id, CollectionRead)
+        return self._get_resource(
+            ResourceEndpoint.COLLECTION, _id, CollectionRead, if_modified_since
+        )
 
     def collections_list(self, params: dict[str, str | int] | None = None) -> list[CollectionList]:
         """Retrieve a list of collection items with optional filtering.
@@ -1597,44 +1660,12 @@ class Session:
 
         return resp
 
-    def _request_data(  # noqa: C901
-        self,
-        method: str,
-        url: str,
-        params: dict[str, str | int] | None = None,
-        data: T | None = None,
-    ) -> Any:
-        """Send an HTTP request to the API with comprehensive error handling.
-
-        This internal method handles all HTTP communication with the Metron API, including
-        authentication, rate limiting, error handling, and response parsing. It supports
-        both simple data requests and file uploads.
-
-        Args:
-            method: HTTP method to use ("GET", "POST", "PATCH").
-            url: The complete URL to send the request to.
-            params: Optional query parameters to include in the request.
-            data: Optional data to include in the request body.
-
-        Returns:
-            Any: The parsed JSON response from the API.
+    def _check_rate_limit(self) -> None:
+        """Check rate limits before making a request.
 
         Raises:
-            ApiError: For connection errors, HTTP errors, or invalid JSON responses.
-            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
-
-        Notes:
-            - Automatically handles image file uploads when 'image' field is present in data
-            - Implements local rate limiting to prevent exceeding API quotas
-            - Supports both single objects and lists of objects for POST requests
+            RateLimitError: When the API rate limit is exceeded.
         """
-        LOGGER.debug("Request Method: %s | URL: %s", method, url)
-        LOGGER.debug("Original Header: %s", self.header)
-
-        if params is None:
-            params = {}
-
-        # Check rate limits before making the request
         try:
             self._limiter.try_acquire("metron", 1)
         except (BucketFullException, LimiterDelayException) as exc:
@@ -1683,6 +1714,45 @@ class Session:
             LOGGER.warning(msg)
             raise exceptions.RateLimitError(msg, retry_after=delay) from exc
 
+    def _request_data(
+        self,
+        method: str,
+        url: str,
+        params: dict[str, str | int] | None = None,
+        data: T | None = None,
+    ) -> Any:
+        """Send an HTTP request to the API with comprehensive error handling.
+
+        This internal method handles all HTTP communication with the Metron API, including
+        authentication, rate limiting, error handling, and response parsing. It supports
+        both simple data requests and file uploads.
+
+        Args:
+            method: HTTP method to use ("GET", "POST", "PATCH").
+            url: The complete URL to send the request to.
+            params: Optional query parameters to include in the request.
+            data: Optional data to include in the request body.
+
+        Returns:
+            Any: The parsed JSON response from the API.
+
+        Raises:
+            ApiError: For connection errors, HTTP errors, or invalid JSON responses.
+            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
+
+        Notes:
+            - Automatically handles image file uploads when 'image' field is present in data
+            - Implements local rate limiting to prevent exceeding API quotas
+            - Supports both single objects and lists of objects for POST requests
+        """
+        LOGGER.debug("Request Method: %s | URL: %s", method, url)
+        LOGGER.debug("Original Header: %s", self.header)
+
+        if params is None:
+            params = {}
+
+        self._check_rate_limit()
+
         # Prepare request payload (data serialization and file handling)
         header, files, data_dict = self._prepare_request_payload(data)
 
@@ -1692,6 +1762,42 @@ class Session:
         response = self._execute_http_request(method, url, params, header, data_dict, files)
 
         # Handle response (parse JSON and check for errors)
+        return self._handle_http_response(response)
+
+    def _fetch_detail(
+        self,
+        url: str,
+        if_modified_since: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch a detail resource with conditional request support.
+
+        Makes a GET request to the given URL. If ``if_modified_since`` is provided,
+        the ``If-Modified-Since`` header is included in the request to allow the server
+        to return a 304 Not Modified response when the data has not changed.
+
+        Args:
+            url: The complete URL to fetch.
+            if_modified_since: Optional RFC 7231 formatted date string for the
+                ``If-Modified-Since`` header.
+
+        Returns:
+            The parsed response data, or ``None`` when the server returns 304.
+
+        Raises:
+            ApiError: For connection errors, HTTP errors, or invalid JSON responses.
+            RateLimitError: When the API rate limit is exceeded.
+        """
+        self._check_rate_limit()
+
+        header = self.header.copy()
+        if if_modified_since:
+            header["If-Modified-Since"] = if_modified_since
+
+        response = self._execute_http_request("GET", url, {}, header, None, None)
+
+        if response.status_code == HTTPStatus.NOT_MODIFIED:
+            return None
+
         return self._handle_http_response(response)
 
     def _get_results_from_cache(self, key: str) -> Any | None:
