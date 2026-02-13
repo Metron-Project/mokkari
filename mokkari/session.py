@@ -444,6 +444,8 @@ class Session:
             url = self.api_url.format("/".join(str(e) for e in [resource_name, _id]))
             if if_modified_since.tzinfo is None:
                 if_modified_since = if_modified_since.replace(tzinfo=timezone.utc)
+            else:
+                if_modified_since = if_modified_since.astimezone(timezone.utc)
             header_value = format_http_datetime(if_modified_since, usegmt=True)
             data = self._fetch_detail(url, header_value)
             if data is None:

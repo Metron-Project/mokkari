@@ -2230,6 +2230,38 @@ def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monke
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Sun, 15 Jun 2025 08:30:00 GMT"
 
 
+def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypatch) -> None:
+    """Test that a non-UTC timezone-aware datetime is converted to UTC for the header."""
+    # Arrange
+    captured_kwargs = {}
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 304
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+    def mock_request(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return DummyResp()
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    # Create a US/Central-like timezone (UTC-6)
+    cst = datetime.timezone(datetime.timedelta(hours=-6))
+    # 2025-01-01 06:00:00 CST == 2025-01-01 12:00:00 UTC
+    dt_cst = datetime.datetime(2025, 1, 1, 6, 0, 0, tzinfo=cst)
+
+    with patch.object(session._limiter, "try_acquire", return_value=None):
+        # Act
+        session.arc(1, if_modified_since=dt_cst)
+
+    # Assert — should be converted to UTC
+    assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
+
+
 def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeypatch) -> None:
     """Test that if_modified_since skips the cache entirely."""
     # Arrange
