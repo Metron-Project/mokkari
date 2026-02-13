@@ -1,12 +1,11 @@
 *~
 *$py.class
-
+# AI agents
 build
 build/
 .cache
 celerybeat.pid
 celerybeat-schedule
-# AI agents
 .claude/
 CLAUDE.md
 *.cover
