@@ -10,8 +10,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import HttpUrl, ValidationError
 from pyrate_limiter import Duration, Rate
-from pyrate_limiter.abstracts.rate import RateItem
-from pyrate_limiter.exceptions import BucketFullException, LimiterDelayException
 from requests.exceptions import ConnectionError as ConnError, HTTPError
 
 from mokkari import exceptions
@@ -1964,62 +1962,62 @@ def test__get_results_from_cache_none(session: Session) -> None:
 # ============================================================================
 
 
+def _make_mock_bucket(rate: Rate, delay_ms: int) -> MagicMock:
+    """Create a mock bucket that simulates a rate limit being exceeded."""
+    mock_bucket = MagicMock()
+    mock_bucket.now.return_value = 1_000_000
+    mock_bucket.waiting.return_value = delay_ms
+    mock_bucket.failing_rate = rate
+    return mock_bucket
+
+
 def test_rate_limit_minute_exceeded(session: Session) -> None:
     """Test that minute rate limit raises RateLimitError with correct message."""
-    # Arrange
-    # Create exception that simulates minute rate limit (60 seconds = 1 minute)
-    rate_item = RateItem("metron", 1)
-    rate = Rate(30, Duration.MINUTE)
-    exc = LimiterDelayException(rate_item, rate, actual_delay=60000, max_delay=0)
+    # Arrange: simulate minute rate limit (60 seconds = 60,000 ms)
+    mock_bucket = _make_mock_bucket(Rate(30, Duration.MINUTE), delay_ms=60_000)
 
-    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+    with (
+        patch.object(session._limiter, "try_acquire", return_value=False),
+        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
+    ):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
 
-        # Verify error message content
         error_msg = str(excinfo.value)
         assert "Rate limit exceeded" in error_msg
         assert "30 requests per minute" in error_msg
         assert "Please wait" in error_msg
         assert "1 minute" in error_msg
-
-        # Verify retry_after attribute is set correctly (60000 ms = 60 seconds)
         assert excinfo.value.retry_after == 60.0
 
 
 def test_rate_limit_day_exceeded(session: Session) -> None:
     """Test that daily rate limit raises RateLimitError with correct message."""
-    # Arrange
-    # Create exception that simulates daily rate limit (24 hours = 86400 seconds)
-    rate_item = RateItem("metron", 1)
-    rate = Rate(10000, Duration.DAY)
-    exc = LimiterDelayException(rate_item, rate, actual_delay=86400000, max_delay=0)
+    # Arrange: simulate daily rate limit (86400 seconds = 86,400,000 ms)
+    mock_bucket = _make_mock_bucket(Rate(10_000, Duration.DAY), delay_ms=86_400_000)
 
-    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+    with (
+        patch.object(session._limiter, "try_acquire", return_value=False),
+        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
+    ):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
 
-        # Verify error message content
         error_msg = str(excinfo.value)
         assert "Rate limit exceeded" in error_msg
         assert "10,000 requests per day" in error_msg
         assert "Please wait" in error_msg
         assert "24 hours" in error_msg
-
-        # Verify retry_after attribute is set correctly (86400000 ms = 86400 seconds)
         assert excinfo.value.retry_after == 86400.0
 
 
 def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
     """Test that rate limit prevents HTTP request from being made."""
     # Arrange
-    rate_item = RateItem("metron", 1)
-    rate = Rate(30, Duration.MINUTE)
-    exc = LimiterDelayException(rate_item, rate, actual_delay=60000, max_delay=0)
+    mock_bucket = _make_mock_bucket(Rate(30, Duration.MINUTE), delay_ms=60_000)
 
-    # Mock HTTP request to track if it's called
     mock_request_called = {"called": False}
 
     def mock_request(*args, **kwargs):
@@ -2028,33 +2026,32 @@ def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
 
-    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+    with (
+        patch.object(session._limiter, "try_acquire", return_value=False),
+        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
+    ):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError):
             session._request_data("GET", "https://test.com/api/issue/1")
 
-        # Verify HTTP request was NOT made
         assert not mock_request_called["called"], (
             "HTTP request should not be made when rate limited"
         )
 
 
-def test_rate_limit_bucket_full_exception(session: Session) -> None:
-    """Test handling of BucketFullException from pyrate-limiter."""
-    # Arrange
-    # Create BucketFullException
-    rate_item = RateItem("metron", 1)
-    rate = Rate(30, Duration.MINUTE)
-    exc = BucketFullException(rate_item, rate)
-    # Manually set remaining_time in meta_info
-    exc.meta_info["remaining_time"] = 90.5
+def test_rate_limit_bucket_full(session: Session) -> None:
+    """Test handling of a bucket-full minute rate limit with a 90.5-second delay."""
+    # Arrange: 90,500 ms = 1 minute, 30 seconds
+    mock_bucket = _make_mock_bucket(Rate(30, Duration.MINUTE), delay_ms=90_500)
 
-    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+    with (
+        patch.object(session._limiter, "try_acquire", return_value=False),
+        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
+    ):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
 
-        # Verify error message is formatted correctly
         error_msg = str(excinfo.value)
         assert "Rate limit exceeded" in error_msg
         assert "30 requests per minute" in error_msg
@@ -2063,18 +2060,17 @@ def test_rate_limit_bucket_full_exception(session: Session) -> None:
 
 def test_rate_limit_format_time_hours(session: Session) -> None:
     """Test that rate limit error message correctly formats hours."""
-    # Arrange
-    # Create exception with 2.5 hours delay (9000 seconds = 2h 30m)
-    rate_item = RateItem("metron", 1)
-    rate = Rate(10000, Duration.DAY)
-    exc = LimiterDelayException(rate_item, rate, actual_delay=9000000, max_delay=0)
+    # Arrange: 2.5 hours = 9,000 seconds = 9,000,000 ms
+    mock_bucket = _make_mock_bucket(Rate(10_000, Duration.DAY), delay_ms=9_000_000)
 
-    with patch.object(session._limiter, "try_acquire", side_effect=exc):
+    with (
+        patch.object(session._limiter, "try_acquire", return_value=False),
+        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
+    ):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
 
-        # Verify time formatting
         error_msg = str(excinfo.value)
         assert "2 hours, 30 minutes" in error_msg
 
@@ -2096,7 +2092,7 @@ def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> 
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
     # Mock limiter to allow request (no exception)
-    with patch.object(session._limiter, "try_acquire", return_value=None):
+    with patch.object(session._limiter, "try_acquire", return_value=True):
         # Act
         result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2123,7 +2119,7 @@ def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) ->
 
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
-    with patch.object(session._limiter, "try_acquire", return_value=None):
+    with patch.object(session._limiter, "try_acquire", return_value=True):
         # Act
         result = session.arc(
             1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
@@ -2151,7 +2147,7 @@ def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
     with (
-        patch.object(session._limiter, "try_acquire", return_value=None),
+        patch.object(session._limiter, "try_acquire", return_value=True),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
             return_value=Arc(
@@ -2192,7 +2188,7 @@ def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
 
-    with patch.object(session._limiter, "try_acquire", return_value=None):
+    with patch.object(session._limiter, "try_acquire", return_value=True):
         # Act
         session.arc(
             1,
@@ -2222,7 +2218,7 @@ def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monke
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
 
-    with patch.object(session._limiter, "try_acquire", return_value=None):
+    with patch.object(session._limiter, "try_acquire", return_value=True):
         # Act — pass a naive datetime
         session.arc(1, if_modified_since=datetime.datetime(2025, 6, 15, 8, 30, 0))  # noqa: DTZ001
 
@@ -2254,7 +2250,7 @@ def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypa
     # 2025-01-01 06:00:00 CST == 2025-01-01 12:00:00 UTC
     dt_cst = datetime.datetime(2025, 1, 1, 6, 0, 0, tzinfo=cst)
 
-    with patch.object(session._limiter, "try_acquire", return_value=None):
+    with patch.object(session._limiter, "try_acquire", return_value=True):
         # Act
         session.arc(1, if_modified_since=dt_cst)
 
@@ -2284,7 +2280,7 @@ def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeyp
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
     with (
-        patch.object(session._limiter, "try_acquire", return_value=None),
+        patch.object(session._limiter, "try_acquire", return_value=True),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
             return_value=Arc(

@@ -15,13 +15,12 @@ from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, ClassVar, Final, TypeVar
+from typing import Any, ClassVar, Final, TypeVar, cast
 from urllib.parse import urlencode
 
 import requests
 from pydantic import TypeAdapter, ValidationError
-from pyrate_limiter import Duration, Limiter, Rate, SQLiteBucket
-from pyrate_limiter.exceptions import BucketFullException, LimiterDelayException
+from pyrate_limiter import Duration, Limiter, Rate, RateItem, SQLiteBucket
 
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc, ArcPost
@@ -231,7 +230,7 @@ class Session:
     _day_rate = Rate(METRON_DAY_RATE_LIMIT, Duration.DAY)
     _rates: ClassVar[list[Rate]] = [_minute_rate, _day_rate]
     _bucket = SQLiteBucket.init_from_file(_rates)
-    _limiter = Limiter(_bucket, raise_when_fail=True, max_delay=0)
+    _limiter = Limiter(_bucket)
 
     T = TypeVar(
         "T",
@@ -1666,53 +1665,27 @@ class Session:
         Raises:
             RateLimitError: When the API rate limit is exceeded.
         """
-        try:
-            self._limiter.try_acquire("metron", 1)
-        except (BucketFullException, LimiterDelayException) as exc:
-            # Determine which rate limit was hit and provide detailed error message
-            # Extract delay from exception attributes or meta_info
-            delay = 0
+        acquired = self._limiter.try_acquire("metron", 1, blocking=False)
+        if not acquired:
+            bucket = self._limiter.buckets()[0]
+            item = RateItem("metron", cast("int", bucket.now()), weight=1)
+            delay_ms = cast("int", bucket.waiting(item))
+            delay = delay_ms / 1000 if delay_ms > 0 else 0
 
-            # Try to get delay from exception attributes first (LimiterDelayException)
-            if hasattr(exc, "actual_delay"):
-                delay = float(exc.actual_delay) / 1000  # Convert ms to seconds
-            # Fall back to meta_info (BucketFullException or custom fields)
-            elif hasattr(exc, "meta_info") and exc.meta_info:
-                # Try remaining_time first, then actual_delay
-                if "remaining_time" in exc.meta_info:
-                    delay = float(exc.meta_info["remaining_time"])
-                elif "actual_delay" in exc.meta_info:
-                    delay = float(exc.meta_info["actual_delay"]) / 1000  # Convert ms to seconds
-
-            # If we still don't have a delay, try parsing from exception message
-            if delay == 0 and hasattr(exc, "args") and exc.args:
-                msg_str = str(exc.args[0])
-                if "actual=" in msg_str:
-                    try:
-                        delay = (
-                            float(msg_str.split("actual=")[1].split(",")[0]) / 1000
-                        )  # Convert ms to seconds
-                    except (IndexError, ValueError):
-                        delay = 60  # Default to 1 minute if parsing fails
-
-            # Check which limit was exceeded by looking at the delay time
-            if delay < SECONDS_PER_HOUR:  # Minute rate limit
-                limit_type = "minute"
-                limit_value = METRON_MINUTE_RATE_LIMIT
-                msg = (
-                    f"Rate limit exceeded: You have reached the {limit_value} requests per {limit_type} limit. "
-                    f"Please wait {format_time(delay)} before making another request."
-                )
-            else:  # Daily rate limit
+            failing_rate = bucket.failing_rate
+            if failing_rate is not None and failing_rate.interval >= Duration.DAY.value:
                 limit_type = "day"
                 limit_value = METRON_DAY_RATE_LIMIT
-                msg = (
-                    f"Rate limit exceeded: You have reached the {limit_value:,} requests per {limit_type} limit. "
-                    f"Please wait {format_time(delay)} before making another request."
-                )
+            else:
+                limit_type = "minute"
+                limit_value = METRON_MINUTE_RATE_LIMIT
 
+            msg = (
+                f"Rate limit exceeded: You have reached the {limit_value:,} requests per {limit_type} limit. "
+                f"Please wait {format_time(delay)} before making another request."
+            )
             LOGGER.warning(msg)
-            raise exceptions.RateLimitError(msg, retry_after=delay) from exc
+            raise exceptions.RateLimitError(msg, retry_after=delay)
 
     def _request_data(
         self,
