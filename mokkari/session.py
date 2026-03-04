@@ -56,8 +56,8 @@ from mokkari.schemas.variant import VariantPost, VariantPostResponse
 LOGGER = logging.getLogger(__name__)
 
 # Constants
-METRON_MINUTE_RATE_LIMIT: Final[int] = 30
-METRON_DAY_RATE_LIMIT: Final[int] = 10_000
+METRON_MINUTE_RATE_LIMIT: Final[int] = 20
+METRON_DAY_RATE_LIMIT: Final[int] = 5_000
 REQUEST_TIMEOUT: Final[int] = 20
 SECONDS_PER_HOUR: Final[int] = 3_600
 SECONDS_PER_MINUTE: Final[int] = 60
