@@ -1974,7 +1974,7 @@ def _make_mock_bucket(rate: Rate, delay_ms: int) -> MagicMock:
 def test_rate_limit_minute_exceeded(session: Session) -> None:
     """Test that minute rate limit raises RateLimitError with correct message."""
     # Arrange: simulate minute rate limit (60 seconds = 60,000 ms)
-    mock_bucket = _make_mock_bucket(Rate(30, Duration.MINUTE), delay_ms=60_000)
+    mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=60_000)
 
     with (
         patch.object(session._limiter, "try_acquire", return_value=False),
@@ -1986,7 +1986,7 @@ def test_rate_limit_minute_exceeded(session: Session) -> None:
 
         error_msg = str(excinfo.value)
         assert "Rate limit exceeded" in error_msg
-        assert "30 requests per minute" in error_msg
+        assert "20 requests per minute" in error_msg
         assert "Please wait" in error_msg
         assert "1 minute" in error_msg
         assert excinfo.value.retry_after == 60.0
@@ -1995,7 +1995,7 @@ def test_rate_limit_minute_exceeded(session: Session) -> None:
 def test_rate_limit_day_exceeded(session: Session) -> None:
     """Test that daily rate limit raises RateLimitError with correct message."""
     # Arrange: simulate daily rate limit (86400 seconds = 86,400,000 ms)
-    mock_bucket = _make_mock_bucket(Rate(10_000, Duration.DAY), delay_ms=86_400_000)
+    mock_bucket = _make_mock_bucket(Rate(5_000, Duration.DAY), delay_ms=86_400_000)
 
     with (
         patch.object(session._limiter, "try_acquire", return_value=False),
@@ -2007,7 +2007,7 @@ def test_rate_limit_day_exceeded(session: Session) -> None:
 
         error_msg = str(excinfo.value)
         assert "Rate limit exceeded" in error_msg
-        assert "10,000 requests per day" in error_msg
+        assert "5,000 requests per day" in error_msg
         assert "Please wait" in error_msg
         assert "24 hours" in error_msg
         assert excinfo.value.retry_after == 86400.0
@@ -2016,7 +2016,7 @@ def test_rate_limit_day_exceeded(session: Session) -> None:
 def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
     """Test that rate limit prevents HTTP request from being made."""
     # Arrange
-    mock_bucket = _make_mock_bucket(Rate(30, Duration.MINUTE), delay_ms=60_000)
+    mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=60_000)
 
     mock_request_called = {"called": False}
 
@@ -2042,7 +2042,7 @@ def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
 def test_rate_limit_bucket_full(session: Session) -> None:
     """Test handling of a bucket-full minute rate limit with a 90.5-second delay."""
     # Arrange: 90,500 ms = 1 minute, 30 seconds
-    mock_bucket = _make_mock_bucket(Rate(30, Duration.MINUTE), delay_ms=90_500)
+    mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=90_500)
 
     with (
         patch.object(session._limiter, "try_acquire", return_value=False),
@@ -2054,14 +2054,14 @@ def test_rate_limit_bucket_full(session: Session) -> None:
 
         error_msg = str(excinfo.value)
         assert "Rate limit exceeded" in error_msg
-        assert "30 requests per minute" in error_msg
+        assert "20 requests per minute" in error_msg
         assert "1 minute, 30 seconds" in error_msg
 
 
 def test_rate_limit_format_time_hours(session: Session) -> None:
     """Test that rate limit error message correctly formats hours."""
     # Arrange: 2.5 hours = 9,000 seconds = 9,000,000 ms
-    mock_bucket = _make_mock_bucket(Rate(10_000, Duration.DAY), delay_ms=9_000_000)
+    mock_bucket = _make_mock_bucket(Rate(5_000, Duration.DAY), delay_ms=9_000_000)
 
     with (
         patch.object(session._limiter, "try_acquire", return_value=False),
