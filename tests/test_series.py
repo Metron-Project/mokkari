@@ -4,6 +4,7 @@ This module contains tests for Series objects.
 """
 
 import json
+from datetime import date
 
 import pytest
 import requests_mock
@@ -66,6 +67,49 @@ def test_series_list(talker: Session) -> None:
     assert series[4].id == 11897
     assert series[4].display_name == "All Star Batman & Robin, The Boy Wonder (2005)"
     assert series[4].volume == 1
+
+
+def test_series_issues_list(talker: Session) -> None:
+    """Test for getting an issue list for a series."""
+    data = {
+        "count": 2,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "id": 1,
+                "series": {"name": "Death of the Inhumans", "volume": 1, "year_began": 2018},
+                "number": "1",
+                "issue": "Death of the Inhumans (2018) #1",
+                "cover_date": "2018-09-01",
+                "store_date": "2018-07-04",
+                "image": "https://static.metron.cloud/media/issue/2018/09/22/death-of-the-inhumans-1.jpg",
+                "cover_hash": "abc123def456",
+                "modified": "2019-06-23T15:13:19.432378-04:00",
+            },
+            {
+                "id": 2,
+                "series": {"name": "Death of the Inhumans", "volume": 1, "year_began": 2018},
+                "number": "2",
+                "issue": "Death of the Inhumans (2018) #2",
+                "cover_date": "2018-10-01",
+                "store_date": "2018-08-08",
+                "image": "https://static.metron.cloud/media/issue/2018/09/22/death-of-the-inhumans-2.jpg",
+                "cover_hash": "abc123def457",
+                "modified": "2019-06-23T15:13:19.432378-04:00",
+            },
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/series/1/issue_list/",
+            text=json.dumps(data),
+        )
+        issues = talker.series_issues_list(1)
+        assert len(issues) == 2
+        assert issues[0].id == 1
+        assert issues[0].issue_name == "Death of the Inhumans (2018) #1"
+        assert issues[0].cover_date == date(2018, 9, 1)
 
 
 def test_bad_series(talker: Session) -> None:
