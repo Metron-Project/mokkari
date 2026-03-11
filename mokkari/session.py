@@ -517,7 +517,9 @@ class Session:
         resp = self._get_results([resource_name], params)
         return self._validate_list_response(resp, response_class)
 
-    def _get_resource_issues(self, resource_name: str, _id: int) -> list[BaseIssue]:
+    def _get_resource_issues(
+        self, resource_name: str, _id: int, if_modified_since: datetime | None = None
+    ) -> list[BaseIssue] | None:
         """Retrieve a list of issues associated with a specific resource.
 
         Generic method for getting issue lists for characters, teams, or arcs.
@@ -525,14 +527,30 @@ class Session:
         Args:
             resource_name: The name of the resource endpoint (e.g., 'character', 'team', 'arc').
             _id: The unique identifier for the resource.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
 
         Returns:
-            list[BaseIssue]: A list of BaseIssue objects associated with the resource.
+            list[BaseIssue] | None: A list of BaseIssue objects, or ``None`` when a 304 is received.
 
         Raises:
             ApiError: If there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
+        if if_modified_since is not None:
+            url = self.api_url.format("/".join(str(e) for e in [resource_name, _id, "issue_list"]))
+            if if_modified_since.tzinfo is None:
+                if_modified_since = if_modified_since.replace(tzinfo=timezone.utc)
+            else:
+                if_modified_since = if_modified_since.astimezone(timezone.utc)
+            header_value = format_http_datetime(if_modified_since, usegmt=True)
+            data = self._fetch_detail(url, header_value)
+            if data is None:
+                return None
+            if data.get("next"):
+                data = self._retrieve_all_results(data)
+            return self._validate_list_response(data, BaseIssue)
+
         resp = self._get_results([resource_name, _id, "issue_list"])
         return self._validate_list_response(resp, BaseIssue)
 
@@ -694,21 +712,26 @@ class Session:
         """
         return self._list_resources(ResourceEndpoint.CHARACTER, params, BaseResource)
 
-    def character_issues_list(self, _id: int) -> list[BaseIssue]:
+    def character_issues_list(
+        self, _id: int, if_modified_since: datetime | None = None
+    ) -> list[BaseIssue] | None:
         """Retrieve a list of issues featuring a specific character.
 
         Args:
             _id: The unique identifier for the character.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
+                Typically you would pass a previously fetched character's ``modified`` field.
 
         Returns:
-            list[BaseIssue]: A list of BaseIssue objects representing issues featuring the character.
+            list[BaseIssue] | None: A list of BaseIssue objects, or ``None`` if not modified.
 
         Examples:
             >>> session = Session("username", "password")
             >>> issues = session.character_issues_list(1)
             >>> print(f"Character appears in {len(issues)} issues")
         """
-        return self._get_resource_issues(ResourceEndpoint.CHARACTER, _id)
+        return self._get_resource_issues(ResourceEndpoint.CHARACTER, _id, if_modified_since)
 
     # Publisher methods
     def publisher(self, _id: int, if_modified_since: datetime | None = None) -> Publisher | None:
@@ -838,16 +861,21 @@ class Session:
         """
         return self._list_resources(ResourceEndpoint.TEAM, params, BaseResource)
 
-    def team_issues_list(self, _id: int) -> list[BaseIssue]:
+    def team_issues_list(
+        self, _id: int, if_modified_since: datetime | None = None
+    ) -> list[BaseIssue] | None:
         """Retrieve a list of issues featuring a specific team.
 
         Args:
             _id: The unique identifier for the team.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
+                Typically you would pass a previously fetched team's ``modified`` field.
 
         Returns:
-            list[BaseIssue]: A list of BaseIssue objects representing issues featuring the team.
+            list[BaseIssue] | None: A list of BaseIssue objects, or ``None`` if not modified.
         """
-        return self._get_resource_issues(ResourceEndpoint.TEAM, _id)
+        return self._get_resource_issues(ResourceEndpoint.TEAM, _id, if_modified_since)
 
     # Arc methods
     def arc(self, _id: int, if_modified_since: datetime | None = None) -> Arc | None:
@@ -914,16 +942,21 @@ class Session:
         """
         return self._list_resources(ResourceEndpoint.ARC, params, BaseResource)
 
-    def arc_issues_list(self, _id: int) -> list[BaseIssue]:
+    def arc_issues_list(
+        self, _id: int, if_modified_since: datetime | None = None
+    ) -> list[BaseIssue] | None:
         """Retrieve a list of issues that are part of a specific story arc.
 
         Args:
             _id: The unique identifier for the arc.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
+                Typically you would pass a previously fetched arc's ``modified`` field.
 
         Returns:
-            list[BaseIssue]: A list of BaseIssue objects representing issues in the arc.
+            list[BaseIssue] | None: A list of BaseIssue objects, or ``None`` if not modified.
         """
-        return self._get_resource_issues(ResourceEndpoint.ARC, _id)
+        return self._get_resource_issues(ResourceEndpoint.ARC, _id, if_modified_since)
 
     # Series methods
     def series(self, _id: int, if_modified_since: datetime | None = None) -> Series | None:
@@ -989,6 +1022,22 @@ class Session:
             list[BaseSeries]: A list of BaseSeries objects representing series.
         """
         return self._list_resources(ResourceEndpoint.SERIES, params, BaseSeries)
+
+    def series_issues_list(
+        self, _id: int, if_modified_since: datetime | None = None
+    ) -> list[BaseIssue] | None:
+        """Retrieve a list of issues that are part of a specific series.
+
+        Args:
+            _id: The unique identifier for the series.
+            if_modified_since: Optional datetime for conditional requests. When provided,
+                the server may return 304 Not Modified and this method returns ``None``.
+                Typically you would pass a previously fetched series's ``modified`` field.
+
+        Returns:
+            list[BaseIssue] | None: A list of BaseIssue objects, or ``None`` if not modified.
+        """
+        return self._get_resource_issues(ResourceEndpoint.SERIES, _id, if_modified_since)
 
     def series_type_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
         """Retrieve a list of available series types.

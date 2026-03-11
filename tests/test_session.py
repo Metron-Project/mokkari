@@ -2325,3 +2325,93 @@ def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> 
     # Assert
     assert isinstance(result, Arc)
     assert result.name == "Cached Arc"
+
+
+# Tests for if_modified_since on issue list endpoints
+
+
+def test_issue_list_if_modified_since_returns_none_on_304(session: Session, monkeypatch) -> None:
+    """Test that arc/character/team issue lists return None on 304."""
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 304
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    dt = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+    with patch.object(session._limiter, "try_acquire", return_value=True):
+        assert session.arc_issues_list(1, if_modified_since=dt) is None
+        assert session.character_issues_list(1, if_modified_since=dt) is None
+        assert session.team_issues_list(1, if_modified_since=dt) is None
+
+
+def test_issue_list_if_modified_since_returns_list_on_200(session: Session, monkeypatch) -> None:
+    """Test that arc/character/team issue lists return a list on 200."""
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "count": 1,
+                "next": None,
+                "previous": None,
+                "results": [
+                    {
+                        "id": 1,
+                        "series": {"name": "Batman", "volume": 1, "year_began": 2011},
+                        "number": "1",
+                        "issue_name": "Batman (2011) #1",
+                        "cover_date": "2011-11-01",
+                        "image": "https://static.metron.cloud/media/issue/2019/batman-1.jpg",
+                        "modified": "2021-01-01T00:00:00Z",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    dt = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+    with patch.object(session._limiter, "try_acquire", return_value=True):
+        result = session.arc_issues_list(1, if_modified_since=dt)
+
+    assert result is not None
+    assert len(result) == 1
+    assert result[0].id == 1
+    assert result[0].issue_name == "Batman (2011) #1"
+    assert result[0].cover_date == datetime.date(2011, 11, 1)
+
+
+def test_issue_list_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
+    """Test that if_modified_since sends the correctly formatted header for issue lists."""
+    captured_kwargs = {}
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 304
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+    def mock_request(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return DummyResp()
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    dt = datetime.datetime(2025, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    with patch.object(session._limiter, "try_acquire", return_value=True):
+        session.arc_issues_list(1, if_modified_since=dt)
+
+    assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
