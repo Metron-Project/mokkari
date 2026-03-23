@@ -74,6 +74,7 @@ def reading_list_read_data(user_data):
         "name": "My Reading List",
         "slug": "my-reading-list",
         "desc": "A test reading list",
+        "image": "https://static.metron.cloud/media/reading_list/1/cover.jpg",
         "is_private": False,
         "attribution_source": "CBRO",
         "attribution_url": "https://example.com/reading-list",
@@ -261,6 +262,7 @@ def test_reading_list_read_creation(reading_list_read_data):
     assert reading_list.name == "My Reading List"
     assert reading_list.slug == "my-reading-list"
     assert reading_list.desc == "A test reading list"
+    assert str(reading_list.image) == "https://static.metron.cloud/media/reading_list/1/cover.jpg"
     assert reading_list.is_private is False
     assert reading_list.attribution_source == "CBRO"
     assert str(reading_list.attribution_url) == "https://example.com/reading-list"
@@ -286,6 +288,7 @@ def test_reading_list_read_creation_minimal(user_data):
     reading_list = ReadingListRead(**data)
     assert reading_list.id == 1
     assert reading_list.desc == ""
+    assert reading_list.image is None
     assert reading_list.is_private is False
     assert reading_list.attribution_url is None
 
