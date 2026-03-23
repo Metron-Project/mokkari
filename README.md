@@ -39,7 +39,7 @@ print(asm_68.desc)
 
 ## Rate Limiting
 
-The API has rate limits of 30 requests per minute and 10,000 requests per day.
+The API has rate limits of 20 requests per minute and 5,000 requests per day.
 Mokkari automatically enforces these limits locally to prevent unnecessary API
 calls. When a rate limit is exceeded, a `RateLimitError` is raised.
 
