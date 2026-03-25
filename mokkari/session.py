@@ -7,6 +7,7 @@ This module provides the following classes:
 
 __all__ = ["Session"]
 
+import functools
 import json
 import logging
 import platform
@@ -15,7 +16,7 @@ from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, ClassVar, Final, TypeVar, cast
+from typing import Any, Final, TypeVar, cast
 from urllib.parse import urlencode
 
 import requests
@@ -63,6 +64,16 @@ SECONDS_PER_HOUR: Final[int] = 3_600
 SECONDS_PER_MINUTE: Final[int] = 60
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
+
+DEFAULT_RATES = [
+    Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE),
+    Rate(METRON_DAY_RATE_LIMIT, Duration.DAY),
+]
+
+
+@functools.lru_cache(maxsize=1)
+def _default_limiter() -> Limiter:
+    return Limiter(SQLiteBucket.init_from_file(DEFAULT_RATES))
 
 
 class ResourceEndpoint:
@@ -226,12 +237,6 @@ class Session:
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
 
-    _minute_rate = Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE)
-    _day_rate = Rate(METRON_DAY_RATE_LIMIT, Duration.DAY)
-    _rates: ClassVar[list[Rate]] = [_minute_rate, _day_rate]
-    _bucket = SQLiteBucket.init_from_file(_rates)
-    _limiter = Limiter(_bucket)
-
     T = TypeVar(
         "T",
         ArcPost,
@@ -254,6 +259,7 @@ class Session:
         cache: sqlite_cache.SqliteCache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
+        limiter: Limiter | None = None,
     ) -> None:
         """Initialize a Session object with authentication and configuration.
 
@@ -267,6 +273,10 @@ class Session:
             cache: Optional SqliteCache instance for response caching.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
+            limiter: Optional pyrate_limiter.Limiter instance for rate limiting.
+                If not provided, a default SQLite-backed limiter is created.
+                Pass a custom Limiter to share rate limit state across workers
+                (e.g., using a Redis or database-backed bucket).
         """
         self.username = username
         self.passwd = passwd
@@ -276,6 +286,7 @@ class Session:
         }
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
+        self._limiter = limiter or _default_limiter()
 
     def _get(
         self,

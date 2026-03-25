@@ -8,6 +8,7 @@ from importlib.metadata import version
 __version__ = version("mokkari")
 
 from mokkari import exceptions, session, sqlite_cache
+from pyrate_limiter import Limiter
 
 
 def api(
@@ -16,6 +17,7 @@ def api(
     cache: sqlite_cache.SqliteCache | None = None,
     user_agent: str | None = None,
     dev_mode: bool = False,
+    limiter: Limiter | None = None,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
@@ -27,6 +29,8 @@ def api(
         user_agent (str): The user agent string for the application using Mokkari.
         For example 'Foo Bar/1.0'.
         dev_mode (bool): Whether the library should be run against a local Metron instance.
+        limiter (Limiter): Optional pyrate_limiter.Limiter instance for rate limiting.
+        If not provided, a default SQLite-backed limiter is created.
 
     Returns:
     -------
@@ -44,4 +48,6 @@ def api(
     if username is None or passwd is None:
         raise exceptions.AuthenticationError
 
-    return session.Session(username, passwd, cache=cache, user_agent=user_agent, dev_mode=dev_mode)
+    return session.Session(
+        username, passwd, cache=cache, user_agent=user_agent, dev_mode=dev_mode, limiter=limiter
+    )

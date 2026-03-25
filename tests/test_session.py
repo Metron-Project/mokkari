@@ -2325,3 +2325,29 @@ def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> 
     # Assert
     assert isinstance(result, Arc)
     assert result.name == "Cached Arc"
+
+
+def test_custom_limiter_is_used() -> None:
+    """Test that a custom limiter passed to Session is used instead of the default."""
+    # Arrange
+    custom_limiter = MagicMock()
+    custom_limiter.try_acquire.return_value = True
+
+    session = Session(
+        username="user",
+        passwd="pass",
+        limiter=custom_limiter,
+    )
+
+    # Act
+    session._check_rate_limit()
+
+    # Assert — our custom limiter was called, not the default SQLiteBucket one
+    custom_limiter.try_acquire.assert_called_once()
+
+
+def test_default_limiter_shared_across_sessions() -> None:
+    """Test that sessions without a custom limiter share the lazily-created default."""
+    session1 = Session(username="user", passwd="pass")
+    session2 = Session(username="user", passwd="pass")
+    assert session1._limiter is session2._limiter
