@@ -3,11 +3,15 @@
 __all__ = ["__version__", "api"]
 
 from importlib.metadata import version
+from typing import TYPE_CHECKING
 
 # Keep this at beginning of file to prevent circular import with session
 __version__ = version("mokkari")
 
 from mokkari import exceptions, session, sqlite_cache
+
+if TYPE_CHECKING:
+    from pyrate_limiter import AbstractBucket
 
 
 def api(  # noqa: PLR0913
@@ -16,7 +20,7 @@ def api(  # noqa: PLR0913
     cache: sqlite_cache.SqliteCache | None = None,
     user_agent: str | None = None,
     dev_mode: bool = False,
-    bucket: session.AbstractBucket | None = None,
+    bucket: "AbstractBucket | None" = None,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
