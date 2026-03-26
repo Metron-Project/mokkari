@@ -10,17 +10,18 @@ __all__ = ["Session"]
 import json
 import logging
 import platform
+import threading
 from collections import OrderedDict
 from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, ClassVar, Final, TypeVar, cast
+from typing import Any, Final, TypeVar, cast
 from urllib.parse import urlencode
 
 import requests
 from pydantic import TypeAdapter, ValidationError
-from pyrate_limiter import Duration, Limiter, Rate, RateItem, SQLiteBucket
+from pyrate_limiter import AbstractBucket, Duration, Limiter, Rate, RateItem, SQLiteBucket
 
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc, ArcPost
@@ -63,6 +64,23 @@ SECONDS_PER_HOUR: Final[int] = 3_600
 SECONDS_PER_MINUTE: Final[int] = 60
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
+
+DEFAULT_RATES: Final[list[Rate]] = [
+    Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE),
+    Rate(METRON_DAY_RATE_LIMIT, Duration.DAY),
+]
+
+_default_bucket_instance: SQLiteBucket | None = None
+_default_bucket_lock = threading.Lock()
+
+
+def _default_bucket() -> SQLiteBucket:
+    global _default_bucket_instance  # noqa: PLW0603
+    if _default_bucket_instance is None:
+        with _default_bucket_lock:
+            if _default_bucket_instance is None:
+                _default_bucket_instance = SQLiteBucket.init_from_file(DEFAULT_RATES)
+    return _default_bucket_instance
 
 
 class ResourceEndpoint:
@@ -134,8 +152,8 @@ class Session:
 
     The class implements automatic rate limiting to respect API quotas:
 
-    - 30 requests per minute
-    - 10,000 requests per day
+    - 20 requests per minute
+    - 5,000 requests per day
 
     **Important**: When rate limits are exceeded, a RateLimitError is raised immediately
     without making the API request. Applications must catch and handle this exception
@@ -219,18 +237,25 @@ class Session:
         ...                 raise
         >>> issue = fetch_with_rate_limit_handling(1)
 
+        Redis-backed rate limiting (shared across multiple workers or processes):
+
+        >>> from pyrate_limiter import RedisBucket
+        >>> import redis
+        >>> pool = redis.ConnectionPool.from_url("redis://localhost:6379")
+        >>> bucket = RedisBucket.init(DEFAULT_RATES, redis.Redis(connection_pool=pool), "mokkari")
+        >>> session = Session("username", "password", bucket=bucket)
+
+        In-memory bucket (useful for testing or single-process use without a database):
+
+        >>> from pyrate_limiter import InMemoryBucket
+        >>> session = Session("username", "password", bucket=InMemoryBucket(DEFAULT_RATES))
+
     Raises:
         ApiError: For general API errors, authentication failures, or network issues.
         RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
         CacheError: For cache-related errors.
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
-
-    _minute_rate = Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE)
-    _day_rate = Rate(METRON_DAY_RATE_LIMIT, Duration.DAY)
-    _rates: ClassVar[list[Rate]] = [_minute_rate, _day_rate]
-    _bucket = SQLiteBucket.init_from_file(_rates)
-    _limiter = Limiter(_bucket)
 
     T = TypeVar(
         "T",
@@ -247,13 +272,14 @@ class Session:
         UniversePost,
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         username: str,
         passwd: str,
         cache: sqlite_cache.SqliteCache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
+        bucket: AbstractBucket | None = None,
     ) -> None:
         """Initialize a Session object with authentication and configuration.
 
@@ -267,6 +293,10 @@ class Session:
             cache: Optional SqliteCache instance for response caching.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
+            bucket: Optional pyrate_limiter bucket for rate limiting. If not provided,
+                a default SQLite-backed bucket is created and shared across sessions.
+                Pass a custom bucket to share rate limit state across workers
+                (e.g., using a Redis or database-backed bucket).
         """
         self.username = username
         self.passwd = passwd
@@ -276,6 +306,8 @@ class Session:
         }
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
+        self._bucket = bucket or _default_bucket()
+        self._limiter = Limiter(self._bucket)
 
     def _get(
         self,
@@ -1678,12 +1710,11 @@ class Session:
         """
         acquired = self._limiter.try_acquire("metron", 1, blocking=False)
         if not acquired:
-            bucket = self._limiter.buckets()[0]
-            item = RateItem("metron", cast("int", bucket.now()), weight=1)
-            delay_ms = cast("int", bucket.waiting(item))
+            item = RateItem("metron", cast("int", self._bucket.now()), weight=1)
+            delay_ms = cast("int", self._bucket.waiting(item))
             delay = delay_ms / 1000 if delay_ms > 0 else 0
 
-            failing_rate = bucket.failing_rate
+            failing_rate = self._bucket.failing_rate
             if failing_rate is not None and failing_rate.interval >= Duration.DAY.value:
                 limit_type = "day"
                 limit_value = METRON_DAY_RATE_LIMIT
