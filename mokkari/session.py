@@ -152,8 +152,8 @@ class Session:
 
     The class implements automatic rate limiting to respect API quotas:
 
-    - 30 requests per minute
-    - 10,000 requests per day
+    - 20 requests per minute
+    - 5,000 requests per day
 
     **Important**: When rate limits are exceeded, a RateLimitError is raised immediately
     without making the API request. Applications must catch and handle this exception
