@@ -57,6 +57,7 @@ def reading_list_list_data(user_data):
         "name": "My Reading List",
         "slug": "my-reading-list",
         "user": user_data,
+        "list_type": "event",
         "is_private": False,
         "attribution_source": "CBRO",
         "average_rating": 4.5,
@@ -75,6 +76,7 @@ def reading_list_read_data(user_data):
         "slug": "my-reading-list",
         "desc": "A test reading list",
         "image": "https://static.metron.cloud/media/reading_list/1/cover.jpg",
+        "list_type": "event",
         "is_private": False,
         "attribution_source": "CBRO",
         "attribution_url": "https://example.com/reading-list",
@@ -221,6 +223,7 @@ def test_reading_list_list_creation(reading_list_list_data):
     assert reading_list.slug == "my-reading-list"
     assert isinstance(reading_list.user, User)
     assert reading_list.user.username == "testuser"
+    assert reading_list.list_type == "event"
     assert reading_list.is_private is False
     assert reading_list.attribution_source == AttributionSource.CBRO
     assert isinstance(reading_list.modified, datetime)
@@ -233,6 +236,7 @@ def test_reading_list_list_creation_minimal(user_data):
         "name": "My Reading List",
         "slug": "my-reading-list",
         "user": user_data,
+        "list_type": "event",
         "average_rating": 0.0,
         "rating_count": 0,
         "modified": "2023-01-01T12:00:00Z",
@@ -263,6 +267,7 @@ def test_reading_list_read_creation(reading_list_read_data):
     assert reading_list.slug == "my-reading-list"
     assert reading_list.desc == "A test reading list"
     assert str(reading_list.image) == "https://static.metron.cloud/media/reading_list/1/cover.jpg"
+    assert reading_list.list_type == "event"
     assert reading_list.is_private is False
     assert reading_list.attribution_source == "CBRO"
     assert str(reading_list.attribution_url) == "https://example.com/reading-list"
@@ -278,6 +283,7 @@ def test_reading_list_read_creation_minimal(user_data):
         "user": user_data,
         "name": "My Reading List",
         "slug": "my-reading-list",
+        "list_type": "event",
         "attribution_source": "CBRO",
         "average_rating": 0.0,
         "rating_count": 0,
@@ -313,6 +319,7 @@ def test_reading_list_read_invalid_url():
         "user": {"id": 1, "username": "testuser"},
         "name": "My Reading List",
         "slug": "my-reading-list",
+        "list_type": "event",
         "attribution_source": "CBRO",
         "attribution_url": "not_a_valid_url",
         "average_rating": 0.0,
@@ -336,6 +343,7 @@ def test_reading_list_read_empty_attribution_source(user_data):
         "user": user_data,
         "name": "Star Wars: Crimson Reign",
         "slug": "star-wars-crimson-reign",
+        "list_type": "event",
         "attribution_source": "",
         "average_rating": 0.0,
         "rating_count": 0,
@@ -358,6 +366,7 @@ def test_reading_list_no_average_rating(user_data):
         "user": user_data,
         "name": "Star Wars: Crimson Reign",
         "slug": "star-wars-crimson-reign",
+        "list_type": "event",
         "attribution_source": "",
         "average_rating": None,
         "rating_count": 0,
@@ -381,6 +390,7 @@ def test_reading_list_read_empty_attribution_url(user_data):
         "user": user_data,
         "name": "Test Reading List",
         "slug": "test-reading-list",
+        "list_type": "event",
         "attribution_source": "CBRO",
         "attribution_url": "",
         "average_rating": 0.0,
@@ -402,6 +412,7 @@ def test_private_reading_list(user_data):
         "name": "My Private List",
         "slug": "my-private-list",
         "user": user_data,
+        "list_type": "event",
         "is_private": True,
         "average_rating": 0.0,
         "rating_count": 0,
@@ -420,6 +431,7 @@ def test_reading_list_with_different_attribution_sources(user_data):
             "name": "Test List",
             "slug": "test-list",
             "user": user_data,
+            "list_type": "event",
             "attribution_source": source,
             "average_rating": 0.0,
             "rating_count": 0,
@@ -440,6 +452,7 @@ def test_reading_list_list_empty_attribution_source(user_data):
         "name": "Star Wars: Crimson Reign",
         "slug": "star-wars-crimson-reign",
         "user": user_data,
+        "list_type": "event",
         "is_private": False,
         "attribution_source": "",
         "average_rating": 0.0,
@@ -459,6 +472,7 @@ def test_reading_list_list_invalid_attribution_source(user_data):
         "name": "Test List",
         "slug": "test-list",
         "user": user_data,
+        "list_type": "event",
         "attribution_source": "INVALID",
         "average_rating": 0.0,
         "rating_count": 0,
@@ -479,6 +493,7 @@ def test_reading_list_list_no_average_rating(user_data):
         "name": "Star Wars: Crimson Reign",
         "slug": "star-wars-crimson-reign",
         "user": user_data,
+        "list_type": "event",
         "is_private": False,
         "attribution_source": "",
         "average_rating": None,

@@ -1,4 +1,5 @@
 :::mokkari.schemas.reading_list.AttributionSource
+:::mokkari.schemas.reading_list.ListType
 :::mokkari.schemas.reading_list.ReadingListIssue
 :::mokkari.schemas.reading_list.ReadingListItem
 :::mokkari.schemas.reading_list.ReadingListList
