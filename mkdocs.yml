@@ -39,6 +39,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Mokkari:
+      - API: mokkari/mokkari.md
       - Session: mokkari/session.md
       - Sqlite_Cache: mokkari/sqlitecache.md
       - Exceptions: mokkari/exceptions.md
