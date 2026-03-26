@@ -12,6 +12,7 @@ from pydantic import HttpUrl, ValidationError
 from pyrate_limiter import Duration, Rate
 from requests.exceptions import ConnectionError as ConnError, HTTPError
 
+import mokkari.session as session_module
 from mokkari import exceptions
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
@@ -1975,11 +1976,9 @@ def test_rate_limit_minute_exceeded(session: Session) -> None:
     """Test that minute rate limit raises RateLimitError with correct message."""
     # Arrange: simulate minute rate limit (60 seconds = 60,000 ms)
     mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=60_000)
+    session._bucket = mock_bucket
 
-    with (
-        patch.object(session._limiter, "try_acquire", return_value=False),
-        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
-    ):
+    with patch.object(session._limiter, "try_acquire", return_value=False):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
@@ -1996,11 +1995,9 @@ def test_rate_limit_day_exceeded(session: Session) -> None:
     """Test that daily rate limit raises RateLimitError with correct message."""
     # Arrange: simulate daily rate limit (86400 seconds = 86,400,000 ms)
     mock_bucket = _make_mock_bucket(Rate(5_000, Duration.DAY), delay_ms=86_400_000)
+    session._bucket = mock_bucket
 
-    with (
-        patch.object(session._limiter, "try_acquire", return_value=False),
-        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
-    ):
+    with patch.object(session._limiter, "try_acquire", return_value=False):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
@@ -2025,11 +2022,9 @@ def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
         return MagicMock()
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    session._bucket = mock_bucket
 
-    with (
-        patch.object(session._limiter, "try_acquire", return_value=False),
-        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
-    ):
+    with patch.object(session._limiter, "try_acquire", return_value=False):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError):
             session._request_data("GET", "https://test.com/api/issue/1")
@@ -2043,11 +2038,9 @@ def test_rate_limit_bucket_full(session: Session) -> None:
     """Test handling of a bucket-full minute rate limit with a 90.5-second delay."""
     # Arrange: 90,500 ms = 1 minute, 30 seconds
     mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=90_500)
+    session._bucket = mock_bucket
 
-    with (
-        patch.object(session._limiter, "try_acquire", return_value=False),
-        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
-    ):
+    with patch.object(session._limiter, "try_acquire", return_value=False):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
@@ -2062,11 +2055,9 @@ def test_rate_limit_format_time_hours(session: Session) -> None:
     """Test that rate limit error message correctly formats hours."""
     # Arrange: 2.5 hours = 9,000 seconds = 9,000,000 ms
     mock_bucket = _make_mock_bucket(Rate(5_000, Duration.DAY), delay_ms=9_000_000)
+    session._bucket = mock_bucket
 
-    with (
-        patch.object(session._limiter, "try_acquire", return_value=False),
-        patch.object(session._limiter, "buckets", return_value=[mock_bucket]),
-    ):
+    with patch.object(session._limiter, "try_acquire", return_value=False):
         # Act & Assert
         with pytest.raises(exceptions.RateLimitError) as excinfo:
             session._request_data("GET", "https://test.com/api/issue/1")
@@ -2325,3 +2316,28 @@ def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> 
     # Assert
     assert isinstance(result, Arc)
     assert result.name == "Cached Arc"
+
+
+def test_custom_bucket_is_used() -> None:
+    """Test that a custom bucket passed to Session is used instead of the default."""
+    # Arrange
+    custom_bucket = MagicMock()
+
+    with patch("mokkari.session.Limiter"):
+        session = Session(username="user", passwd="pass", bucket=custom_bucket)  # noqa: S106
+
+    # The custom bucket should be set on the session
+    assert session._bucket is custom_bucket
+
+
+def test_default_bucket_shared_across_sessions() -> None:
+    """Test that sessions without a custom bucket share the lazily-created default."""
+    # Reset the singleton so test is not order-dependent
+    original = session_module._default_bucket_instance
+    session_module._default_bucket_instance = None
+    try:
+        s1 = Session(username="user", passwd="pass")  # noqa: S106
+        s2 = Session(username="user", passwd="pass")  # noqa: S106
+        assert s1._bucket is s2._bucket
+    finally:
+        session_module._default_bucket_instance = original
