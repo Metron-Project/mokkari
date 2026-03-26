@@ -11,6 +11,7 @@ This module provides the following classes:
 
 __all__ = [
     "AttributionSource",
+    "ListType",
     "ReadingListIssue",
     "ReadingListItem",
     "ReadingListList",
@@ -50,6 +51,25 @@ class AttributionSource(str, Enum):
     HTLC = "HTLC"
     LOCG = "LOCG"
     OTHER = "OTHER"
+
+
+class ListType(str, Enum):
+    """Enumeration of reading list types.
+
+    Values:
+
+        EVENT: Event
+        STORY: Story
+        CHARACTERS: Characters
+        TEAMS: Teams
+        MASTER: Master
+    """
+
+    EVENT = "EVENT"
+    STORY = "STORY"
+    CHARACTERS = "CHARACTERS"
+    TEAMS = "TEAMS"
+    MASTER = "MASTER"
 
 
 class ReadingListIssue(BaseModel):
@@ -100,6 +120,7 @@ class ReadingListList(BaseModel):
         name (str): The name of the reading list.
         slug (str): The slug for the reading list.
         user (User): The user who owns the reading list.
+        list_type (str): The type of the reading list.
         is_private (bool): Whether this list is private (only visible to the owner).
         attribution_source (AttributionSource, optional): Source where this reading list
             information was obtained.
@@ -112,6 +133,7 @@ class ReadingListList(BaseModel):
     name: str
     slug: str
     user: User
+    list_type: str
     is_private: bool = False
     attribution_source: AttributionSource | None = None
     average_rating: float | None = None
@@ -147,6 +169,7 @@ class ReadingListRead(BaseModel):
         slug (str): The slug for the reading list.
         desc (str): The description of the reading list.
         image (HttpUrl, optional): The image for the reading list.
+        list_type (str): The type of the reading list.
         is_private (bool): Whether this list is private (only visible to the owner).
         attribution_source (str): Source where this reading list information was obtained.
         attribution_url (HttpUrl, optional): URL of the specific page where this reading
@@ -164,6 +187,7 @@ class ReadingListRead(BaseModel):
     slug: str
     desc: str = ""
     image: HttpUrl | None = None
+    list_type: str
     is_private: bool = False
     attribution_source: str
     attribution_url: HttpUrl | None = Field(default=None, max_length=200)
