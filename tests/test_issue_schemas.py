@@ -17,6 +17,7 @@ from mokkari.schemas.issue import (
     IssuePost,
     IssuePostResponse,
     IssueSeries,
+    PricePost,
 )
 
 
@@ -558,10 +559,10 @@ def test_issue_post_response_validation_missing_required():
 # Edge cases and integration tests
 def test_decimal_price_precision():
     """Test that price field handles decimal precision correctly."""
-    issue_post = IssuePost(price="3.99")
+    issue_post = IssuePost(price=Decimal("3.99"))
     assert issue_post.price == Decimal("3.99")
 
-    issue_post = IssuePost(price="10.999")
+    issue_post = IssuePost(price=Decimal("10.999"))
     assert issue_post.price == Decimal("10.999")
 
 
@@ -635,6 +636,66 @@ def test_list_field_types():
     issue = Issue(**data)
     assert len(issue.story_titles) == 3
     assert all(isinstance(title, str) for title in issue.story_titles)
+
+
+# PricePost model tests
+def test_price_post_creation_usd():
+    """Test creating a PricePost with USD currency."""
+    price = PricePost(amount=Decimal("3.99"), currency="USD")
+    assert price.amount == Decimal("3.99")
+    assert price.currency == "USD"
+
+
+def test_price_post_creation_gbp():
+    """Test creating a PricePost with GBP currency."""
+    price = PricePost(amount=Decimal("3.99"), currency="GBP")
+    assert price.amount == Decimal("3.99")
+    assert price.currency == "GBP"
+
+
+def test_price_post_invalid_currency():
+    """Test that PricePost rejects unsupported currency codes."""
+    with pytest.raises(ValidationError):
+        PricePost(amount=Decimal("3.99"), currency="EUR")
+
+
+def test_price_post_missing_fields():
+    """Test PricePost validation with missing required fields."""
+    with pytest.raises(ValidationError):
+        PricePost(amount=Decimal("3.99"))  # Missing currency
+
+    with pytest.raises(ValidationError):
+        PricePost(currency="GBP")  # Missing amount
+
+
+def test_issue_post_price_accepts_decimal():
+    """Test that IssuePost still accepts a plain Decimal for USD prices."""
+    issue_post = IssuePost(price=Decimal("4.99"))
+    assert issue_post.price == Decimal("4.99")
+
+
+def test_issue_post_price_accepts_price_post_gbp():
+    """Test that IssuePost accepts a PricePost object for GBP prices."""
+    price = PricePost(amount=Decimal("3.99"), currency="GBP")
+    issue_post = IssuePost(price=price)
+    assert isinstance(issue_post.price, PricePost)
+    assert issue_post.price.amount == Decimal("3.99")
+    assert issue_post.price.currency == "GBP"
+
+
+def test_issue_post_price_accepts_price_post_usd():
+    """Test that IssuePost accepts a PricePost object for USD prices."""
+    price = PricePost(amount=Decimal("5.99"), currency="USD")
+    issue_post = IssuePost(price=price)
+    assert isinstance(issue_post.price, PricePost)
+    assert issue_post.price.amount == Decimal("5.99")
+    assert issue_post.price.currency == "USD"
+
+
+def test_issue_post_price_accepts_none():
+    """Test that IssuePost still accepts None for price."""
+    issue_post = IssuePost(price=None)
+    assert issue_post.price is None
 
 
 def test_optional_nested_objects():
