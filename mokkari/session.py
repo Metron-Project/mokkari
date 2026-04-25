@@ -1620,9 +1620,10 @@ class Session:
 
             if files:
                 # Multipart form data can't encode nested dicts — serialize them as
-                # JSON strings so they survive form encoding and can be parsed server-side
+                # JSON strings so they survive form encoding and can be parsed server-side.
+                # Lists are left as-is; requests sends them as repeated form fields.
                 for key, value in data_dict.items():
-                    if isinstance(value, (dict, list)):
+                    if isinstance(value, dict):
                         data_dict[key] = json.dumps(value, default=str)
             else:
                 # No file upload — send as JSON so nested objects are preserved intact
