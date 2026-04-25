@@ -13,6 +13,7 @@ This module provides the following classes:
 - Issue
 - IssuePost
 - IssuePostResponse
+- PricePost
 """
 
 __all__ = [
@@ -26,11 +27,12 @@ __all__ = [
     "IssuePost",
     "IssuePostResponse",
     "IssueSeries",
+    "PricePost",
 ]
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, HttpUrl, StringConstraints
 
@@ -53,6 +55,18 @@ class Credit(BaseModel):
     id: int
     creator: str
     role: list[GenericItem] = []
+
+
+class PricePost(BaseModel):
+    """Price object for non-USD currencies.
+
+    Attributes:
+        amount (Decimal): The price amount.
+        currency (str): The currency code (USD or GBP).
+    """
+
+    amount: Decimal
+    currency: Literal["USD", "GBP"]
 
 
 class CreditPost(BaseModel):
@@ -225,7 +239,8 @@ class IssuePost(BaseModel):
         cover_date (date, optional): The cover date of the issue.
         store_date (date, optional): The store date of the issue.
         foc_date (date, optional): The final order cutoff date of the issue.
-        price (Decimal, optional): The price of the issue.
+        price (Decimal | PricePost, optional): The price of the issue. Pass a plain Decimal for
+            USD or a PricePost object for non-USD currencies (e.g. GBP).
         rating (int, optional): The ID of the rating of the issue.
         sku (str, optional): The SKU of the issue.
         isbn (str, optional): The ISBN of the issue.
@@ -250,7 +265,7 @@ class IssuePost(BaseModel):
     cover_date: date | None = None
     store_date: date | None = None
     foc_date: date | None = None
-    price: Decimal | None = None
+    price: Decimal | PricePost | None = None
     rating: int | None = None
     sku: Annotated[str, StringConstraints(max_length=12)] | None = None
     isbn: Annotated[str, StringConstraints(max_length=13)] | None = None
