@@ -1618,6 +1618,17 @@ class Session:
                 else:
                     LOGGER.warning("Image file not found: %s", img)
 
+            if files:
+                # Multipart form data can't encode nested dicts — serialize them as
+                # JSON strings so they survive form encoding and can be parsed server-side
+                for key, value in data_dict.items():
+                    if isinstance(value, (dict, list)):
+                        data_dict[key] = json.dumps(value, default=str)
+            else:
+                # No file upload — send as JSON so nested objects are preserved intact
+                data_dict = json.dumps(data_dict, default=str)
+                header["Content-Type"] = "application/json;charset=utf-8"
+
         LOGGER.debug("Header: %s", header)
         LOGGER.debug("Data: %s", data_dict)
 
