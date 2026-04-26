@@ -1618,17 +1618,14 @@ class Session:
                 else:
                     LOGGER.warning("Image file not found: %s", img)
 
-            if files:
-                # Multipart form data can't encode nested dicts — serialize them as
-                # JSON strings so they survive form encoding and can be parsed server-side.
-                # Lists are left as-is; requests sends them as repeated form fields.
-                for key, value in data_dict.items():
-                    if isinstance(value, dict):
-                        data_dict[key] = json.dumps(value, default=str)
-            else:
-                # No file upload — send as JSON so nested objects are preserved intact
-                data_dict = json.dumps(data_dict, default=str)
-                header["Content-Type"] = "application/json;charset=utf-8"
+            # Always use multipart form data for object payloads. Endpoints that
+            # support file uploads (creator, issue, etc.) require multipart even
+            # when no file is present. Strip None values since form data can't
+            # represent them, and JSON-encode any nested dicts.
+            data_dict = {k: v for k, v in data_dict.items() if v is not None}
+            for key, value in data_dict.items():
+                if isinstance(value, dict):
+                    data_dict[key] = json.dumps(value, default=str)
 
         LOGGER.debug("Header: %s", header)
         LOGGER.debug("Data: %s", data_dict)
