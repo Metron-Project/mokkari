@@ -1618,23 +1618,34 @@ class Session:
             # Handle single object data
             data_dict = data.model_dump()
 
-            # Handle image uploads
-            if data_dict and "image" in data_dict and (img := data_dict.pop("image")):
-                img_path = Path(img)
-                if img_path.exists():
-                    files = {"image": (img_path.name, img_path.read_bytes())}
-                    LOGGER.debug("Image File: %s", img)
-                else:
-                    LOGGER.warning("Image file not found: %s", img)
+            # Determine whether this model type supports file uploads.
+            # Endpoints that have an `image` field (creator, issue, team, character, arc)
+            # require multipart/form-data even when no file is present.
+            # Endpoints without an `image` field (series, universe, etc.) require JSON.
+            has_image_field = bool(data_dict) and "image" in data_dict
+            if has_image_field:
+                img = data_dict.pop("image")
+                if img:
+                    img_path = Path(img)
+                    if img_path.exists():
+                        files = {"image": (img_path.name, img_path.read_bytes())}
+                        LOGGER.debug("Image File: %s", img)
+                    else:
+                        LOGGER.warning("Image file not found: %s", img)
 
-            # Always use multipart form data for object payloads. Endpoints that
-            # support file uploads (creator, issue, etc.) require multipart even
-            # when no file is present. Strip None values since form data can't
-            # represent them, and JSON-encode any nested dicts.
-            data_dict = {k: v for k, v in data_dict.items() if v is not None}
-            for key, value in data_dict.items():
-                if isinstance(value, dict):
-                    data_dict[key] = json.dumps(value, default=str)
+            if has_image_field:
+                # Multipart form data: strip None values (can't be represented in form
+                # data) and JSON-encode any nested dicts.
+                # Lists are sent as repeated form fields by requests.
+                data_dict = {k: v for k, v in data_dict.items() if v is not None}
+                for key, value in data_dict.items():
+                    if isinstance(value, dict):
+                        data_dict[key] = json.dumps(value, default=str)
+            else:
+                # No image field — send as JSON so null values and nested objects
+                # are preserved intact.
+                data_dict = json.dumps(data_dict, default=str)
+                header["Content-Type"] = "application/json;charset=utf-8"
 
         LOGGER.debug("Header: %s", header)
         LOGGER.debug("Data: %s", data_dict)
