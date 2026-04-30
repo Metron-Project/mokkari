@@ -11,6 +11,7 @@ import json
 import logging
 import platform
 import threading
+import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
@@ -1572,7 +1573,15 @@ class Session:
                     has_next_page = False
                 continue
 
-            response = self._request_data("GET", next_page)
+            try:
+                response = self._request_data("GET", next_page)
+            except exceptions.RateLimitError as e:
+                # Retry only this page rather than letting the error propagate
+                # and restart the entire paginated fetch from page 1.
+                LOGGER.warning("Rate limit during pagination; retrying page in %ss", e.retry_after)
+                time.sleep(e.retry_after + 2)  # Add buffer to ensure limit has reset
+                continue
+
             data["results"].extend(response["results"])
 
             self._save_results_to_cache(next_page, response)
