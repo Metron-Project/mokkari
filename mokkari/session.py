@@ -11,6 +11,7 @@ import json
 import logging
 import platform
 import threading
+import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
@@ -1572,7 +1573,15 @@ class Session:
                     has_next_page = False
                 continue
 
-            response = self._request_data("GET", next_page)
+            try:
+                response = self._request_data("GET", next_page)
+            except exceptions.RateLimitError as e:
+                # Retry only this page rather than letting the error propagate
+                # and restart the entire paginated fetch from page 1.
+                LOGGER.warning("Rate limit during pagination; retrying page in %ss", e.retry_after)
+                time.sleep(e.retry_after + 2)  # Add buffer to ensure limit has reset
+                continue
+
             data["results"].extend(response["results"])
 
             self._save_results_to_cache(next_page, response)
@@ -1609,24 +1618,32 @@ class Session:
             # Handle single object data
             data_dict = data.model_dump()
 
-            # Handle image uploads
-            if data_dict and "image" in data_dict and (img := data_dict.pop("image")):
-                img_path = Path(img)
-                if img_path.exists():
-                    files = {"image": (img_path.name, img_path.read_bytes())}
-                    LOGGER.debug("Image File: %s", img)
-                else:
-                    LOGGER.warning("Image file not found: %s", img)
+            # Determine whether this model type supports file uploads.
+            # Endpoints that have an `image` field (creator, issue, team, character, arc)
+            # require multipart/form-data even when no file is present.
+            # Endpoints without an `image` field (series, universe, etc.) require JSON.
+            has_image_field = bool(data_dict) and "image" in data_dict
+            if has_image_field:
+                img = data_dict.pop("image")
+                if img:
+                    img_path = Path(img)
+                    if img_path.exists():
+                        files = {"image": (img_path.name, img_path.read_bytes())}
+                        LOGGER.debug("Image File: %s", img)
+                    else:
+                        LOGGER.warning("Image file not found: %s", img)
 
-            if files:
-                # Multipart form data can't encode nested dicts — serialize them as
-                # JSON strings so they survive form encoding and can be parsed server-side.
-                # Lists are left as-is; requests sends them as repeated form fields.
+            if has_image_field:
+                # Multipart form data: strip None values (can't be represented in form
+                # data) and JSON-encode any nested dicts.
+                # Lists are sent as repeated form fields by requests.
+                data_dict = {k: v for k, v in data_dict.items() if v is not None}
                 for key, value in data_dict.items():
                     if isinstance(value, dict):
                         data_dict[key] = json.dumps(value, default=str)
             else:
-                # No file upload — send as JSON so nested objects are preserved intact
+                # No image field — send as JSON so null values and nested objects
+                # are preserved intact.
                 data_dict = json.dumps(data_dict, default=str)
                 header["Content-Type"] = "application/json;charset=utf-8"
 
