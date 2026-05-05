@@ -4,6 +4,7 @@ This module contains tests for Session objects.
 """
 
 import datetime
+import json
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -1959,6 +1960,80 @@ def test__get_results_from_cache_none(session: Session) -> None:
     out = session._get_results_from_cache("key")
     # Assert
     assert out is None
+
+
+# ============================================================================
+# _prepare_request_payload Tests
+# ============================================================================
+
+
+def test__prepare_request_payload_none_data(session: Session) -> None:
+    """No payload when data is None."""
+    _header, files, data_dict = session._prepare_request_payload(None)
+    assert files is None
+    assert data_dict is None
+
+
+def test__prepare_request_payload_json_excludes_none_fields(session: Session) -> None:
+    """None fields must not appear in the JSON body for non-image models."""
+    data = SeriesPost(gcd_id=12345)
+    _, files, data_dict = session._prepare_request_payload(data)
+    assert files is None
+    parsed = json.loads(data_dict)
+    assert parsed == {"gcd_id": 12345}
+
+
+def test__prepare_request_payload_partial_series_patch_only_sends_set_field(
+    session: Session,
+) -> None:
+    """A SeriesPost with only gcd_id set must produce a single-key payload.
+
+    This is the regression test for the bug where PATCH /series/<id>/ failed with
+    '400 This field may not be null' because all None fields were serialised.
+    """
+    data = SeriesPost(gcd_id=99)
+    _, _, data_dict = session._prepare_request_payload(data)
+    parsed = json.loads(data_dict)
+    assert parsed == {"gcd_id": 99}
+
+
+def test__prepare_request_payload_all_set_fields_are_included(session: Session) -> None:
+    """Fields that are explicitly set must be present in the JSON body."""
+    data = SeriesPost(name="Batman", sort_name="Batman", volume=1, year_began=1940, gcd_id=7)
+    _, _, data_dict = session._prepare_request_payload(data)
+    parsed = json.loads(data_dict)
+    assert parsed["name"] == "Batman"
+    assert parsed["sort_name"] == "Batman"
+    assert parsed["volume"] == 1
+    assert parsed["year_began"] == 1940
+    assert parsed["gcd_id"] == 7
+    assert "publisher" not in parsed
+
+
+def test__prepare_request_payload_image_model_uses_multipart_and_strips_none(
+    session: Session, tmp_path: object
+) -> None:
+    """Image-field models must still use multipart form data with None values stripped."""
+    img_file = tmp_path / "cover.png"
+    img_file.write_bytes(b"fakepng")
+    data = MagicMock(model_dump=lambda: {"name": "Test Arc", "image": str(img_file), "desc": None})
+    _, files, data_dict = session._prepare_request_payload(data)
+    assert files is not None
+    assert "image" in files
+    assert isinstance(data_dict, dict)
+    assert data_dict.get("name") == "Test Arc"
+    assert "desc" not in data_dict
+
+
+def test__prepare_request_payload_image_model_no_image_file(session: Session) -> None:
+    """Image-field model with image=None must still use multipart (no file uploaded)."""
+    data = MagicMock(model_dump=lambda: {"name": "Test Arc", "image": None, "desc": None})
+    _, files, data_dict = session._prepare_request_payload(data)
+    assert files is None
+    assert isinstance(data_dict, dict)
+    assert data_dict.get("name") == "Test Arc"
+    assert "desc" not in data_dict
+    assert "image" not in data_dict
 
 
 # ============================================================================

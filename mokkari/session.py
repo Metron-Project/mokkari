@@ -1642,9 +1642,11 @@ class Session:
                     if isinstance(value, dict):
                         data_dict[key] = json.dumps(value, default=str)
             else:
-                # No image field — send as JSON so null values and nested objects
-                # are preserved intact.
-                data_dict = json.dumps(data_dict, default=str)
+                # No image field — send as JSON, stripping None values so PATCH
+                # requests don't overwrite existing data with nulls.
+                data_dict = json.dumps(
+                    {k: v for k, v in data_dict.items() if v is not None}, default=str
+                )
                 header["Content-Type"] = "application/json;charset=utf-8"
 
         LOGGER.debug("Header: %s", header)
