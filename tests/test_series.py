@@ -166,3 +166,53 @@ def test_series_with_genres(talker: Session) -> None:
     assert tt2011.name == "Teen Titans"
     assert len(tt2011.genres) == 1
     assert tt2011.genres[0].name == "Super-Hero"
+
+
+def test_series_list_with_year_end(talker: Session) -> None:
+    """Test that year_end is returned correctly in a series list."""
+    data = {
+        "count": 1,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "id": 1,
+                "series": "Death of the Inhumans (2018)",
+                "volume": 1,
+                "year_began": 2018,
+                "year_end": 2018,
+                "issue_count": 5,
+                "modified": "2019-06-23T15:13:19.432378-04:00",
+            }
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/series/", text=json.dumps(data))
+        series = talker.series_list({"name": "death"})
+        assert len(series) == 1
+        assert series[0].year_end == 2018
+
+
+def test_series_list_without_year_end(talker: Session) -> None:
+    """Test that year_end is None when absent from a series list entry."""
+    data = {
+        "count": 1,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "id": 2311,
+                "series": "Absolute Carnage (2019)",
+                "volume": 1,
+                "year_began": 2019,
+                "year_end": None,
+                "issue_count": 5,
+                "modified": "2019-07-05T14:32:52.256872-04:00",
+            }
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/series/", text=json.dumps(data))
+        series = talker.series_list({"name": "carnage"})
+        assert len(series) == 1
+        assert series[0].year_end is None

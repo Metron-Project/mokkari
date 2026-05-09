@@ -64,9 +64,11 @@ class BaseSeries(CommonSeries):
 
     Attributes:
         display_name (str): The display name of the base series.
+        year_end (int, optional): The year the series ended.
     """
 
     display_name: str = Field(alias="series")
+    year_end: int | None = None
 
 
 class Series(CommonSeries):
