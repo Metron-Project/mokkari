@@ -6,9 +6,12 @@ This module contains pytest fixtures.
 import os
 
 import pytest
+from pyrate_limiter import Duration, InMemoryBucket, Rate
 
-from mokkari import api, sqlite_cache
+from mokkari import api
 from mokkari.session import Session
+
+_HIGH_RATE = [Rate(10_000, Duration.MINUTE)]
 
 
 @pytest.fixture(scope="session")
@@ -29,5 +32,5 @@ def talker(dummy_username: str, dummy_password: str) -> Session:
     return api(
         username=dummy_username,
         passwd=dummy_password,
-        cache=sqlite_cache.SqliteCache("tests/testing_mock.sqlite"),
+        bucket=InMemoryBucket(_HIGH_RATE),
     )

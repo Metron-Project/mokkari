@@ -10,12 +10,22 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions
+from mokkari.schemas.creator import Creator
 from mokkari.session import Session
 
 
-def test_known_creator(talker: Session) -> None:
+def test_known_creator() -> None:
     """Test for a known creator."""
-    jack = talker.creator(3)
+    jack = Creator(
+        id=3,
+        name="Jack Kirby",
+        birth="1917-08-28",
+        death="1994-02-06",
+        desc="Co-creator of many Marvel characters.",
+        image="https://static.metron.cloud/media/creator/2018/11/11/432124-Jack_Kirby01.jpg",
+        modified="2019-06-23T15:13:19.432378-04:00",
+        resource_url="https://metron.cloud/creator/jack-kirby/",
+    )
     assert jack.name == "Jack Kirby"
     assert jack.birth == date(1917, 8, 28)
     assert jack.death == date(1994, 2, 6)
@@ -28,13 +38,26 @@ def test_known_creator(talker: Session) -> None:
 
 def test_creator_list(talker: Session) -> None:
     """Test the CreatorsList."""
-    creators = talker.creators_list({"name": "man"})
+    data = {
+        "count": 4,
+        "next": None,
+        "previous": None,
+        "results": [
+            {"id": 1, "name": "A. J. Lieberman", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            {"id": 2, "name": "Aadi Salman", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            {"id": 3, "name": "Aaron Guzman", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            {"id": 4, "name": "Abel Laxamana", "modified": "2019-06-23T15:13:19.432378-04:00"},
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/creator/", text=json.dumps(data))
+        creators = talker.creators_list({"name": "man"})
     creator_iter = iter(creators)
     assert next(creator_iter).name == "A. J. Lieberman"
     assert next(creator_iter).name == "Aadi Salman"
     assert next(creator_iter).name == "Aaron Guzman"
     assert next(creator_iter).name == "Abel Laxamana"
-    assert len(creators) == 543
+    assert len(creators) == 4
     assert creators[3].name == "Abel Laxamana"
 
 

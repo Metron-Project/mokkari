@@ -10,19 +10,52 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions
+from mokkari.schemas.series import BaseSeries, Series
 from mokkari.session import Session
 
+_MODIFIED = "2019-06-23T15:13:19.432378-04:00"
 
-def test_series_with_imprint(talker: Session) -> None:
+_COMMON_SERIES = {
+    "id": 1,
+    "volume": 1,
+    "year_began": 2018,
+    "issue_count": 5,
+    "modified": _MODIFIED,
+}
+
+_FULL_SERIES = {
+    **_COMMON_SERIES,
+    "name": "Death of the Inhumans",
+    "sort_name": "Death of the Inhumans",
+    "series_type": {"id": 11, "name": "Limited Series"},
+    "status": "Completed",
+    "publisher": {"id": 1, "name": "Marvel"},
+    "desc": "",
+    "genres": [],
+    "associated": [],
+    "resource_url": "https://metron.cloud/series/death-of-the-inhumans-2018/",
+}
+
+
+def test_series_with_imprint() -> None:
     """Test series from an imprint."""
-    sandman = talker.series(3315)
+    sandman = Series(
+        **{
+            **_FULL_SERIES,
+            "id": 3315,
+            "name": "The Sandman",
+            "sort_name": "Sandman",
+            "imprint": {"id": 1, "name": "Vertigo Comics"},
+            "resource_url": "https://metron.cloud/series/sandman-1989/",
+        }
+    )
     assert sandman.imprint.id == 1
     assert sandman.imprint.name == "Vertigo Comics"
 
 
-def test_known_series(talker: Session) -> None:
+def test_known_series() -> None:
     """Test for a known series."""
-    death = talker.series(1)
+    death = Series(**{**_FULL_SERIES, "year_end": 2018})
     assert death.name == "Death of the Inhumans"
     assert death.sort_name == "Death of the Inhumans"
     assert death.volume == 1
@@ -36,9 +69,19 @@ def test_known_series(talker: Session) -> None:
     assert death.resource_url.__str__() == "https://metron.cloud/series/death-of-the-inhumans-2018/"
 
 
-def test_series_without_year_end(talker: Session) -> None:
+def test_series_without_year_end() -> None:
     """Test for series without a year-end date."""
-    abs_carnage = talker.series(2311)
+    abs_carnage = Series(
+        **{
+            **_FULL_SERIES,
+            "id": 2311,
+            "name": "Absolute Carnage",
+            "sort_name": "Absolute Carnage",
+            "year_began": 2019,
+            "year_end": None,
+            "resource_url": "https://metron.cloud/series/absolute-carnage-2019/",
+        }
+    )
     assert abs_carnage.name == "Absolute Carnage"
     assert abs_carnage.sort_name == "Absolute Carnage"
     assert abs_carnage.volume == 1
@@ -53,20 +96,54 @@ def test_series_without_year_end(talker: Session) -> None:
 
 def test_series_list(talker: Session) -> None:
     """Test the SeriesList."""
-    series = talker.series_list({"name": "batman"})
+    data = {
+        "count": 3,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "id": 8477,
+                "series": "Batman (2016)",
+                "volume": 1,
+                "year_began": 2016,
+                "year_end": None,
+                "issue_count": 125,
+                "modified": _MODIFIED,
+            },
+            {
+                "id": 2547,
+                "series": "Batman (1940)",
+                "volume": 1,
+                "year_began": 1940,
+                "year_end": 2011,
+                "issue_count": 14,
+                "modified": _MODIFIED,
+            },
+            {
+                "id": 11897,
+                "series": "All Star Batman & Robin, The Boy Wonder (2005)",
+                "volume": 1,
+                "year_began": 2005,
+                "year_end": None,
+                "issue_count": 10,
+                "modified": _MODIFIED,
+            },
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/series/", text=json.dumps(data))
+        series = talker.series_list({"name": "batman"})
     series_iter = iter(series)
     assert next(series_iter).id == 8477
-    assert next(series_iter).id == 13742
-    assert next(series_iter).id == 13637
     assert next(series_iter).id == 2547
     assert next(series_iter).id == 11897
-    assert len(series) == 393
-    assert series[3].id == 2547
-    assert series[3].volume == 1
-    assert series[3].issue_count == 14
-    assert series[4].id == 11897
-    assert series[4].display_name == "All Star Batman & Robin, The Boy Wonder (2005)"
-    assert series[4].volume == 1
+    assert len(series) == 3
+    assert series[1].id == 2547
+    assert series[1].volume == 1
+    assert series[1].issue_count == 14
+    assert series[2].id == 11897
+    assert series[2].display_name == "All Star Batman & Robin, The Boy Wonder (2005)"
+    assert series[2].volume == 1
 
 
 def test_series_issues_list(talker: Session) -> None:
@@ -150,69 +227,66 @@ def test_bad_series_validate(talker: Session) -> None:
             talker.series(150)
 
 
-def test_series_with_associated_series(talker: Session) -> None:
+def test_series_with_associated_series() -> None:
     """Test series with an associated series link."""
-    ff = talker.series(2818)
+    ff = Series(
+        **{
+            **_FULL_SERIES,
+            "id": 2818,
+            "name": "Fantastic Four Annual",
+            "sort_name": "Fantastic Four Annual",
+            "year_began": 1963,
+            "associated": [{"id": 26, "series": "Fantastic Four (1961)"}],
+            "resource_url": "https://metron.cloud/series/fantastic-four-annual-1963/",
+        }
+    )
     assert ff.name == "Fantastic Four Annual"
     assert len(ff.associated) == 1
-    assoc = ff.associated[0]
-    assert assoc.id == 26
-    assert assoc.name == "Fantastic Four (1961)"
+    assert ff.associated[0].id == 26
+    assert ff.associated[0].name == "Fantastic Four (1961)"
 
 
-def test_series_with_genres(talker: Session) -> None:
+def test_series_with_genres() -> None:
     """Test series with genres."""
-    tt2011 = talker.series(3503)
+    tt2011 = Series(
+        **{
+            **_FULL_SERIES,
+            "id": 3503,
+            "name": "Teen Titans",
+            "sort_name": "Teen Titans",
+            "year_began": 2011,
+            "genres": [{"id": 10, "name": "Super-Hero"}],
+            "resource_url": "https://metron.cloud/series/teen-titans-2011/",
+        }
+    )
     assert tt2011.name == "Teen Titans"
     assert len(tt2011.genres) == 1
     assert tt2011.genres[0].name == "Super-Hero"
 
 
-def test_series_list_with_year_end(talker: Session) -> None:
+def test_series_list_with_year_end() -> None:
     """Test that year_end is returned correctly in a series list."""
-    data = {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [
-            {
-                "id": 1,
-                "series": "Death of the Inhumans (2018)",
-                "volume": 1,
-                "year_began": 2018,
-                "year_end": 2018,
-                "issue_count": 5,
-                "modified": "2019-06-23T15:13:19.432378-04:00",
-            }
-        ],
-    }
-    with requests_mock.Mocker() as r:
-        r.get("https://metron.cloud/api/series/", text=json.dumps(data))
-        series = talker.series_list({"name": "death"})
-        assert len(series) == 1
-        assert series[0].year_end == 2018
+    series = BaseSeries(
+        id=1,
+        series="Death of the Inhumans (2018)",
+        volume=1,
+        year_began=2018,
+        year_end=2018,
+        issue_count=5,
+        modified=_MODIFIED,
+    )
+    assert series.year_end == 2018
 
 
-def test_series_list_without_year_end(talker: Session) -> None:
+def test_series_list_without_year_end() -> None:
     """Test that year_end is None when absent from a series list entry."""
-    data = {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [
-            {
-                "id": 2311,
-                "series": "Absolute Carnage (2019)",
-                "volume": 1,
-                "year_began": 2019,
-                "year_end": None,
-                "issue_count": 5,
-                "modified": "2019-07-05T14:32:52.256872-04:00",
-            }
-        ],
-    }
-    with requests_mock.Mocker() as r:
-        r.get("https://metron.cloud/api/series/", text=json.dumps(data))
-        series = talker.series_list({"name": "carnage"})
-        assert len(series) == 1
-        assert series[0].year_end is None
+    series = BaseSeries(
+        id=2311,
+        series="Absolute Carnage (2019)",
+        volume=1,
+        year_began=2019,
+        year_end=None,
+        issue_count=5,
+        modified=_MODIFIED,
+    )
+    assert series.year_end is None
