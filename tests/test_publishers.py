@@ -9,12 +9,22 @@ import pytest
 import requests_mock
 
 from mokkari import exceptions
+from mokkari.schemas.publisher import Publisher
 from mokkari.session import Session
 
 
-def test_known_publishers(talker: Session) -> None:
+def test_known_publishers() -> None:
     """Test for a known publisher."""
-    marvel = talker.publisher(1)
+    marvel = Publisher(
+        id=1,
+        name="Marvel",
+        founded=1939,
+        country="US",
+        desc="Marvel Comics.",
+        image="https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg",
+        modified="2019-06-23T15:13:19.432378-04:00",
+        resource_url="https://metron.cloud/publisher/marvel/",
+    )
     assert marvel.name == "Marvel"
     assert (
         marvel.image.__str__()
@@ -27,12 +37,24 @@ def test_known_publishers(talker: Session) -> None:
 
 def test_publisher_list(talker: Session) -> None:
     """Test the PublishersList."""
-    publishers = talker.publishers_list()
+    data = {
+        "count": 3,
+        "next": None,
+        "previous": None,
+        "results": [
+            {"id": 1, "name": "12-Gauge Comics", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            {"id": 2, "name": "AAA Pop Comics", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            {"id": 3, "name": "AWA Studios", "modified": "2019-06-23T15:13:19.432378-04:00"},
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/publisher/", text=json.dumps(data))
+        publishers = talker.publishers_list()
     publisher_iter = iter(publishers)
     assert next(publisher_iter).name == "12-Gauge Comics"
     assert next(publisher_iter).name == "AAA Pop Comics"
     assert next(publisher_iter).name == "AWA Studios"
-    assert len(publishers) == 155
+    assert len(publishers) == 3
     assert publishers[2].name == "AWA Studios"
 
 

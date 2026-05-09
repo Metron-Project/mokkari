@@ -13,9 +13,17 @@ from mokkari.schemas.universe import Universe
 from mokkari.session import Session
 
 
-def test_known_universe(talker: Session) -> None:
+def test_known_universe() -> None:
     """Test for a known universe object."""
-    dceased = talker.universe(83)
+    dceased = Universe(
+        id=83,
+        name="DCeased",
+        designation="Earth 55",
+        desc="A DC universe ravaged by a techno-virus.",
+        publisher={"id": 2, "name": "DC Comics"},
+        modified="2019-06-23T15:13:19.432378-04:00",
+        resource_url="https://metron.cloud/universe/dceased/",
+    )
     assert isinstance(dceased, Universe)
     assert dceased.name == "DCeased"
     assert dceased.designation == "Earth 55"
@@ -26,7 +34,23 @@ def test_known_universe(talker: Session) -> None:
 
 def test_universe_list(talker: Session) -> None:
     """Test the Universe list."""
-    universes = talker.universes_list()
+    data = {
+        "count": 3,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "id": 1,
+                "name": "2099 AD - Marvel Knights",
+                "modified": "2019-06-23T15:13:19.432378-04:00",
+            },
+            {"id": 2, "name": "ABC", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            {"id": 3, "name": "AP Superverse", "modified": "2019-06-23T15:13:19.432378-04:00"},
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/universe/", text=json.dumps(data))
+        universes = talker.universes_list()
     universes_iter = iter(universes)
     assert next(universes_iter).name == "2099 AD - Marvel Knights"
     assert next(universes_iter).name == "ABC"
@@ -35,7 +59,7 @@ def test_universe_list(talker: Session) -> None:
 
 
 def test_bad_universe(talker: Session) -> None:
-    """Test for a non-existent team."""
+    """Test for a non-existent universe."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/universe/-1/",
