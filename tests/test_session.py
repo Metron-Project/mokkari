@@ -6,6 +6,7 @@ This module contains tests for Session objects.
 import datetime
 import json
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1423,7 +1424,7 @@ def test_collection(session: Session) -> None:
                 storage_location="Box 1",
                 notes="First appearance",
                 is_read=True,
-                date_read=datetime.date(2023, 1, 20),
+                date_read=datetime.datetime(2023, 1, 20, tzinfo=datetime.timezone.utc),
                 rating=5,
                 resource_url="https://api.example.com/collection/1/",
                 created_on=datetime.datetime.now(),
@@ -1611,12 +1612,24 @@ def test_collection_missing_series(session: Session) -> None:
                 "sort_name": "Batman",
                 "year_began": 1940,
                 "year_end": 2011,
+                "publisher": {"id": 1, "name": "DC Comics"},
+                "series_type": {"id": 1, "name": "Ongoing Series"},
+                "total_issues": 713,
+                "owned_issues": 500,
+                "missing_count": 213,
+                "completion_percentage": 70.12,
             },
             {
                 "id": 2,
                 "name": "Superman",
                 "sort_name": "Superman",
                 "year_began": 1938,
+                "publisher": {"id": 1, "name": "DC Comics"},
+                "series_type": {"id": 1, "name": "Ongoing Series"},
+                "total_issues": 500,
+                "owned_issues": 200,
+                "missing_count": 300,
+                "completion_percentage": 40.0,
             },
         ],
         "next": None,
@@ -1632,12 +1645,24 @@ def test_collection_missing_series(session: Session) -> None:
                     sort_name="Batman",
                     year_began=1940,
                     year_end=2011,
+                    publisher=GenericItem(id=1, name="DC Comics"),
+                    series_type=GenericItem(id=1, name="Ongoing Series"),
+                    total_issues=713,
+                    owned_issues=500,
+                    missing_count=213,
+                    completion_percentage=70.12,
                 ),
                 MissingSeries(
                     id=2,
                     name="Superman",
                     sort_name="Superman",
                     year_began=1938,
+                    publisher=GenericItem(id=1, name="DC Comics"),
+                    series_type=GenericItem(id=1, name="Ongoing Series"),
+                    total_issues=500,
+                    owned_issues=200,
+                    missing_count=300,
+                    completion_percentage=40.0,
                 ),
             ],
         ),
@@ -1750,7 +1775,7 @@ def test_collection_scrobble(session: Session) -> None:
 
 def test_collection_scrobble_minimal(session: Session) -> None:
     # Arrange
-    scrobble_request = ScrobbleRequest(issue_id=1)
+    scrobble_request = ScrobbleRequest(issue_id=1, rating=None)
     resp = {
         "id": 100,
         "issue": {
@@ -2011,7 +2036,7 @@ def test__prepare_request_payload_all_set_fields_are_included(session: Session) 
 
 
 def test__prepare_request_payload_image_model_uses_multipart_and_strips_none(
-    session: Session, tmp_path: object
+    session: Session, tmp_path: Path
 ) -> None:
     """Image-field models must still use multipart form data with None values stripped."""
     img_file = tmp_path / "cover.png"
