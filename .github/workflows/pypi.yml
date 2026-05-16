@@ -5,7 +5,7 @@ on:
       - "v*.*.*"
 jobs:
   run:
-    name: "Build and publish release"
+    name: Build and publish release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

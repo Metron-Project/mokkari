@@ -1,4 +1,4 @@
-name: "Testing"
+name: Testing
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   tox:
-    name: "Tests"
+    name: Tests
     strategy:
       fail-fast: false
       matrix:
@@ -21,9 +21,9 @@ jobs:
           # - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-      #----------------------------------------------
+      # ----------------------------------------------
       #       check-out repo and set-up python
-      #----------------------------------------------
+      # ----------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup uv

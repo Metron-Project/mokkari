@@ -1,175 +1,26 @@
-import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
 import arrayFunc from "eslint-plugin-array-func";
+import eslintComments from "eslint-plugin-eslint-comments";
+import jsonc from "eslint-plugin-jsonc";
 import markdown from "eslint-plugin-markdown";
-// import plugin broken for flag config
-// https://github.com/import-js/eslint-plugin-import/issues/2556
-// import importPlugin from "eslint-plugin-import";
+import noConstructorBind from "eslint-plugin-no-constructor-bind";
+import noSecrets from "eslint-plugin-no-secrets";
+import noUseExtendNative from "eslint-plugin-no-use-extend-native";
+import optimizeRegex from "eslint-plugin-optimize-regex";
 import eslintPluginPrettierRecommended from "eslint-plugin-prettier/recommended";
+import promise from "eslint-plugin-promise";
 import pluginSecurity from "eslint-plugin-security";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
+import sonarjs from "eslint-plugin-sonarjs";
+import switchCase from "eslint-plugin-switch-case";
+import toml from "eslint-plugin-toml";
 import eslintPluginUnicorn from "eslint-plugin-unicorn";
+import yml from "eslint-plugin-yml";
 import globals from "globals";
-
-const compat = new FlatCompat();
 
 export default [
   {
-    languageOptions: {
-      globals: {
-        ...globals.node,
-        ...globals.browser,
-      },
-    },
-    linterOptions: {
-      reportUnusedDisableDirectives: "warn",
-    },
-    plugins: {
-      // import: importPlugin,
-      markdown: markdown,
-      security: pluginSecurity,
-      unicorn: eslintPluginUnicorn,
-    },
-    rules: {
-      "array-func/prefer-array-from": "off", // for modern browsers the spread operator, as preferred by unicorn, works fine.
-      "max-params": ["warn", 4],
-      "no-console": "warn",
-      "no-debugger": "warn",
-      "no-constructor-bind/no-constructor-bind": "error",
-      "no-constructor-bind/no-constructor-state": "error",
-      "no-secrets/no-secrets": "error",
-      "prettier/prettier": "warn",
-      "security/detect-object-injection": "off",
-      "space-before-function-paren": "off",
-      "unicorn/switch-case-braces": ["warn", "avoid"],
-      "unicorn/prefer-node-protocol": 0,
-      "unicorn/prevent-abbreviations": "off",
-      "unicorn/filename-case": [
-        "error",
-        { case: "kebabCase", ignore: [".*.md"] },
-      ],
-      /*
-     ...importPlugin.configs["recommended"].rules,
-     "import/no-unresolved": [
-       "error",
-       {
-         ignore: ["^[@]"],
-       },
-     ],
-     */
-    },
-    /*
-    settings: {
-      "import/parsers": {
-        espree: [".js", ".cjs", ".mjs", ".jsx"],
-        "@typescript-eslint/parser": [".ts"],
-      },
-      "import/resolver": {
-        typescript: true,
-        node: true,
-      },
-    },
-     */
-  },
-  js.configs.recommended,
-  arrayFunc.configs.all,
-  ...markdown.configs.recommended,
-  pluginSecurity.configs.recommended,
-  eslintPluginPrettierRecommended,
-  {
-    files: ["**/*.md"],
-    processor: "markdown/markdown",
-    rules: {
-      "prettier/prettier": ["warn", { parser: "markdown" }],
-    },
-  },
-  {
-    files: ["**/*.md/*.js"], // Will match js code inside *.md files
-    rules: {
-      "no-unused-vars": "off",
-      "no-undef": "off",
-    },
-  },
-  {
-    files: ["**/*.md/*.sh"],
-    rules: {
-      "prettier/prettier": ["error", { parser: "sh" }],
-    },
-  },
-  ...compat.config({
-    root: true,
-    env: {
-      browser: true,
-      es2024: true,
-      node: true,
-    },
-    extends: [
-      // LANGS
-      "plugin:jsonc/recommended-with-jsonc",
-      "plugin:toml/recommended",
-      "plugin:yml/standard",
-      "plugin:yml/prettier",
-      // CODE QUALITY
-      "plugin:sonarjs/recommended",
-      // PRACTICES
-      "plugin:eslint-comments/recommended",
-      // "plugin:import/recommended",
-      "plugin:no-use-extend-native/recommended",
-      "plugin:optimize-regex/all",
-      "plugin:promise/recommended",
-      "plugin:switch-case/recommended",
-      // SECURITY
-      // "plugin:no-unsanitized/DOM",
-    ],
-    overrides: [
-      {
-        files: ["*.yaml", "*.yml"],
-        //parser: "yaml-eslint-parser",
-        rules: {
-          "unicorn/filename-case": "off",
-        },
-      },
-      {
-        files: ["*.toml"],
-        //parser: "toml-eslint-parser",
-        rules: {
-          "prettier/prettier": ["error", { parser: "toml" }],
-        },
-      },
-      {
-        files: ["*.json", "*.json5", "*.jsonc"],
-        //parser: "jsonc-eslint-parser",
-      },
-    ],
-    parserOptions: {
-      ecmaFeatures: {
-        impliedStrict: true,
-      },
-      ecmaVersion: "latest",
-    },
-    plugins: [
-      "eslint-comments",
-      //"import",
-      "no-constructor-bind",
-      "no-secrets",
-      "no-unsanitized",
-      "no-use-extend-native",
-      "optimize-regex",
-      "promise",
-      "simple-import-sort",
-      "sonarjs",
-      "switch-case",
-      "unicorn",
-    ],
-    rules: {
-      "no-constructor-bind/no-constructor-bind": "error",
-      "no-constructor-bind/no-constructor-state": "error",
-      "no-secrets/no-secrets": "error",
-      "eslint-comments/no-unused-disable": 1,
-      "simple-import-sort/exports": "warn",
-      "simple-import-sort/imports": "warn",
-      "switch-case/newline-between-switch-case": "off", // Malfunctioning
-    },
-    ignorePatterns: [
+    ignores: [
       "*~",
       "**/__pycache__",
       ".git",
@@ -185,5 +36,107 @@ export default [
       "typings",
       "uv.lock",
     ],
-  }),
+  },
+  {
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        ...globals.es2024,
+      },
+      parserOptions: {
+        ecmaFeatures: {
+          impliedStrict: true,
+        },
+        ecmaVersion: "latest",
+      },
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: "warn",
+    },
+    plugins: {
+      "eslint-comments": eslintComments,
+      markdown,
+      "no-constructor-bind": noConstructorBind,
+      "no-secrets": noSecrets,
+      "optimize-regex": optimizeRegex,
+      security: pluginSecurity,
+      "simple-import-sort": simpleImportSort,
+      unicorn: eslintPluginUnicorn,
+    },
+    rules: {
+      "array-func/prefer-array-from": "off",
+      "eslint-comments/disable-enable-pair": "error",
+      "eslint-comments/no-aggregating-enable": "error",
+      "eslint-comments/no-duplicate-disable": "error",
+      "eslint-comments/no-unlimited-disable": "error",
+      "eslint-comments/no-unused-enable": "error",
+      "eslint-comments/no-unused-disable": "warn",
+      "max-params": ["warn", 4],
+      "no-console": "warn",
+      "no-debugger": "warn",
+      "no-constructor-bind/no-constructor-bind": "error",
+      "no-constructor-bind/no-constructor-state": "error",
+      "no-secrets/no-secrets": "error",
+      "optimize-regex/optimize-regex": "warn",
+      "prettier/prettier": "warn",
+      "security/detect-object-injection": "off",
+      "simple-import-sort/exports": "warn",
+      "simple-import-sort/imports": "warn",
+      "space-before-function-paren": "off",
+      "switch-case/newline-between-switch-case": "off",
+      "unicorn/switch-case-braces": ["warn", "avoid"],
+      "unicorn/prefer-node-protocol": 0,
+      "unicorn/prevent-abbreviations": "off",
+      "unicorn/filename-case": [
+        "error",
+        { case: "kebabCase", ignore: [".*.md"] },
+      ],
+    },
+  },
+  js.configs.recommended,
+  arrayFunc.configs.all,
+  noUseExtendNative.configs.recommended,
+  promise.configs["flat/recommended"],
+  sonarjs.configs.recommended,
+  switchCase.configs.recommended,
+  ...markdown.configs.recommended,
+  pluginSecurity.configs.recommended,
+  ...jsonc.configs["flat/recommended-with-jsonc"],
+  ...toml.configs["flat/recommended"],
+  ...yml.configs["flat/standard"],
+  ...yml.configs["flat/prettier"],
+  eslintPluginPrettierRecommended,
+  {
+    files: ["**/*.md"],
+    processor: "markdown/markdown",
+    rules: {
+      "prettier/prettier": ["warn", { parser: "markdown" }],
+    },
+  },
+  {
+    files: ["**/*.md/*.js"],
+    rules: {
+      "no-unused-vars": "off",
+      "no-undef": "off",
+    },
+  },
+  {
+    files: ["**/*.md/*.sh"],
+    rules: {
+      "prettier/prettier": ["error", { parser: "sh" }],
+    },
+  },
+  {
+    files: ["*.yaml", "*.yml"],
+    rules: {
+      "unicorn/filename-case": "off",
+    },
+  },
+  {
+    files: ["*.toml"],
+    rules: {
+      "prettier/prettier": ["error", { parser: "toml" }],
+    },
+  },
 ];
