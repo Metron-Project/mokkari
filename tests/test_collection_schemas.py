@@ -113,7 +113,7 @@ def test_user_valid_data(user_data):
 def test_user_missing_required_field():
     """Test User model with missing required field."""
     with pytest.raises(ValidationError):
-        User(id=1)
+        User(id=1)  # type: ignore
 
 
 # BookFormat enum tests
@@ -238,6 +238,7 @@ def test_collection_read_valid_data(collection_read_data):
     assert collection.storage_location == "Box 1"
     assert collection.notes == "First appearance"
     assert collection.is_read is True
+    assert collection.date_read is not None
     assert collection.date_read.year == 2024
     assert collection.date_read.month == 1
     assert collection.date_read.day == 20
@@ -293,12 +294,24 @@ def test_missing_series_valid_data():
         "sort_name": "Batman",
         "year_began": 1940,
         "year_end": 2011,
+        "publisher": {"id": 1, "name": "DC Comics"},
+        "series_type": {"id": 1, "name": "Ongoing Series"},
+        "total_issues": 713,
+        "owned_issues": 500,
+        "missing_count": 213,
+        "completion_percentage": 70.12,
     }
     series = MissingSeries(**data)
     assert series.id == 1
     assert series.name == "Batman"
     assert series.year_began == 1940
     assert series.year_end == 2011
+    assert series.publisher.name == "DC Comics"
+    assert series.series_type.name == "Ongoing Series"
+    assert series.total_issues == 713
+    assert series.owned_issues == 500
+    assert series.missing_count == 213
+    assert series.completion_percentage == 70.12
 
 
 def test_missing_series_no_end_year():
@@ -308,6 +321,12 @@ def test_missing_series_no_end_year():
         "name": "Batman",
         "sort_name": "Batman",
         "year_began": 2011,
+        "publisher": {"id": 1, "name": "DC Comics"},
+        "series_type": {"id": 1, "name": "Ongoing Series"},
+        "total_issues": 100,
+        "owned_issues": 50,
+        "missing_count": 50,
+        "completion_percentage": 50.0,
     }
     series = MissingSeries(**data)
     assert series.year_end is None
@@ -369,6 +388,7 @@ def test_scrobble_request_valid_data():
     }
     scrobble = ScrobbleRequest(**data)
     assert scrobble.issue_id == 1
+    assert scrobble.date_read is not None
     assert scrobble.date_read.year == 2024
     assert scrobble.date_read.month == 1
     assert scrobble.date_read.day == 20
@@ -414,7 +434,7 @@ def test_scrobble_request_invalid_rating_too_high():
 def test_scrobble_request_missing_required_field():
     """Test ScrobbleRequest with missing required field."""
     with pytest.raises(ValidationError):
-        ScrobbleRequest()
+        ScrobbleRequest()  # type: ignore
 
 
 # ScrobbleResponse tests
@@ -433,6 +453,7 @@ def test_scrobble_response_valid_data(collection_issue_data):
     assert response.id == 1
     assert response.issue.id == 1
     assert response.is_read is True
+    assert response.date_read is not None
     assert response.date_read.year == 2024
     assert response.date_read.month == 1
     assert response.date_read.day == 20

@@ -42,6 +42,7 @@ from enum import Enum
 from pydantic import Field
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.issue import BasicSeries
 from mokkari.schemas.user import User
 
@@ -297,6 +298,12 @@ class MissingSeries(BaseModel):
         sort_name (str): The sort name of the series.
         year_began (int): The year the series began.
         year_end (int, optional): The year the series ended.
+        publisher (GenericItem): The publisher of the series.
+        series_type (GenericItem): The type of the series.
+        total_issues (int): Total number of issues in the series.
+        owned_issues (int): Number of issues owned in the collection.
+        missing_count (int): Number of issues missing from the collection.
+        completion_percentage (float): Percentage of the series that is owned.
     """
 
     id: int
@@ -304,6 +311,12 @@ class MissingSeries(BaseModel):
     sort_name: str
     year_began: int
     year_end: int | None = None
+    publisher: GenericItem
+    series_type: GenericItem
+    total_issues: int
+    owned_issues: int
+    missing_count: int
+    completion_percentage: float
 
 
 class CollectionFormatStat(BaseModel):
