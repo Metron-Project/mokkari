@@ -54,6 +54,13 @@ from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostRes
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 from mokkari.schemas.variant import VariantPost, VariantPostResponse
+from mokkari.schemas.wish_list import (
+    AcquireWishListItem,
+    WishList,
+    WishListAddItem,
+    WishListItemList,
+    WishListItemRead,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -102,6 +109,7 @@ class ResourceEndpoint:
     SERIES: Final[str] = "series"
     TEAM: Final[str] = "team"
     UNIVERSE: Final[str] = "universe"
+    WISH_LIST: Final[str] = "wish_list"
 
 
 def format_time(seconds: str | float) -> str:
@@ -420,6 +428,34 @@ class Session:
             return adapter.validate_python(resp["results"])
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
+
+    def _send_void(self, method: str, endpoint: list[str | int], data: Any = None) -> None:
+        """Send a request that returns no response body (204 No Content or 200 with no body).
+
+        Args:
+            method: HTTP method to use ("POST" or "DELETE").
+            endpoint: List of path segments to build the API endpoint URL.
+            data: Optional data to send in the request body.
+
+        Raises:
+            ApiError: If the request fails.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        url = self.api_url.format("/".join(str(e) for e in endpoint))
+        self._check_rate_limit()
+        header, files, data_dict = self._prepare_request_payload(data)
+        response = self._execute_http_request(method, url, {}, header, data_dict, files)
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == requests.codes.too_many:
+                retry_after = float(response.headers.get("Retry-After", 0))
+                msg = (
+                    f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
+                )
+                raise exceptions.RateLimitError(msg, retry_after=retry_after) from err
+            msg = f"HTTP error: {err!r} | Response body: {response.text}"
+            raise exceptions.ApiError(msg) from err
 
     def _handle_write_request(
         self, method: str, endpoint: list[str | int], data: Any, response_class: type
@@ -1523,6 +1559,137 @@ class Session:
         return self._handle_write_request(
             "POST", [ResourceEndpoint.COLLECTION, "scrobble"], data, ScrobbleResponse
         )
+
+    # Wish list methods
+    def wish_list(self, _id: int) -> WishList:
+        """Retrieve a wish list by ID.
+
+        Note: This endpoint requires authentication. Users can only access their own wish lists.
+
+        Args:
+            _id: The unique identifier for the wish list.
+
+        Returns:
+            A WishList object.
+
+        Raises:
+            ApiError: If the wish list is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> wl = session.wish_list(1)
+            >>> print(f"Items: {wl.item_count}")
+        """
+        return self._get_resource(ResourceEndpoint.WISH_LIST, _id, WishList)
+
+    def wish_lists_list(self, params: dict[str, str | int] | None = None) -> list[WishList]:
+        """Retrieve a list of wish lists for the authenticated user.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            params: Optional dictionary of query parameters for filtering results.
+
+        Returns:
+            list[WishList]: A list of WishList objects.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> lists = session.wish_lists_list()
+        """
+        return self._list_resources(ResourceEndpoint.WISH_LIST, params, WishList)
+
+    def wish_list_items(self, params: dict[str, str | int] | None = None) -> list[WishListItemList]:
+        """Retrieve wish list items for the authenticated user.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            params: Optional dictionary of query parameters for filtering results.
+
+        Returns:
+            list[WishListItemList]: A list of WishListItemList objects.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> items = session.wish_list_items()
+            >>> for item in items:
+            ...     print(f"{item.issue.series.name} #{item.issue.number} - {item.status}")
+        """
+        resp = self._get_results([ResourceEndpoint.WISH_LIST, "items"], params)
+        return self._validate_list_response(resp, WishListItemList)
+
+    def wish_list_add_item(self, data: WishListAddItem) -> WishListItemRead:
+        """Add an issue to the authenticated user's wish list.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            data: WishListAddItem object containing the issue_id and optional fields.
+
+        Returns:
+            WishListItemRead: The newly created wish list item.
+
+        Raises:
+            ApiError: If the issue is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> from mokkari.schemas.wish_list import WishListAddItem
+            >>> item = session.wish_list_add_item(WishListAddItem(issue_id=1, priority=2))
+            >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
+        """
+        return self._handle_write_request(
+            "POST", [ResourceEndpoint.WISH_LIST, "items", "add"], data, WishListItemRead
+        )
+
+    def wish_list_acquire_item(self, item_pk: int, data: AcquireWishListItem) -> None:
+        """Mark a wish list item as acquired and create a collection item.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            item_pk: The unique identifier of the wish list item to acquire.
+            data: AcquireWishListItem object with optional purchase details.
+
+        Raises:
+            ApiError: If the item is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> from mokkari.schemas.wish_list import AcquireWishListItem
+            >>> session.wish_list_acquire_item(1, AcquireWishListItem(purchase_price="9.99"))
+        """
+        self._send_void("POST", [ResourceEndpoint.WISH_LIST, "items", item_pk, "acquire"], data)
+
+    def wish_list_remove_item(self, item_pk: int) -> None:
+        """Remove an item from the authenticated user's wish list.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            item_pk: The unique identifier of the wish list item to remove.
+
+        Raises:
+            ApiError: If the item is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> session.wish_list_remove_item(1)
+        """
+        self._send_void("DELETE", [ResourceEndpoint.WISH_LIST, "items", item_pk, "remove"])
 
     def _get_results(
         self,
