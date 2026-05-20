@@ -49,6 +49,7 @@ from mokkari.schemas.issue import (
     IssuePostResponse,
 )
 from mokkari.schemas.publisher import Publisher, PublisherPost
+from mokkari.schemas.pull_list import PullListIssue, PullListRead, PullListSeries
 from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
 from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
@@ -109,6 +110,7 @@ class ResourceEndpoint:
     SERIES: Final[str] = "series"
     TEAM: Final[str] = "team"
     UNIVERSE: Final[str] = "universe"
+    PULL_LIST: Final[str] = "pull_list"
     WISH_LIST: Final[str] = "wish_list"
 
 
@@ -1560,39 +1562,14 @@ class Session:
             "POST", [ResourceEndpoint.COLLECTION, "scrobble"], data, ScrobbleResponse
         )
 
-    # Wish list methods
-    def wish_list(self, _id: int) -> WishList:
-        """Retrieve a wish list by ID.
-
-        Note: This endpoint requires authentication. Users can only access their own wish lists.
-
-        Args:
-            _id: The unique identifier for the wish list.
-
-        Returns:
-            A WishList object.
-
-        Raises:
-            ApiError: If the wish list is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("username", "password")
-            >>> wl = session.wish_list(1)
-            >>> print(f"Items: {wl.item_count}")
-        """
-        return self._get_resource(ResourceEndpoint.WISH_LIST, _id, WishList)
-
-    def wish_lists_list(self, params: dict[str, str | int] | None = None) -> list[WishList]:
-        """Retrieve a list of wish lists for the authenticated user.
+    # Pull list methods
+    def pull_list(self) -> PullListRead:
+        """Retrieve the authenticated user's pull list.
 
         Note: This endpoint requires authentication.
 
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
         Returns:
-            list[WishList]: A list of WishList objects.
+            A PullListRead object.
 
         Raises:
             ApiError: If there's an API error.
@@ -1600,9 +1577,126 @@ class Session:
 
         Examples:
             >>> session = Session("username", "password")
-            >>> lists = session.wish_lists_list()
+            >>> pl = session.pull_list()
+            >>> print(f"Series: {pl.series_count}")
         """
-        return self._list_resources(ResourceEndpoint.WISH_LIST, params, WishList)
+        results = self._list_resources(ResourceEndpoint.PULL_LIST, None, PullListRead)
+        return results[0]
+
+    def pull_list_issues(self, params: dict[str, str | int] | None = None) -> list[PullListIssue]:
+        """Retrieve issues for series on the authenticated user's pull list.
+
+        Optionally filter by store date using store_date_after and store_date_before.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            params: Optional dictionary of query parameters. Supports:
+                - store_date_after: Return issues with a store date on or after this date (YYYY-MM-DD).
+                - store_date_before: Return issues with a store date on or before this date (YYYY-MM-DD).
+
+        Returns:
+            list[PullListIssue]: A list of PullListIssue objects.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> issues = session.pull_list_issues({"store_date_after": "2024-01-01"})
+            >>> for issue in issues:
+            ...     print(f"{issue.series.name} #{issue.number}")
+        """
+        resp = self._get_results([ResourceEndpoint.PULL_LIST, "issues"], params)
+        return self._validate_list_response(resp, PullListIssue)
+
+    def pull_list_series(self, params: dict[str, str | int] | None = None) -> list[PullListSeries]:
+        """Retrieve the series on the authenticated user's pull list.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            params: Optional dictionary of query parameters for filtering results.
+
+        Returns:
+            list[PullListSeries]: A list of PullListSeries objects.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> series_list = session.pull_list_series()
+            >>> for entry in series_list:
+            ...     print(entry.series.display_name)
+        """
+        resp = self._get_results([ResourceEndpoint.PULL_LIST, "series"], params)
+        return self._validate_list_response(resp, PullListSeries)
+
+    def pull_list_add_series(self, series_id: int) -> PullListSeries:
+        """Add a series to the authenticated user's pull list.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            series_id: The unique identifier of the series to add.
+
+        Returns:
+            PullListSeries: The pull list series entry.
+
+        Raises:
+            ApiError: If the series is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> entry = session.pull_list_add_series(42)
+            >>> print(entry.series.display_name)
+        """
+        url = self.api_url.format("/".join([ResourceEndpoint.PULL_LIST, "series", "add"]))
+        resp = self._request_data("POST", url, params={"series_id": series_id})
+        return self._validate_response(resp, PullListSeries)
+
+    def pull_list_remove_series(self, series_pk: int) -> None:
+        """Remove a series from the authenticated user's pull list.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            series_pk: The unique identifier of the pull list series entry to remove.
+
+        Raises:
+            ApiError: If the entry is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> session.pull_list_remove_series(1)
+        """
+        self._send_void("DELETE", [ResourceEndpoint.PULL_LIST, "series", series_pk, "remove"])
+
+    # Wish list methods
+    def wish_list(self) -> WishList:
+        """Retrieve the authenticated user's wish list.
+
+        Note: This endpoint requires authentication.
+
+        Returns:
+            A WishList object.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> wl = session.wish_list()
+            >>> print(f"Items: {wl.item_count}")
+        """
+        results = self._list_resources(ResourceEndpoint.WISH_LIST, None, WishList)
+        return results[0]
 
     def wish_list_items(self, params: dict[str, str | int] | None = None) -> list[WishListItemList]:
         """Retrieve wish list items for the authenticated user.
