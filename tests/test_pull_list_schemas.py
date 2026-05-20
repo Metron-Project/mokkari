@@ -5,27 +5,18 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from mokkari.schemas.pull_list import PullListIssue, PullListRead, PullListSeries
+from mokkari.schemas.pull_list import (
+    PullListIssue,
+    PullListRead,
+    PullListSeries,
+    PullListSeriesDetail,
+)
 
 
 @pytest.fixture
 def basic_series_data():
     """Sample basic series data (IssueListSeries)."""
     return {"name": "Batman", "volume": 1, "year_began": 1940}
-
-
-@pytest.fixture
-def base_series_data():
-    """Sample base series data (SeriesList)."""
-    return {
-        "id": 10,
-        "series": "Batman",
-        "year_began": 1940,
-        "year_end": None,
-        "volume": 1,
-        "issue_count": 100,
-        "modified": "2024-01-01T12:00:00Z",
-    }
 
 
 # PullListRead tests
@@ -96,47 +87,74 @@ def test_pull_list_issue_missing_required_field(basic_series_data):
         PullListIssue(id=100, series=basic_series_data)  # type: ignore
 
 
-# PullListSeries tests
-def test_pull_list_series_valid_data(base_series_data):
-    """Test PullListSeries model with valid data."""
+# PullListSeriesDetail tests
+def test_pull_list_series_detail_valid_data():
+    """Test PullListSeriesDetail model with valid data."""
     data = {
         "id": 1,
-        "series": base_series_data,
-        "added_on": "2024-06-01T10:00:00Z",
+        "series": "Death of the Inhumans (2018)",
+        "year_began": 2018,
+        "year_end": 2018,
+        "volume": 1,
+        "modified": "2024-12-27T11:29:08.281134-05:00",
     }
-    entry = PullListSeries(**data)
-    assert entry.id == 1
-    assert entry.series.display_name == "Batman"
-    assert entry.series.year_began == 1940
-    assert entry.series.issue_count == 100
-    assert isinstance(entry.added_on, datetime)
-    assert entry.added_on.year == 2024
+    detail = PullListSeriesDetail(**data)
+    assert detail.id == 1
+    assert detail.name == "Death of the Inhumans (2018)"
+    assert detail.year_began == 2018
+    assert detail.year_end == 2018
+    assert detail.volume == 1
 
 
-def test_pull_list_series_missing_required_field(base_series_data):
-    """Test PullListSeries with missing required field."""
-    with pytest.raises(ValidationError):
-        PullListSeries(id=1, series=base_series_data)  # type: ignore
-
-
-def test_pull_list_series_year_end_none(base_series_data):
-    """Test PullListSeries with ongoing series (year_end=None)."""
+def test_pull_list_series_detail_ongoing_series():
+    """Test PullListSeriesDetail with an ongoing series (year_end=None)."""
     data = {
         "id": 2,
-        "series": base_series_data,
-        "added_on": "2024-06-01T10:00:00Z",
+        "series": "Batman",
+        "year_began": 1940,
+        "year_end": None,
+        "volume": 1,
+        "modified": "2024-01-01T12:00:00Z",
     }
-    entry = PullListSeries(**data)
-    assert entry.series.year_end is None
+    detail = PullListSeriesDetail(**data)
+    assert detail.year_end is None
 
 
-def test_pull_list_series_with_year_end(base_series_data):
-    """Test PullListSeries with a completed series."""
-    base_series_data["year_end"] = 1986
+# PullListSeries tests
+def test_pull_list_series_valid_data():
+    """Test PullListSeries model with valid data."""
     data = {
-        "id": 3,
-        "series": base_series_data,
-        "added_on": "2024-06-01T10:00:00Z",
+        "id": 6,
+        "series": {
+            "id": 1,
+            "series": "Death of the Inhumans (2018)",
+            "year_began": 2018,
+            "year_end": 2018,
+            "volume": 1,
+            "modified": "2024-12-27T11:29:08.281134-05:00",
+        },
+        "added_on": "2026-05-20T16:46:36.044123-04:00",
     }
     entry = PullListSeries(**data)
-    assert entry.series.year_end == 1986
+    assert entry.id == 6
+    assert entry.series.id == 1
+    assert entry.series.name == "Death of the Inhumans (2018)"
+    assert entry.series.year_began == 2018
+    assert entry.series.year_end == 2018
+    assert isinstance(entry.added_on, datetime)
+    assert entry.added_on.year == 2026
+
+
+def test_pull_list_series_missing_required_field():
+    """Test PullListSeries with missing required field."""
+    with pytest.raises(ValidationError):
+        PullListSeries(
+            id=1,
+            series={
+                "id": 10,
+                "series": "Batman",
+                "year_began": 1940,
+                "volume": 1,
+                "modified": "2024-01-01T12:00:00Z",
+            },
+        )  # type: ignore

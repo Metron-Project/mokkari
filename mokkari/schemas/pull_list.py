@@ -2,24 +2,57 @@
 
 This module provides the following classes:
 
-- PullListRead
+- PullListAddSeries
 - PullListIssue
+- PullListRead
 - PullListSeries
+- PullListSeriesDetail
 """
 
 __all__ = [
+    "PullListAddSeries",
     "PullListIssue",
     "PullListRead",
     "PullListSeries",
+    "PullListSeriesDetail",
 ]
 
 from datetime import date, datetime
 
-from pydantic import HttpUrl
+from pydantic import Field, HttpUrl
 
 from mokkari.schemas import BaseModel
 from mokkari.schemas.issue import BasicSeries
-from mokkari.schemas.series import BaseSeries
+
+
+class PullListAddSeries(BaseModel):
+    """A data model representing a request to add a series to the pull list.
+
+    Attributes:
+        series_id (int): The unique identifier of the series to add.
+    """
+
+    series_id: int
+
+
+class PullListSeriesDetail(BaseModel):
+    """A data model representing series details within a pull list entry.
+
+    Attributes:
+        id (int): The unique identifier of the series.
+        name (str): The name of the series.
+        year_began (int): The year the series began.
+        year_end (int, optional): The year the series ended.
+        volume (int): The volume number of the series.
+        modified (datetime): The date and time when the series was last modified.
+    """
+
+    id: int
+    name: str = Field(alias="series")
+    year_began: int
+    year_end: int | None = None
+    volume: int
+    modified: datetime
 
 
 class PullListRead(BaseModel):
@@ -67,10 +100,10 @@ class PullListSeries(BaseModel):
 
     Attributes:
         id (int): The unique identifier of the pull list series entry.
-        series (BaseSeries): The series details.
+        series (PullListSeriesDetail): The series details.
         added_on (datetime): The date and time when the series was added to the pull list.
     """
 
     id: int
-    series: BaseSeries
+    series: PullListSeriesDetail
     added_on: datetime

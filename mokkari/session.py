@@ -49,7 +49,7 @@ from mokkari.schemas.issue import (
     IssuePostResponse,
 )
 from mokkari.schemas.publisher import Publisher, PublisherPost
-from mokkari.schemas.pull_list import PullListIssue, PullListRead, PullListSeries
+from mokkari.schemas.pull_list import PullListAddSeries, PullListIssue, PullListRead, PullListSeries
 from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
 from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
@@ -1655,9 +1655,12 @@ class Session:
             >>> entry = session.pull_list_add_series(42)
             >>> print(entry.series.display_name)
         """
-        url = self.api_url.format("/".join([ResourceEndpoint.PULL_LIST, "series", "add"]))
-        resp = self._request_data("POST", url, params={"series_id": series_id})
-        return self._validate_response(resp, PullListSeries)
+        return self._handle_write_request(
+            "POST",
+            [ResourceEndpoint.PULL_LIST, "series", "add"],
+            PullListAddSeries(series_id=series_id),
+            PullListSeries,
+        )
 
     def pull_list_remove_series(self, series_pk: int) -> None:
         """Remove a series from the authenticated user's pull list.
