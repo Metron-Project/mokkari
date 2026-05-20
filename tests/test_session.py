@@ -56,6 +56,14 @@ from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 from mokkari.schemas.user import User
 from mokkari.schemas.variant import VariantPost, VariantPostResponse
+from mokkari.schemas.wish_list import (
+    AcquireWishListItem,
+    Priority,
+    WishList,
+    WishListAddItem,
+    WishListItemList,
+    WishListItemRead,
+)
 from mokkari.session import Session
 
 
@@ -2444,3 +2452,194 @@ def test_default_bucket_shared_across_sessions() -> None:
         assert s1._bucket is s2._bucket
     finally:
         session_module._default_bucket_instance = original
+
+
+def test_wish_list(session: Session) -> None:
+    # Arrange
+    resp = {
+        "id": 1,
+        "item_count": 5,
+        "items_url": "https://metron.cloud/api/wish_list/1/items/",
+        "modified": "2024-01-01T12:00:00Z",
+    }
+    with (
+        patch.object(session, "_get", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=WishList(
+                id=1,
+                item_count=5,
+                items_url="https://metron.cloud/api/wish_list/1/items/",
+                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+            ),
+        ),
+    ):
+        # Act
+        result = session.wish_list(1)
+        # Assert
+        assert isinstance(result, WishList)
+        assert result.id == 1
+        assert result.item_count == 5
+
+
+def test_wish_lists_list(session: Session) -> None:
+    # Arrange
+    resp = {
+        "results": [
+            {
+                "id": 1,
+                "item_count": 5,
+                "items_url": "https://metron.cloud/api/wish_list/1/items/",
+                "modified": "2024-01-01T12:00:00Z",
+            }
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                WishList(
+                    id=1,
+                    item_count=5,
+                    items_url="https://metron.cloud/api/wish_list/1/items/",
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                )
+            ],
+        ),
+    ):
+        # Act
+        result = session.wish_lists_list()
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].id == 1
+        assert result[0].item_count == 5
+
+
+def test_wish_list_items(session: Session) -> None:
+    # Arrange
+    resp = {
+        "results": [
+            {
+                "id": 10,
+                "issue": {
+                    "id": 1,
+                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                    "number": "1",
+                    "cover_date": "2024-01-01",
+                    "modified": "2024-01-01T12:00:00Z",
+                },
+                "status": "Wanted",
+                "priority": 3,
+                "modified": "2024-01-01T12:00:00Z",
+            }
+        ],
+        "next": None,
+    }
+    with (
+        patch.object(session, "_get_results", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=[
+                WishListItemList(
+                    id=10,
+                    issue=CollectionIssue(
+                        id=1,
+                        series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                        number="1",
+                        cover_date=datetime.date(2024, 1, 1),
+                        modified=datetime.datetime(
+                            2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc
+                        ),
+                    ),
+                    status="Wanted",
+                    priority=Priority.THREE,
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                )
+            ],
+        ),
+    ):
+        # Act
+        result = session.wish_list_items()
+        # Assert
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].id == 10
+        assert result[0].status == "Wanted"
+
+
+def test_wish_list_add_item(session: Session) -> None:
+    # Arrange
+    add_request = WishListAddItem(issue_id=1, priority=2, notes="High priority")
+    resp = {
+        "id": 10,
+        "issue": {
+            "id": 1,
+            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "number": "1",
+            "cover_date": "2024-01-01",
+            "modified": "2024-01-01T12:00:00Z",
+        },
+        "status": "Wanted",
+        "priority": 2,
+        "max_price_currency": None,
+        "notes": "High priority",
+        "added_on": "2024-01-01T10:00:00Z",
+        "modified": "2024-01-01T12:00:00Z",
+    }
+    with (
+        patch.object(session, "_send", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=WishListItemRead(
+                id=10,
+                issue=CollectionIssue(
+                    id=1,
+                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    number="1",
+                    cover_date=datetime.date(2024, 1, 1),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                ),
+                status="Wanted",
+                priority=Priority.TWO,
+                max_price_currency=None,
+                notes="High priority",
+                added_on=datetime.datetime(2024, 1, 1, 10, 0, 0, tzinfo=datetime.timezone.utc),
+                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+            ),
+        ),
+    ):
+        # Act
+        result = session.wish_list_add_item(add_request)
+        # Assert
+        assert isinstance(result, WishListItemRead)
+        assert result.id == 10
+        assert result.status == "Wanted"
+        assert result.notes == "High priority"
+
+
+def test_wish_list_acquire_item(session: Session) -> None:
+    # Arrange
+    acquire_request = AcquireWishListItem(
+        purchase_price=Decimal("9.99"), purchase_store="Local Comic Shop"
+    )
+    with patch.object(session, "_send_void") as mock_send_void:
+        # Act
+        result = session.wish_list_acquire_item(10, acquire_request)
+        # Assert
+        assert result is None
+        mock_send_void.assert_called_once_with(
+            "POST", ["wish_list", "items", 10, "acquire"], acquire_request
+        )
+
+
+def test_wish_list_remove_item(session: Session) -> None:
+    # Arrange
+    with patch.object(session, "_send_void") as mock_send_void:
+        # Act
+        result = session.wish_list_remove_item(10)
+        # Assert
+        assert result is None
+        mock_send_void.assert_called_once_with("DELETE", ["wish_list", "items", 10, "remove"])

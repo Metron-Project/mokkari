@@ -60,6 +60,7 @@ nav:
       - Universe: mokkari/schemas/universe.md
       - User: mokkari/schemas/user.md
       - Variant: mokkari/schemas/variant.md
+      - Wish List: mokkari/schemas/wish_list.md
 
 plugins:
   - search
