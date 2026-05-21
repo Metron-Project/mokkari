@@ -2457,34 +2457,6 @@ def test_default_bucket_shared_across_sessions() -> None:
 def test_wish_list(session: Session) -> None:
     # Arrange
     resp = {
-        "id": 1,
-        "item_count": 5,
-        "items_url": "https://metron.cloud/api/wish_list/1/items/",
-        "modified": "2024-01-01T12:00:00Z",
-    }
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=WishList(
-                id=1,
-                item_count=5,
-                items_url="https://metron.cloud/api/wish_list/1/items/",
-                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
-            ),
-        ),
-    ):
-        # Act
-        result = session.wish_list(1)
-        # Assert
-        assert isinstance(result, WishList)
-        assert result.id == 1
-        assert result.item_count == 5
-
-
-def test_wish_lists_list(session: Session) -> None:
-    # Arrange
-    resp = {
         "results": [
             {
                 "id": 1,
@@ -2510,12 +2482,11 @@ def test_wish_lists_list(session: Session) -> None:
         ),
     ):
         # Act
-        result = session.wish_lists_list()
+        result = session.wish_list()
         # Assert
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0].id == 1
-        assert result[0].item_count == 5
+        assert isinstance(result, WishList)
+        assert result.id == 1
+        assert result.item_count == 5
 
 
 def test_wish_list_items(session: Session) -> None:
