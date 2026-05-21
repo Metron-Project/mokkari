@@ -26,11 +26,7 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Operating System :: Microsoft :: Windows",
 ]
-dependencies = [
-  "requests>=2.26.0,<3",
-  "pydantic>=2.10.3,<3",
-  "pyrate-limiter>=4",
-]
+dependencies = ["requests>=2.26.0", "pydantic>=2.10.3", "pyrate-limiter>=4"]
 
 [project.urls]
 Homepage = "https://github.com/Metron-Project/mokkari"
@@ -40,11 +36,11 @@ Homepage = "https://github.com/Metron-Project/mokkari"
 dev = ["hatchling>=1.27.0", "pre-commit>=4", "tox>=4.11.3,<5", "tox-uv>=1.25.0"]
 test = ["coverage[toml]~=7.0", "pytest-cov>=6.2.1", "requests-mock>=1.9.3,<2"]
 lint = [
-  "codespell>=2.1.0,<3",
-  "pyright>=1.1.232,<2",
-  "radon[toml]>=6.0.1,<7",
+  "codespell>=2.1.0",
+  "pyright>=1.1.232",
+  "radon[toml]>=6.0.1",
   "ruff>=0.12.4",
-  "types-python-dateutil>=2.8.19,<3",
+  "types-python-dateutil>=2.8.19",
   "vulture~=2.3",
 ]
 docs = [
