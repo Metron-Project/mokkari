@@ -101,7 +101,7 @@ def test_character_issue_list(talker: Session) -> None:
         "results": [
             {
                 "id": 258,
-                "series": {"name": "Fantastic Four", "volume": 1, "year_began": 1961},
+                "series": {"id": 1, "name": "Fantastic Four", "volume": 1, "year_began": 1961},
                 "number": "45",
                 "issue": "Fantastic Four (1961) #45",
                 "cover_date": "1965-12-01",
@@ -110,7 +110,7 @@ def test_character_issue_list(talker: Session) -> None:
             },
             {
                 "id": 259,
-                "series": {"name": "Fantastic Four", "volume": 1, "year_began": 1961},
+                "series": {"id": 1, "name": "Fantastic Four", "volume": 1, "year_began": 1961},
                 "number": "46",
                 "issue": "Fantastic Four (1961) #46",
                 "cover_date": "1966-01-01",

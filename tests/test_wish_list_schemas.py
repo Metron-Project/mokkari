@@ -20,7 +20,7 @@ from mokkari.schemas.wish_list import (
 @pytest.fixture
 def basic_series_data():
     """Sample basic series data."""
-    return {"name": "Batman", "volume": 1, "year_began": 1940}
+    return {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940}
 
 
 @pytest.fixture

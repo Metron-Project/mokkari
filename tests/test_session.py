@@ -504,7 +504,7 @@ def test_character_issues_list_happy_path(session: Session) -> None:
                     store_date=None,
                     modified=datetime.datetime.now(),
                     issue="",
-                    series=BasicSeries(name="Series 1", volume=1, year_began=2025),
+                    series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
                 ),
             ],
         ),
@@ -697,7 +697,7 @@ def test_team_issues_list(session: Session) -> None:
                     store_date=None,
                     modified=datetime.datetime.now(),
                     issue="",
-                    series=BasicSeries(name="Series 1", volume=1, year_began=2025),
+                    series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
                 ),
             ],
         ),
@@ -807,7 +807,7 @@ def test_arc_issues_list(session: Session) -> None:
                     store_date=None,
                     modified=datetime.datetime.now(),
                     issue="",
-                    series=BasicSeries(name="Series 1", volume=1, year_began=2025),
+                    series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
                 ),
             ],
         ),
@@ -1007,7 +1007,7 @@ def test_issues_list(session: Session) -> None:
                     issue="Issue #1",
                     number="1",
                     modified=datetime.datetime.now(),
-                    series=BasicSeries(name="Foo Bar", volume=1, year_began=2025),
+                    series=BasicSeries(id=1, name="Foo Bar", volume=1, year_began=2025),
                     cover_date=datetime.date(2025, 5, 1),
                 )
             ],
@@ -1341,7 +1341,7 @@ def test_reading_list_items(session: Session) -> None:
                 "id": 1,
                 "issue": {
                     "id": 100,
-                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                    "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
                     "number": "1",
                     "cover_date": "2023-01-01",
                     "modified": "2023-01-01T12:00:00Z",
@@ -1360,7 +1360,7 @@ def test_reading_list_items(session: Session) -> None:
                     id=1,
                     issue=ReadingListIssue(
                         id=100,
-                        series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                        series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                         number="1",
                         cover_date=datetime.date(2023, 1, 1),
                         modified=datetime.datetime.now(),
@@ -1387,7 +1387,7 @@ def test_collection(session: Session) -> None:
         "user": {"id": 1, "username": "testuser"},
         "issue": {
             "id": 100,
-            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
             "number": "1",
             "cover_date": "2023-01-01",
             "modified": "2023-01-01T12:00:00Z",
@@ -1417,7 +1417,7 @@ def test_collection(session: Session) -> None:
                 user=User(id=1, username="testuser"),
                 issue=CollectionIssue(
                     id=100,
-                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
                     cover_date=datetime.date(2023, 1, 1),
                     modified=datetime.datetime.now(),
@@ -1457,7 +1457,7 @@ def test_collections_list(session: Session) -> None:
                 "user": {"id": 1, "username": "testuser"},
                 "issue": {
                     "id": 100,
-                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                    "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
                     "number": "1",
                     "cover_date": "2023-01-01",
                     "modified": "2023-01-01T12:00:00Z",
@@ -1481,7 +1481,7 @@ def test_collections_list(session: Session) -> None:
                     user=User(id=1, username="testuser"),
                     issue=CollectionIssue(
                         id=100,
-                        series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                        series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                         number="1",
                         cover_date=datetime.date(2023, 1, 1),
                         modified=datetime.datetime.now(),
@@ -1513,7 +1513,7 @@ def test_collections_list_with_params(session: Session) -> None:
                 "user": {"id": 1, "username": "testuser"},
                 "issue": {
                     "id": 101,
-                    "series": {"name": "Superman", "volume": 1, "year_began": 1938},
+                    "series": {"id": 1, "name": "Superman", "volume": 1, "year_began": 1938},
                     "number": "1",
                     "cover_date": "2023-02-01",
                     "modified": "2023-02-01T12:00:00Z",
@@ -1537,7 +1537,7 @@ def test_collections_list_with_params(session: Session) -> None:
                     user=User(id=1, username="testuser"),
                     issue=CollectionIssue(
                         id=101,
-                        series=BasicSeries(name="Superman", volume=1, year_began=1938),
+                        series=BasicSeries(id=1, name="Superman", volume=1, year_began=1938),
                         number="1",
                         cover_date=datetime.date(2023, 2, 1),
                         modified=datetime.datetime.now(),
@@ -1566,14 +1566,14 @@ def test_collection_missing_issues(session: Session) -> None:
         "results": [
             {
                 "id": 200,
-                "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
                 "number": "2",
                 "cover_date": "2023-02-01",
                 "store_date": "2023-01-15",
             },
             {
                 "id": 201,
-                "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
                 "number": "3",
                 "cover_date": "2023-03-01",
             },
@@ -1587,14 +1587,14 @@ def test_collection_missing_issues(session: Session) -> None:
             return_value=[
                 MissingIssue(
                     id=200,
-                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="2",
                     cover_date=datetime.date(2023, 2, 1),
                     store_date=datetime.date(2023, 1, 15),
                 ),
                 MissingIssue(
                     id=201,
-                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="3",
                     cover_date=datetime.date(2023, 3, 1),
                 ),
@@ -1736,7 +1736,7 @@ def test_collection_scrobble(session: Session) -> None:
         "id": 100,
         "issue": {
             "id": 1,
-            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
             "number": "1",
             "cover_date": "2024-01-01",
             "store_date": "2023-12-15",
@@ -1756,7 +1756,7 @@ def test_collection_scrobble(session: Session) -> None:
                 id=100,
                 issue=CollectionIssue(
                     id=1,
-                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
                     cover_date=datetime.date(2024, 1, 1),
                     store_date=datetime.date(2023, 12, 15),
@@ -1788,7 +1788,7 @@ def test_collection_scrobble_minimal(session: Session) -> None:
         "id": 100,
         "issue": {
             "id": 1,
-            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
             "number": "1",
             "cover_date": "2024-01-01",
             "modified": "2024-01-01T12:00:00Z",
@@ -1805,7 +1805,7 @@ def test_collection_scrobble_minimal(session: Session) -> None:
                 id=100,
                 issue=CollectionIssue(
                     id=1,
-                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
                     cover_date=datetime.date(2024, 1, 1),
                     modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
@@ -2497,7 +2497,7 @@ def test_wish_list_items(session: Session) -> None:
                 "id": 10,
                 "issue": {
                     "id": 1,
-                    "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+                    "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
                     "number": "1",
                     "cover_date": "2024-01-01",
                     "modified": "2024-01-01T12:00:00Z",
@@ -2518,7 +2518,7 @@ def test_wish_list_items(session: Session) -> None:
                     id=10,
                     issue=CollectionIssue(
                         id=1,
-                        series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                        series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                         number="1",
                         cover_date=datetime.date(2024, 1, 1),
                         modified=datetime.datetime(
@@ -2548,7 +2548,7 @@ def test_wish_list_add_item(session: Session) -> None:
         "id": 10,
         "issue": {
             "id": 1,
-            "series": {"name": "Batman", "volume": 1, "year_began": 1940},
+            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
             "number": "1",
             "cover_date": "2024-01-01",
             "modified": "2024-01-01T12:00:00Z",
@@ -2568,7 +2568,7 @@ def test_wish_list_add_item(session: Session) -> None:
                 id=10,
                 issue=CollectionIssue(
                     id=1,
-                    series=BasicSeries(name="Batman", volume=1, year_began=1940),
+                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
                     cover_date=datetime.date(2024, 1, 1),
                     modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),

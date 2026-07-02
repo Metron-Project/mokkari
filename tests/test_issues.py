@@ -293,7 +293,7 @@ def test_issueslist(talker: Session) -> None:
         "results": [
             {
                 "id": 6730,
-                "series": {"name": "Action Comics", "volume": 1, "year_began": 2011},
+                "series": {"id": 1, "name": "Action Comics", "volume": 1, "year_began": 2011},
                 "number": "1",
                 "issue": "Action Comics (2011) #1",
                 "cover_date": "2011-11-01",
@@ -302,7 +302,7 @@ def test_issueslist(talker: Session) -> None:
             },
             {
                 "id": 6731,
-                "series": {"name": "Action Comics", "volume": 1, "year_began": 2011},
+                "series": {"id": 1, "name": "Action Comics", "volume": 1, "year_began": 2011},
                 "number": "2",
                 "issue": "Action Comics (2011) #2",
                 "cover_date": "2011-12-01",
@@ -311,7 +311,7 @@ def test_issueslist(talker: Session) -> None:
             },
             {
                 "id": 6732,
-                "series": {"name": "Action Comics", "volume": 1, "year_began": 2011},
+                "series": {"id": 1, "name": "Action Comics", "volume": 1, "year_began": 2011},
                 "number": "3",
                 "issue": "Action Comics (2011) #3",
                 "cover_date": "2012-01-01",
@@ -340,7 +340,7 @@ def test_issueslist_with_params(talker: Session) -> None:
         "results": [
             {
                 "id": 100,
-                "series": {"name": "Kang", "volume": 1, "year_began": 2021},
+                "series": {"id": 1, "name": "Kang", "volume": 1, "year_began": 2021},
                 "number": "1",
                 "issue": "Kang The Conqueror (2021) #1",
                 "cover_date": "2021-10-01",
@@ -349,7 +349,7 @@ def test_issueslist_with_params(talker: Session) -> None:
             },
             {
                 "id": 101,
-                "series": {"name": "Kang", "volume": 1, "year_began": 2021},
+                "series": {"id": 1, "name": "Kang", "volume": 1, "year_began": 2021},
                 "number": "2",
                 "issue": "Kang The Conqueror (2021) #2",
                 "cover_date": "2021-11-01",
@@ -678,7 +678,7 @@ def test_multi_page_results(talker: Session) -> None:
         "results": [
             {
                 "id": 1,
-                "series": {"name": "Action Comics", "volume": 1, "year_began": 1938},
+                "series": {"id": 1, "name": "Action Comics", "volume": 1, "year_began": 1938},
                 "number": "1",
                 "issue": "Action Comics (1938) #1",
                 "cover_date": "1938-06-01",
@@ -687,7 +687,7 @@ def test_multi_page_results(talker: Session) -> None:
             },
             {
                 "id": 2,
-                "series": {"name": "Action Comics", "volume": 1, "year_began": 1938},
+                "series": {"id": 1, "name": "Action Comics", "volume": 1, "year_began": 1938},
                 "number": "2",
                 "issue": "Action Comics (1938) #2",
                 "cover_date": "1938-07-01",
@@ -703,7 +703,7 @@ def test_multi_page_results(talker: Session) -> None:
         "results": [
             {
                 "id": 903,
-                "series": {"name": "Action Comics", "volume": 1, "year_began": 1938},
+                "series": {"id": 1, "name": "Action Comics", "volume": 1, "year_began": 1938},
                 "number": "903",
                 "issue": "Action Comics (1938) #903",
                 "cover_date": "2011-09-01",
@@ -712,7 +712,7 @@ def test_multi_page_results(talker: Session) -> None:
             },
             {
                 "id": 904,
-                "series": {"name": "Action Comics", "volume": 1, "year_began": 1938},
+                "series": {"id": 1, "name": "Action Comics", "volume": 1, "year_began": 1938},
                 "number": "904",
                 "issue": "Action Comics (1938) #904",
                 "cover_date": "2011-10-01",
