@@ -155,7 +155,12 @@ def test_series_issues_list(talker: Session) -> None:
         "results": [
             {
                 "id": 1,
-                "series": {"name": "Death of the Inhumans", "volume": 1, "year_began": 2018},
+                "series": {
+                    "id": 1,
+                    "name": "Death of the Inhumans",
+                    "volume": 1,
+                    "year_began": 2018,
+                },
                 "number": "1",
                 "issue": "Death of the Inhumans (2018) #1",
                 "cover_date": "2018-09-01",
@@ -166,7 +171,12 @@ def test_series_issues_list(talker: Session) -> None:
             },
             {
                 "id": 2,
-                "series": {"name": "Death of the Inhumans", "volume": 1, "year_began": 2018},
+                "series": {
+                    "id": 1,
+                    "name": "Death of the Inhumans",
+                    "volume": 1,
+                    "year_began": 2018,
+                },
                 "number": "2",
                 "issue": "Death of the Inhumans (2018) #2",
                 "cover_date": "2018-10-01",

@@ -99,14 +99,16 @@ class CreditPostResponse(CreditPost):
 
 
 class BasicSeries(BaseModel):
-    """A class representing a basic series with name, volume, and year began.
+    """A class representing a basic series with id, name, volume, and year began.
 
     Attributes:
+        id (int): The unique identifier of the series.
         name (str): The name of the series.
         volume (int): The volume of the series.
         year_began (int): The year the series began.
     """
 
+    id: int
     name: str
     volume: int
     year_began: int

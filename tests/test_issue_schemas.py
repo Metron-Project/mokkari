@@ -31,7 +31,7 @@ def generic_item_data():
 @pytest.fixture
 def basic_series_data():
     """Sample basic series data."""
-    return {"name": "Batman", "volume": 1, "year_began": 1940}
+    return {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940}
 
 
 @pytest.fixture
@@ -165,6 +165,7 @@ def test_credit_post_response_creation():
 def test_basic_series_creation(basic_series_data):
     """Test creating a BasicSeries."""
     series = BasicSeries(**basic_series_data)
+    assert series.id == 1
     assert series.name == "Batman"
     assert series.volume == 1
     assert series.year_began == 1940
@@ -173,25 +174,28 @@ def test_basic_series_creation(basic_series_data):
 def test_basic_series_validation_missing_fields():
     """Test BasicSeries validation with missing required fields."""
     with pytest.raises(ValidationError):
-        BasicSeries(name="Batman", volume=1)  # Missing year_began
+        BasicSeries(id=1, name="Batman", volume=1)  # Missing year_began
 
     with pytest.raises(ValidationError):
-        BasicSeries(volume=1, year_began=1940)  # Missing name
+        BasicSeries(id=1, volume=1, year_began=1940)  # Missing name
 
     with pytest.raises(ValidationError):
-        BasicSeries(name="Batman", year_began=1940)  # Missing volume
+        BasicSeries(id=1, name="Batman", year_began=1940)  # Missing volume
+
+    with pytest.raises(ValidationError):
+        BasicSeries(name="Batman", volume=1, year_began=1940)  # Missing id
 
 
 def test_basic_series_validation_invalid_types():
     """Test BasicSeries validation with invalid types."""
     with pytest.raises(ValidationError):
-        BasicSeries(name=123, volume=1, year_began=1940)
+        BasicSeries(id=1, name=123, volume=1, year_began=1940)
 
     with pytest.raises(ValidationError):
-        BasicSeries(name="Batman", volume="not_int", year_began=1940)
+        BasicSeries(id=1, name="Batman", volume="not_int", year_began=1940)
 
     with pytest.raises(ValidationError):
-        BasicSeries(name="Batman", volume=1, year_began="not_int")
+        BasicSeries(id=1, name="Batman", volume=1, year_began="not_int")
 
 
 # IssueSeries model tests
@@ -299,7 +303,7 @@ def test_base_issue_field_alias():
         "cover_date": "2023-01-01",
         "modified": "2023-01-01T12:00:00Z",
         "issue": "Test Issue Name",
-        "series": {"name": "Test Series", "volume": 1, "year_began": 2020},
+        "series": {"id": 1, "name": "Test Series", "volume": 1, "year_began": 2020},
     }
     issue = BaseIssue(**data)
     assert issue.issue_name == "Test Issue Name"

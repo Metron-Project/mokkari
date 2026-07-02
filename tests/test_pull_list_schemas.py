@@ -16,7 +16,7 @@ from mokkari.schemas.pull_list import (
 @pytest.fixture
 def basic_series_data():
     """Sample basic series data (IssueListSeries)."""
-    return {"name": "Batman", "volume": 1, "year_began": 1940}
+    return {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940}
 
 
 # PullListRead tests
@@ -56,6 +56,7 @@ def test_pull_list_issue_valid_data(basic_series_data):
     }
     issue = PullListIssue(**data)
     assert issue.id == 100
+    assert issue.series.id == 1
     assert issue.series.name == "Batman"
     assert issue.series.volume == 1
     assert issue.series.year_began == 1940

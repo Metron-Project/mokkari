@@ -75,7 +75,7 @@ def test_arc_issue_list(talker: Session) -> None:
         "results": [
             {
                 "id": 6798,
-                "series": {"name": "Batman", "volume": 1, "year_began": 2011},
+                "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 2011},
                 "number": "1",
                 "issue": "Batman (2011) #1",
                 "cover_date": "2011-11-01",
@@ -84,7 +84,7 @@ def test_arc_issue_list(talker: Session) -> None:
             },
             {
                 "id": 6799,
-                "series": {"name": "Batman", "volume": 1, "year_began": 2011},
+                "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 2011},
                 "number": "2",
                 "issue": "Batman (2011) #2",
                 "cover_date": "2011-12-01",
