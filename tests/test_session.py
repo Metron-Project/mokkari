@@ -2484,6 +2484,45 @@ def test_default_bucket_shared_across_sessions() -> None:
         session_module._default_bucket_instance = original
 
 
+def test_default_bucket_db_path_uses_platform_cache_dir(tmp_path: Path) -> None:
+    """Test that the default bucket path lives under the platform cache dir.
+
+    A timestamped temp file (pyrate_limiter's own default) would give each
+    process its own private budget instead of one shared across processes.
+    """
+    with patch("mokkari.session.user_cache_dir", return_value=str(tmp_path / "mokkari")):
+        path = session_module._default_bucket_db_path()
+
+    assert path == str(tmp_path / "mokkari" / "rate_limit.sqlite")
+    assert (tmp_path / "mokkari").is_dir()
+
+
+def test_default_bucket_db_path_is_stable_across_calls(tmp_path: Path) -> None:
+    """Repeated calls must resolve to the same file so unrelated processes agree."""
+    with patch("mokkari.session.user_cache_dir", return_value=str(tmp_path / "mokkari")):
+        first = session_module._default_bucket_db_path()
+        second = session_module._default_bucket_db_path()
+
+    assert first == second
+
+
+def test_default_bucket_db_path_falls_back_when_cache_dir_unwritable(tmp_path: Path) -> None:
+    """Test the fallback when the platform cache dir can't be created.
+
+    It should use a fixed temp path rather than pyrate_limiter's own
+    timestamped default.
+    """
+    unwritable = tmp_path / "cache"
+    with (
+        patch("mokkari.session.user_cache_dir", return_value=str(unwritable)),
+        patch.object(Path, "mkdir", side_effect=OSError("read-only filesystem")),
+    ):
+        path = session_module._default_bucket_db_path()
+
+    assert path.endswith("mokkari_rate_limit.sqlite")
+    assert "pyrate_limiter_" not in path
+
+
 def test_wish_list(session: Session) -> None:
     # Arrange
     resp = {
