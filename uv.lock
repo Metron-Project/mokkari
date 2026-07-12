@@ -648,6 +648,7 @@ name = "mokkari"
 version = "3.29.0"
 source = { editable = "." }
 dependencies = [
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pyrate-limiter" },
     { name = "requests" },
@@ -682,6 +683,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "platformdirs", specifier = ">=4" },
     { name = "pydantic", specifier = ">=2.10.3" },
     { name = "pyrate-limiter", specifier = ">=4" },
     { name = "requests", specifier = ">=2.26.0" },

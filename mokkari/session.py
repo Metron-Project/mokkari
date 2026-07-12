@@ -17,10 +17,12 @@ from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
+from tempfile import gettempdir
 from typing import Any, Final, TypeVar, cast
 from urllib.parse import urlencode
 
 import requests
+from platformdirs import user_cache_dir
 from pydantic import TypeAdapter, ValidationError
 from pyrate_limiter import AbstractBucket, Duration, Limiter, Rate, RateItem, SQLiteBucket
 
@@ -85,12 +87,36 @@ _default_bucket_instance: SQLiteBucket | None = None
 _default_bucket_lock = threading.Lock()
 
 
+def _default_bucket_db_path() -> str:
+    """Return a stable, per-user path for the default rate-limit bucket.
+
+    Every process that shares this path shares the same request budget,
+    which is the point: a fresh timestamped temp file (pyrate_limiter's
+    own fallback) would give each process its own private 20/minute
+    allowance, letting the combined traffic from multiple processes blow
+    past Metron's actual server-side limit. platformdirs resolves to
+    $XDG_CACHE_HOME on Linux and the equivalent per-OS cache dir on macOS
+    and Windows.
+    """
+    cache_dir = Path(user_cache_dir("mokkari"))
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return str(cache_dir / "rate_limit.sqlite")
+    except OSError:
+        # Cache dir isn't writable (read-only home, restricted container, etc.)
+        # Fall back to a fixed name in the temp dir rather than pyrate_limiter's
+        # own timestamped default, so same-host processes still share a budget.
+        return str(Path(gettempdir()) / "mokkari_rate_limit.sqlite")
+
+
 def _default_bucket() -> SQLiteBucket:
     global _default_bucket_instance  # noqa: PLW0603
     if _default_bucket_instance is None:
         with _default_bucket_lock:
             if _default_bucket_instance is None:
-                _default_bucket_instance = SQLiteBucket.init_from_file(DEFAULT_RATES)
+                _default_bucket_instance = SQLiteBucket.init_from_file(
+                    DEFAULT_RATES, db_path=_default_bucket_db_path()
+                )
     return _default_bucket_instance
 
 
