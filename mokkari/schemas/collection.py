@@ -16,6 +16,8 @@ This module provides the following classes:
 - CollectionStats
 - ScrobbleRequest
 - ScrobbleResponse
+- CollectionUpdate
+- CollectionUpdateResponse
 """
 
 __all__ = [
@@ -25,6 +27,8 @@ __all__ = [
     "CollectionList",
     "CollectionRead",
     "CollectionStats",
+    "CollectionUpdate",
+    "CollectionUpdateResponse",
     "Grade",
     "GradingCompany",
     "MissingIssue",
@@ -389,4 +393,28 @@ class ScrobbleResponse(BaseModel):
     date_read: datetime | None = None
     rating: int | None = None
     created: bool
+    modified: datetime
+
+
+class CollectionUpdate(BaseModel):
+    """A data model representing a request to update a collection item's rating.
+
+    Attributes:
+        rating (int, optional): Star rating (1-5) for this issue.
+    """
+
+    rating: int | None = Field(None, ge=1, le=5)
+
+
+class CollectionUpdateResponse(BaseModel):
+    """A data model representing the response from a collection update operation.
+
+    Attributes:
+        id (int): The unique identifier of the collection item.
+        rating (int, optional): Star rating (1-5) for this issue.
+        modified (datetime): The date and time when the collection item was last modified.
+    """
+
+    id: int
+    rating: int | None = None
     modified: datetime
