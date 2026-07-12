@@ -25,6 +25,8 @@ from mokkari.schemas.collection import (
     CollectionList,
     CollectionRead,
     CollectionStats,
+    CollectionUpdate,
+    CollectionUpdateResponse,
     MissingIssue,
     MissingSeries,
     ScrobbleRequest,
@@ -1825,6 +1827,34 @@ def test_collection_scrobble_minimal(session: Session) -> None:
         assert result.created is False
         assert result.date_read is None
         assert result.rating is None
+
+
+def test_collection_patch(session: Session) -> None:
+    # Arrange
+    data = CollectionUpdate(rating=4)
+    with (
+        patch.object(session, "_send", return_value={"id": 1, "rating": 4}),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=CollectionUpdateResponse(id=1, rating=4, modified=datetime.datetime.now()),
+        ),
+    ):
+        # Act
+        result = session.collection_patch(1, data)
+        # Assert
+        assert isinstance(result, CollectionUpdateResponse)
+        assert result.id == 1
+        assert result.rating == 4
+
+
+def test_collection_patch_api_error(session: Session) -> None:
+    # Arrange
+    data = CollectionUpdate(rating=4)
+    with (
+        patch.object(session, "_send", side_effect=exceptions.ApiError("fail")),
+        pytest.raises(exceptions.ApiError),
+    ):
+        session.collection_patch(1, data)
 
 
 @pytest.mark.parametrize(

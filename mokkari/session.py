@@ -32,6 +32,8 @@ from mokkari.schemas.collection import (
     CollectionList,
     CollectionRead,
     CollectionStats,
+    CollectionUpdate,
+    CollectionUpdateResponse,
     MissingIssue,
     MissingSeries,
     ScrobbleRequest,
@@ -1560,6 +1562,34 @@ class Session:
         """
         return self._handle_write_request(
             "POST", [ResourceEndpoint.COLLECTION, "scrobble"], data, ScrobbleResponse
+        )
+
+    def collection_patch(self, _id: int, data: CollectionUpdate) -> CollectionUpdateResponse:
+        """Update the rating of an existing collection item.
+
+        Note: Users can only update items in their own collection. Only the rating field can be updated; read-tracking
+        (is_read/date_read) is handled exclusively through the scrobble action.
+
+        Args:
+            _id: The unique identifier for the collection item to update.
+            data: CollectionUpdate object containing the updated rating.
+
+        Returns:
+            CollectionUpdateResponse: The updated collection item's id, rating, and
+                                       modified timestamp.
+
+        Raises:
+            ApiError: If update fails or if user lacks permissions.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> update_data = CollectionUpdate(rating=4)
+            >>> result = session.collection_patch(1, update_data)
+            >>> print(f"Rating updated to: {result.rating}")
+        """
+        return self._patch_resource(
+            ResourceEndpoint.COLLECTION, _id, data, CollectionUpdateResponse
         )
 
     # Pull list methods

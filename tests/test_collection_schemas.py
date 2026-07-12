@@ -13,6 +13,8 @@ from mokkari.schemas.collection import (
     CollectionList,
     CollectionRead,
     CollectionStats,
+    CollectionUpdate,
+    CollectionUpdateResponse,
     Grade,
     GradingCompany,
     MissingIssue,
@@ -400,7 +402,7 @@ def test_scrobble_request_valid_data():
 def test_scrobble_request_minimal_data():
     """Test ScrobbleRequest with only required field."""
     data = {"issue_id": 1}
-    scrobble = ScrobbleRequest(**data)
+    scrobble = ScrobbleRequest(**data)  # type: ignore
     assert scrobble.issue_id == 1
     assert scrobble.date_read is None
     assert scrobble.rating is None
@@ -409,7 +411,7 @@ def test_scrobble_request_minimal_data():
 def test_scrobble_request_with_rating_only():
     """Test ScrobbleRequest with issue_id and rating."""
     data = {"issue_id": 42, "rating": 3}
-    scrobble = ScrobbleRequest(**data)
+    scrobble = ScrobbleRequest(**data)  # type: ignore
     assert scrobble.issue_id == 42
     assert scrobble.rating == 3
     assert scrobble.date_read is None
@@ -419,7 +421,7 @@ def test_scrobble_request_invalid_rating_too_low():
     """Test ScrobbleRequest with rating below minimum."""
     data = {"issue_id": 1, "rating": 0}
     with pytest.raises(ValidationError) as exc_info:
-        ScrobbleRequest(**data)
+        ScrobbleRequest(**data)  # type: ignore
     assert "rating" in str(exc_info.value)
 
 
@@ -427,7 +429,7 @@ def test_scrobble_request_invalid_rating_too_high():
     """Test ScrobbleRequest with rating above maximum."""
     data = {"issue_id": 1, "rating": 6}
     with pytest.raises(ValidationError) as exc_info:
-        ScrobbleRequest(**data)
+        ScrobbleRequest(**data)  # type: ignore
     assert "rating" in str(exc_info.value)
 
 
@@ -501,3 +503,53 @@ def test_scrobble_response_missing_required_fields(collection_issue_data):
     }
     with pytest.raises(ValidationError):
         ScrobbleResponse(**data)
+
+
+# CollectionUpdate tests
+def test_collection_update_valid_data():
+    """Test CollectionUpdate model with valid data."""
+    update = CollectionUpdate(rating=4)
+    assert update.rating == 4
+
+
+def test_collection_update_no_rating():
+    """Test CollectionUpdate with no rating provided."""
+    update = CollectionUpdate()  # type: ignore
+    assert update.rating is None
+
+
+def test_collection_update_invalid_rating_too_low():
+    """Test CollectionUpdate with rating below minimum."""
+    with pytest.raises(ValidationError) as exc_info:
+        CollectionUpdate(rating=0)
+    assert "rating" in str(exc_info.value)
+
+
+def test_collection_update_invalid_rating_too_high():
+    """Test CollectionUpdate with rating above maximum."""
+    with pytest.raises(ValidationError) as exc_info:
+        CollectionUpdate(rating=6)
+    assert "rating" in str(exc_info.value)
+
+
+# CollectionUpdateResponse tests
+def test_collection_update_response_valid_data():
+    """Test CollectionUpdateResponse model with valid data."""
+    data = {"id": 1, "rating": 4, "modified": "2024-01-20T14:30:00Z"}
+    response = CollectionUpdateResponse(**data)
+    assert response.id == 1
+    assert response.rating == 4
+    assert response.modified.year == 2024
+
+
+def test_collection_update_response_no_rating():
+    """Test CollectionUpdateResponse with no rating."""
+    data = {"id": 1, "modified": "2024-01-20T14:30:00Z"}
+    response = CollectionUpdateResponse(**data)
+    assert response.rating is None
+
+
+def test_collection_update_response_missing_required_fields():
+    """Test CollectionUpdateResponse with missing required fields."""
+    with pytest.raises(ValidationError):
+        CollectionUpdateResponse(rating=4)  # type: ignore
