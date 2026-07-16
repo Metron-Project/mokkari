@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import HttpUrl, ValidationError
-from pyrate_limiter import Duration, Rate
 from requests.exceptions import ConnectionError as ConnError, HTTPError
 
 import mokkari.session as session_module
@@ -1918,6 +1917,7 @@ def test__request_data_get(monkeypatch, session):
         def __init__(self, status_code=200):
             self._json = {"foo": "bar"}
             self.status_code = status_code
+            self.headers = {}
 
         def raise_for_status(self):
             pass
@@ -1938,6 +1938,7 @@ def test__request_data_post_list(monkeypatch, session):
         def __init__(self, status_code=201):
             self._json = {"foo": "bar"}
             self.status_code = status_code
+            self.headers = {}
 
         def raise_for_status(self):
             pass
@@ -1959,6 +1960,7 @@ def test__request_data_post_with_image(monkeypatch, session, tmp_path):
         def __init__(self, status_code=201):
             self._json = {"foo": "bar"}
             self.status_code = status_code
+            self.headers = {}
 
         def raise_for_status(self):
             pass
@@ -1993,6 +1995,7 @@ def test__request_data_detail(monkeypatch, session):
         def __init__(self, status_code=200):
             self._json = {"foo": "bar"}
             self.status_code = status_code
+            self.headers = {}
 
         def raise_for_status(self):
             if self.status_code >= 400:
@@ -2102,59 +2105,124 @@ def test__prepare_request_payload_image_model_no_image_file(session: Session) ->
 # ============================================================================
 # Rate Limiting Tests
 # ============================================================================
+#
+# Metron's sustained (daily) limit is dynamic per user (higher for
+# OpenCollective donors), so Session tracks rate limits reactively from the
+# X-RateLimit-* response headers instead of a fixed local quota.
 
 
-def _make_mock_bucket(rate: Rate, delay_ms: int) -> MagicMock:
-    """Create a mock bucket that simulates a rate limit being exceeded."""
-    mock_bucket = MagicMock()
-    mock_bucket.now.return_value = 1_000_000
-    mock_bucket.waiting.return_value = delay_ms
-    mock_bucket.failing_rate = rate
-    return mock_bucket
+def test_format_time_minutes_and_seconds() -> None:
+    """format_time formats a sub-hour delay as minutes and seconds."""
+    assert session_module.format_time(90.5) == "1 minute, 30 seconds"
 
 
-def test_rate_limit_minute_exceeded(session: Session) -> None:
-    """Test that minute rate limit raises RateLimitError with correct message."""
-    # Arrange: simulate minute rate limit (60 seconds = 60,000 ms)
-    mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=60_000)
-    session._bucket = mock_bucket
-
-    with patch.object(session._limiter, "try_acquire", return_value=False):
-        # Act & Assert
-        with pytest.raises(exceptions.RateLimitError) as excinfo:
-            session._request_data("GET", "https://test.com/api/issue/1")
-
-        error_msg = str(excinfo.value)
-        assert "Rate limit exceeded" in error_msg
-        assert "20 requests per minute" in error_msg
-        assert "Please wait" in error_msg
-        assert "1 minute" in error_msg
-        assert excinfo.value.retry_after == 60.0
+def test_format_time_hours() -> None:
+    """format_time formats a multi-hour delay correctly."""
+    assert session_module.format_time(9_000) == "2 hours, 30 minutes"
 
 
-def test_rate_limit_day_exceeded(session: Session) -> None:
-    """Test that daily rate limit raises RateLimitError with correct message."""
-    # Arrange: simulate daily rate limit (86400 seconds = 86,400,000 ms)
-    mock_bucket = _make_mock_bucket(Rate(5_000, Duration.DAY), delay_ms=86_400_000)
-    session._bucket = mock_bucket
-
-    with patch.object(session._limiter, "try_acquire", return_value=False):
-        # Act & Assert
-        with pytest.raises(exceptions.RateLimitError) as excinfo:
-            session._request_data("GET", "https://test.com/api/issue/1")
-
-        error_msg = str(excinfo.value)
-        assert "Rate limit exceeded" in error_msg
-        assert "5,000 requests per day" in error_msg
-        assert "Please wait" in error_msg
-        assert "24 hours" in error_msg
-        assert excinfo.value.retry_after == 86400.0
+def test_rate_limit_status_defaults_to_unknown(session: Session) -> None:
+    """A fresh session has no observed rate-limit state until a request completes."""
+    status = session.rate_limit_status
+    assert status.burst == session_module.RateLimitWindow()
+    assert status.sustained == session_module.RateLimitWindow()
 
 
-def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
-    """Test that rate limit prevents HTTP request from being made."""
-    # Arrange
-    mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=60_000)
+def test_update_rate_limit_status_parses_headers(session: Session) -> None:
+    """Headers from a response are parsed into the session's rate-limit status."""
+    headers = {
+        "X-RateLimit-Burst-Limit": "20",
+        "X-RateLimit-Burst-Remaining": "19",
+        "X-RateLimit-Burst-Reset": "1700000060",
+        "X-RateLimit-Sustained-Limit": "10000",
+        "X-RateLimit-Sustained-Remaining": "9999",
+        "X-RateLimit-Sustained-Reset": "1700086400",
+    }
+
+    session._update_rate_limit_status(headers)
+
+    status = session.rate_limit_status
+    assert status.burst.limit == 20
+    assert status.burst.remaining == 19
+    assert status.burst.reset == datetime.datetime.fromtimestamp(
+        1700000060, tz=datetime.timezone.utc
+    )
+    assert status.sustained.limit == 10_000
+    assert status.sustained.remaining == 9_999
+    assert status.sustained.reset == datetime.datetime.fromtimestamp(
+        1700086400, tz=datetime.timezone.utc
+    )
+
+
+def test_update_rate_limit_status_ignores_response_without_headers(session: Session) -> None:
+    """A response missing rate-limit headers shouldn't erase previously observed state."""
+    session._update_rate_limit_status({"X-RateLimit-Burst-Limit": "20"})
+
+    session._update_rate_limit_status({})
+
+    assert session.rate_limit_status.burst.limit == 20
+
+
+def test_check_rate_limit_allows_request_when_no_state_observed(session: Session) -> None:
+    """Nothing is known yet, so the first request is never pre-emptively blocked."""
+    session._check_rate_limit()  # should not raise
+
+
+def test_check_rate_limit_allows_request_when_remaining_positive(session: Session) -> None:
+    """Test that a window with remaining quota does not block."""
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=30)
+    session._rate_limit_status = session_module.RateLimitStatus(
+        burst=session_module.RateLimitWindow(limit=20, remaining=5, reset=reset)
+    )
+
+    session._check_rate_limit()  # should not raise
+
+
+def test_check_rate_limit_raises_when_burst_exhausted(session: Session) -> None:
+    """Test that an exhausted burst (minute) window raises RateLimitError."""
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+    session._rate_limit_status = session_module.RateLimitStatus(
+        burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
+    )
+
+    with pytest.raises(exceptions.RateLimitError) as excinfo:
+        session._check_rate_limit()
+
+    error_msg = str(excinfo.value)
+    assert "Rate limit exceeded" in error_msg
+    assert "20 requests per minute" in error_msg
+    assert "Please wait" in error_msg
+    assert excinfo.value.retry_after == pytest.approx(60, abs=2)
+
+
+def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> None:
+    """Test that an exhausted sustained (daily) window raises RateLimitError.
+
+    The sustained limit here (10,000) reflects an elevated OpenCollective donor
+    tier rather than the default 5,000/day, since it's read straight from
+    whatever the server last reported.
+    """
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+    session._rate_limit_status = session_module.RateLimitStatus(
+        sustained=session_module.RateLimitWindow(limit=10_000, remaining=0, reset=reset)
+    )
+
+    with pytest.raises(exceptions.RateLimitError) as excinfo:
+        session._check_rate_limit()
+
+    error_msg = str(excinfo.value)
+    assert "Rate limit exceeded" in error_msg
+    assert "10,000 requests per day" in error_msg
+    assert "Please wait" in error_msg
+    assert excinfo.value.retry_after == pytest.approx(86_400, abs=2)
+
+
+def test_check_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
+    """Test that an exhausted window prevents the HTTP request from being made."""
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+    session._rate_limit_status = session_module.RateLimitStatus(
+        burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
+    )
 
     mock_request_called = {"called": False}
 
@@ -2163,57 +2231,21 @@ def test_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
         return MagicMock()
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
-    session._bucket = mock_bucket
 
-    with patch.object(session._limiter, "try_acquire", return_value=False):
-        # Act & Assert
-        with pytest.raises(exceptions.RateLimitError):
-            session._request_data("GET", "https://test.com/api/issue/1")
+    with pytest.raises(exceptions.RateLimitError):
+        session._request_data("GET", "https://test.com/api/issue/1")
 
-        assert not mock_request_called["called"], (
-            "HTTP request should not be made when rate limited"
-        )
-
-
-def test_rate_limit_bucket_full(session: Session) -> None:
-    """Test handling of a bucket-full minute rate limit with a 90.5-second delay."""
-    # Arrange: 90,500 ms = 1 minute, 30 seconds
-    mock_bucket = _make_mock_bucket(Rate(20, Duration.MINUTE), delay_ms=90_500)
-    session._bucket = mock_bucket
-
-    with patch.object(session._limiter, "try_acquire", return_value=False):
-        # Act & Assert
-        with pytest.raises(exceptions.RateLimitError) as excinfo:
-            session._request_data("GET", "https://test.com/api/issue/1")
-
-        error_msg = str(excinfo.value)
-        assert "Rate limit exceeded" in error_msg
-        assert "20 requests per minute" in error_msg
-        assert "1 minute, 30 seconds" in error_msg
-
-
-def test_rate_limit_format_time_hours(session: Session) -> None:
-    """Test that rate limit error message correctly formats hours."""
-    # Arrange: 2.5 hours = 9,000 seconds = 9,000,000 ms
-    mock_bucket = _make_mock_bucket(Rate(5_000, Duration.DAY), delay_ms=9_000_000)
-    session._bucket = mock_bucket
-
-    with patch.object(session._limiter, "try_acquire", return_value=False):
-        # Act & Assert
-        with pytest.raises(exceptions.RateLimitError) as excinfo:
-            session._request_data("GET", "https://test.com/api/issue/1")
-
-        error_msg = str(excinfo.value)
-        assert "2 hours, 30 minutes" in error_msg
+    assert not mock_request_called["called"], "HTTP request should not be made when rate limited"
 
 
 def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> None:
-    """Test that requests proceed normally when rate limit is not exceeded."""
+    """Test that requests proceed normally when no rate limit is exhausted."""
 
     # Arrange
     class DummyResp:
         def __init__(self):
             self.status_code = 200
+            self.headers = {}
 
         def raise_for_status(self):
             pass
@@ -2223,13 +2255,43 @@ def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> 
 
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
-    # Mock limiter to allow request (no exception)
-    with patch.object(session._limiter, "try_acquire", return_value=True):
-        # Act
-        result = session._request_data("GET", "https://test.com/api/issue/1")
+    # Act
+    result = session._request_data("GET", "https://test.com/api/issue/1")
 
-        # Assert
-        assert result == {"id": 1, "name": "Test"}
+    # Assert
+    assert result == {"id": 1, "name": "Test"}
+
+
+def test_request_data_updates_rate_limit_status_from_response(
+    session: Session, monkeypatch
+) -> None:
+    """A successful response's headers should update the session's rate-limit status."""
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {
+                "X-RateLimit-Burst-Limit": "20",
+                "X-RateLimit-Burst-Remaining": "18",
+                "X-RateLimit-Burst-Reset": "1700000060",
+                "X-RateLimit-Sustained-Limit": "5000",
+                "X-RateLimit-Sustained-Remaining": "4998",
+                "X-RateLimit-Sustained-Reset": "1700086400",
+            }
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1, "name": "Test"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    result = session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert result == {"id": 1, "name": "Test"}
+    assert session.rate_limit_status.burst.remaining == 18
+    assert session.rate_limit_status.sustained.remaining == 4998
 
 
 # ============================================================================
@@ -2251,11 +2313,10 @@ def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) ->
 
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
-    with patch.object(session._limiter, "try_acquire", return_value=True):
-        # Act
-        result = session.arc(
-            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
-        )
+    # Act
+    result = session.arc(
+        1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+    )
 
     # Assert
     assert result is None
@@ -2278,17 +2339,14 @@ def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch
 
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
-    with (
-        patch.object(session._limiter, "try_acquire", return_value=True),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Arc(
-                id=1,
-                name="Updated Arc",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
-            ),
+    with patch(
+        "mokkari.session.TypeAdapter.validate_python",
+        return_value=Arc(
+            id=1,
+            name="Updated Arc",
+            desc="",
+            resource_url=HttpUrl("https://foo.bar"),
+            modified=datetime.datetime.now(),
         ),
     ):
         # Act
@@ -2320,12 +2378,11 @@ def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
 
-    with patch.object(session._limiter, "try_acquire", return_value=True):
-        # Act
-        session.arc(
-            1,
-            if_modified_since=datetime.datetime(2025, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
-        )
+    # Act
+    session.arc(
+        1,
+        if_modified_since=datetime.datetime(2025, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+    )
 
     # Assert — verify the header was formatted as RFC 7231
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
@@ -2350,9 +2407,8 @@ def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monke
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
 
-    with patch.object(session._limiter, "try_acquire", return_value=True):
-        # Act — pass a naive datetime
-        session.arc(1, if_modified_since=datetime.datetime(2025, 6, 15, 8, 30, 0))  # noqa: DTZ001
+    # Act — pass a naive datetime
+    session.arc(1, if_modified_since=datetime.datetime(2025, 6, 15, 8, 30, 0))  # noqa: DTZ001
 
     # Assert — should be formatted as UTC
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Sun, 15 Jun 2025 08:30:00 GMT"
@@ -2382,9 +2438,8 @@ def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypa
     # 2025-01-01 06:00:00 CST == 2025-01-01 12:00:00 UTC
     dt_cst = datetime.datetime(2025, 1, 1, 6, 0, 0, tzinfo=cst)
 
-    with patch.object(session._limiter, "try_acquire", return_value=True):
-        # Act
-        session.arc(1, if_modified_since=dt_cst)
+    # Act
+    session.arc(1, if_modified_since=dt_cst)
 
     # Assert — should be converted to UTC
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
@@ -2411,17 +2466,14 @@ def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeyp
 
     monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
 
-    with (
-        patch.object(session._limiter, "try_acquire", return_value=True),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Arc(
-                id=1,
-                name="Fresh",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
-            ),
+    with patch(
+        "mokkari.session.TypeAdapter.validate_python",
+        return_value=Arc(
+            id=1,
+            name="Fresh",
+            desc="",
+            resource_url=HttpUrl("https://foo.bar"),
+            modified=datetime.datetime.now(),
         ),
     ):
         # Act — with if_modified_since, cache should be ignored
@@ -2457,70 +2509,6 @@ def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> 
     # Assert
     assert isinstance(result, Arc)
     assert result.name == "Cached Arc"
-
-
-def test_custom_bucket_is_used() -> None:
-    """Test that a custom bucket passed to Session is used instead of the default."""
-    # Arrange
-    custom_bucket = MagicMock()
-
-    with patch("mokkari.session.Limiter"):
-        session = Session(username="user", passwd="pass", bucket=custom_bucket)  # noqa: S106
-
-    # The custom bucket should be set on the session
-    assert session._bucket is custom_bucket
-
-
-def test_default_bucket_shared_across_sessions() -> None:
-    """Test that sessions without a custom bucket share the lazily-created default."""
-    # Reset the singleton so test is not order-dependent
-    original = session_module._default_bucket_instance
-    session_module._default_bucket_instance = None
-    try:
-        s1 = Session(username="user", passwd="pass")  # noqa: S106
-        s2 = Session(username="user", passwd="pass")  # noqa: S106
-        assert s1._bucket is s2._bucket
-    finally:
-        session_module._default_bucket_instance = original
-
-
-def test_default_bucket_db_path_uses_platform_cache_dir(tmp_path: Path) -> None:
-    """Test that the default bucket path lives under the platform cache dir.
-
-    A timestamped temp file (pyrate_limiter's own default) would give each
-    process its own private budget instead of one shared across processes.
-    """
-    with patch("mokkari.session.user_cache_dir", return_value=str(tmp_path / "mokkari")):
-        path = session_module._default_bucket_db_path()
-
-    assert path == str(tmp_path / "mokkari" / "rate_limit.sqlite")
-    assert (tmp_path / "mokkari").is_dir()
-
-
-def test_default_bucket_db_path_is_stable_across_calls(tmp_path: Path) -> None:
-    """Repeated calls must resolve to the same file so unrelated processes agree."""
-    with patch("mokkari.session.user_cache_dir", return_value=str(tmp_path / "mokkari")):
-        first = session_module._default_bucket_db_path()
-        second = session_module._default_bucket_db_path()
-
-    assert first == second
-
-
-def test_default_bucket_db_path_falls_back_when_cache_dir_unwritable(tmp_path: Path) -> None:
-    """Test the fallback when the platform cache dir can't be created.
-
-    It should use a fixed temp path rather than pyrate_limiter's own
-    timestamped default.
-    """
-    unwritable = tmp_path / "cache"
-    with (
-        patch("mokkari.session.user_cache_dir", return_value=str(unwritable)),
-        patch.object(Path, "mkdir", side_effect=OSError("read-only filesystem")),
-    ):
-        path = session_module._default_bucket_db_path()
-
-    assert path.endswith("mokkari_rate_limit.sqlite")
-    assert "pyrate_limiter_" not in path
 
 
 def test_wish_list(session: Session) -> None:

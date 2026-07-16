@@ -26,12 +26,7 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Operating System :: Microsoft :: Windows",
 ]
-dependencies = [
-  "requests>=2.26.0",
-  "pydantic>=2.10.3",
-  "pyrate-limiter>=4",
-  "platformdirs>=4",
-]
+dependencies = ["requests>=2.26.0", "pydantic>=2.10.3"]
 
 [project.urls]
 Homepage = "https://github.com/Metron-Project/mokkari"

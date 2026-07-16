@@ -39,9 +39,21 @@ print(asm_68.desc)
 
 ## Rate Limiting
 
-The API has rate limits of 20 requests per minute and 5,000 requests per day.
-Mokkari automatically enforces these limits locally to prevent unnecessary API
-calls. When a rate limit is exceeded, a `RateLimitError` is raised.
+The API has a fixed limit of 20 requests per minute, plus a daily limit that
+starts at 5,000 requests and is raised for
+[OpenCollective](https://opencollective.com/metron) donors (up to 25,000/day).
+Because the daily limit varies per user, mokkari doesn't hardcode it — it reads
+the `X-RateLimit-*` headers Metron returns with every response and pre-empts a
+request once those headers show a window is exhausted, avoiding an HTTP call
+that would fail anyway. When a rate limit is exceeded, a `RateLimitError` is
+raised.
+
+The most recently observed state is available via `session.rate_limit_status`:
+
+```python
+status = m.rate_limit_status
+print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
+```
 
 ### Handling Rate Limits
 

@@ -23,6 +23,7 @@ export default [
     ignores: [
       "*~",
       "**/__pycache__",
+      ".claude",
       ".git",
       "!.circleci",
       ".mypy_cache",
