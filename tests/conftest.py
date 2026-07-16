@@ -6,12 +6,9 @@ This module contains pytest fixtures.
 import os
 
 import pytest
-from pyrate_limiter import Duration, InMemoryBucket, Rate
 
 from mokkari import api
 from mokkari.session import Session
-
-_HIGH_RATE = [Rate(10_000, Duration.MINUTE)]
 
 
 @pytest.fixture(scope="session")
@@ -32,5 +29,4 @@ def talker(dummy_username: str, dummy_password: str) -> Session:
     return api(
         username=dummy_username,
         passwd=dummy_password,
-        bucket=InMemoryBucket(_HIGH_RATE),
     )

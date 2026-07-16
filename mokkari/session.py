@@ -13,18 +13,16 @@ import platform
 import threading
 import time
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from tempfile import gettempdir
-from typing import Any, Final, TypeVar, cast
+from typing import Any, Final, TypeVar
 from urllib.parse import urlencode
 
 import requests
-from platformdirs import user_cache_dir
 from pydantic import TypeAdapter, ValidationError
-from pyrate_limiter import AbstractBucket, Duration, Limiter, Rate, RateItem, SQLiteBucket
 
 from mokkari import __version__, exceptions, sqlite_cache
 from mokkari.schemas.arc import Arc, ArcPost
@@ -70,54 +68,54 @@ from mokkari.schemas.wish_list import (
 LOGGER = logging.getLogger(__name__)
 
 # Constants
-METRON_MINUTE_RATE_LIMIT: Final[int] = 20
-METRON_DAY_RATE_LIMIT: Final[int] = 5_000
 REQUEST_TIMEOUT: Final[int] = 20
 SECONDS_PER_HOUR: Final[int] = 3_600
 SECONDS_PER_MINUTE: Final[int] = 60
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
-DEFAULT_RATES: Final[list[Rate]] = [
-    Rate(METRON_MINUTE_RATE_LIMIT, Duration.MINUTE),
-    Rate(METRON_DAY_RATE_LIMIT, Duration.DAY),
-]
+# Metron reports rate-limit state via these response headers rather than a
+# fixed quota: the "sustained" (daily) limit varies per user based on
+# OpenCollective donor tier, so it can only be known by reading the headers
+# Metron sends back, not by hardcoding a value locally.
+HEADER_BURST_LIMIT: Final[str] = "X-RateLimit-Burst-Limit"
+HEADER_BURST_REMAINING: Final[str] = "X-RateLimit-Burst-Remaining"
+HEADER_BURST_RESET: Final[str] = "X-RateLimit-Burst-Reset"
+HEADER_SUSTAINED_LIMIT: Final[str] = "X-RateLimit-Sustained-Limit"
+HEADER_SUSTAINED_REMAINING: Final[str] = "X-RateLimit-Sustained-Remaining"
+HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 
-_default_bucket_instance: SQLiteBucket | None = None
-_default_bucket_lock = threading.Lock()
 
+@dataclass(frozen=True)
+class RateLimitWindow:
+    """A single rate-limit window (e.g. burst or sustained) as last reported by Metron.
 
-def _default_bucket_db_path() -> str:
-    """Return a stable, per-user path for the default rate-limit bucket.
-
-    Every process that shares this path shares the same request budget,
-    which is the point: a fresh timestamped temp file (pyrate_limiter's
-    own fallback) would give each process its own private 20/minute
-    allowance, letting the combined traffic from multiple processes blow
-    past Metron's actual server-side limit. platformdirs resolves to
-    $XDG_CACHE_HOME on Linux and the equivalent per-OS cache dir on macOS
-    and Windows.
+    Attributes:
+        limit: The maximum number of requests allowed in this window.
+        remaining: The number of requests left in the current window.
+        reset: When the window resets, as a UTC datetime.
     """
-    cache_dir = Path(user_cache_dir("mokkari"))
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        return str(cache_dir / "rate_limit.sqlite")
-    except OSError:
-        # Cache dir isn't writable (read-only home, restricted container, etc.)
-        # Fall back to a fixed name in the temp dir rather than pyrate_limiter's
-        # own timestamped default, so same-host processes still share a budget.
-        return str(Path(gettempdir()) / "mokkari_rate_limit.sqlite")
+
+    limit: int | None = None
+    remaining: int | None = None
+    reset: datetime | None = None
 
 
-def _default_bucket() -> SQLiteBucket:
-    global _default_bucket_instance  # noqa: PLW0603
-    if _default_bucket_instance is None:
-        with _default_bucket_lock:
-            if _default_bucket_instance is None:
-                _default_bucket_instance = SQLiteBucket.init_from_file(
-                    DEFAULT_RATES, db_path=_default_bucket_db_path()
-                )
-    return _default_bucket_instance
+@dataclass(frozen=True)
+class RateLimitStatus:
+    """The most recently observed rate-limit state for a Session.
+
+    Populated from the ``X-RateLimit-*`` headers Metron sends with every
+    response. All fields are ``None`` until the first request completes.
+
+    Attributes:
+        burst: The short-term (per-minute) window, fixed for all users.
+        sustained: The daily window, whose limit varies by OpenCollective
+            donor tier.
+    """
+
+    burst: RateLimitWindow = field(default_factory=RateLimitWindow)
+    sustained: RateLimitWindow = field(default_factory=RateLimitWindow)
 
 
 class ResourceEndpoint:
@@ -189,10 +187,16 @@ class Session:
     creators, characters, publishers, series, issues, teams, arcs, and more. It handles
     authentication, rate limiting, caching, and response validation automatically.
 
-    The class implements automatic rate limiting to respect API quotas:
+    Metron enforces two rate-limit windows:
 
-    - 20 requests per minute
-    - 5,000 requests per day
+    - A fixed burst limit of 20 requests per minute for every user.
+    - A sustained daily limit that starts at 5,000 requests, and is raised for
+      OpenCollective donors (up to 25,000/day for the highest tier). Because
+      this limit varies per user and can change at any time, Session does not
+      track it locally with a fixed quota. Instead it reads the
+      ``X-RateLimit-*`` headers Metron returns with every response and only
+      pre-empts a request once those headers show the current window is
+      exhausted (see ``rate_limit_status``).
 
     **Important**: When rate limits are exceeded, a RateLimitError is raised immediately
     without making the API request. Applications must catch and handle this exception
@@ -201,7 +205,7 @@ class Session:
     Features:
 
     - Automatic authentication with username/password
-    - Built-in rate limiting with clear error messages
+    - Rate limiting driven by Metron's response headers, with clear error messages
     - Optional SQLite caching for improved performance
     - Comprehensive error handling and validation
     - Support for both read and write operations (write operations require admin permissions)
@@ -222,6 +226,8 @@ class Session:
         header (dict): HTTP headers sent with each request, including User-Agent.
         api_url (str): The base URL for API requests (production or development).
         cache (SqliteCache | None): The cache instance if provided.
+        rate_limit_status (RateLimitStatus): The most recently observed rate-limit
+            state, parsed from Metron's response headers.
 
     Examples:
         Basic usage:
@@ -276,18 +282,11 @@ class Session:
         ...                 raise
         >>> issue = fetch_with_rate_limit_handling(1)
 
-        Redis-backed rate limiting (shared across multiple workers or processes):
-
-        >>> from pyrate_limiter import RedisBucket
-        >>> import redis
-        >>> pool = redis.ConnectionPool.from_url("redis://localhost:6379")
-        >>> bucket = RedisBucket.init(DEFAULT_RATES, redis.Redis(connection_pool=pool), "mokkari")
-        >>> session = Session("username", "password", bucket=bucket)
-
-        In-memory bucket (useful for testing or single-process use without a database):
-
-        >>> from pyrate_limiter import InMemoryBucket
-        >>> session = Session("username", "password", bucket=InMemoryBucket(DEFAULT_RATES))
+        Inspecting the current rate-limit state:
+        >>> session = Session("username", "password")
+        >>> issue = session.issue(1)
+        >>> status = session.rate_limit_status
+        >>> print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
 
     Raises:
         ApiError: For general API errors, authentication failures, or network issues.
@@ -311,14 +310,13 @@ class Session:
         UniversePost,
     )
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         username: str,
         passwd: str,
         cache: sqlite_cache.SqliteCache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
-        bucket: AbstractBucket | None = None,
     ) -> None:
         """Initialize a Session object with authentication and configuration.
 
@@ -332,10 +330,6 @@ class Session:
             cache: Optional SqliteCache instance for response caching.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
-            bucket: Optional pyrate_limiter bucket for rate limiting. If not provided,
-                a default SQLite-backed bucket is created and shared across sessions.
-                Pass a custom bucket to share rate limit state across workers
-                (e.g., using a Redis or database-backed bucket).
         """
         self.username = username
         self.passwd = passwd
@@ -345,8 +339,19 @@ class Session:
         }
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
-        self._bucket = bucket or _default_bucket()
-        self._limiter = Limiter(self._bucket)
+        self._rate_limit_lock = threading.Lock()
+        self._rate_limit_status = RateLimitStatus()
+
+    @property
+    def rate_limit_status(self) -> RateLimitStatus:
+        """Return the most recently observed rate-limit state.
+
+        Populated from the ``X-RateLimit-*`` headers Metron sends with every
+        response. Fields are ``None`` until the first request completes, or if
+        Metron did not report that window.
+        """
+        with self._rate_limit_lock:
+            return self._rate_limit_status
 
     def _get(
         self,
@@ -2000,7 +2005,7 @@ class Session:
             ApiError: For connection errors or timeouts.
         """
         try:
-            return requests.request(
+            response = requests.request(
                 method,
                 url,
                 params=params,
@@ -2016,6 +2021,9 @@ class Session:
         ) as err:
             msg = f"Connection error: {err!r}"
             raise exceptions.ApiError(msg) from err
+
+        self._update_rate_limit_status(response.headers)
+        return response
 
     def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:
         """Handle HTTP response, parsing JSON and checking for errors.
@@ -2053,32 +2061,86 @@ class Session:
 
         return resp
 
+    @staticmethod
+    def _parse_rate_limit_window(
+        headers: Any, limit_header: str, remaining_header: str, reset_header: str
+    ) -> RateLimitWindow | None:
+        """Parse one rate-limit window (burst or sustained) out of response headers.
+
+        Returns ``None`` when none of the three headers for this window are present,
+        so a response missing rate-limit headers entirely doesn't clobber
+        previously observed state.
+        """
+        limit = headers.get(limit_header)
+        remaining = headers.get(remaining_header)
+        reset = headers.get(reset_header)
+        if limit is None and remaining is None and reset is None:
+            return None
+        return RateLimitWindow(
+            limit=int(limit) if limit is not None else None,
+            remaining=int(remaining) if remaining is not None else None,
+            reset=datetime.fromtimestamp(int(reset), tz=timezone.utc)
+            if reset is not None
+            else None,
+        )
+
+    def _update_rate_limit_status(self, headers: Any) -> None:
+        """Update the session's rate-limit state from a response's headers."""
+        burst = self._parse_rate_limit_window(
+            headers, HEADER_BURST_LIMIT, HEADER_BURST_REMAINING, HEADER_BURST_RESET
+        )
+        sustained = self._parse_rate_limit_window(
+            headers, HEADER_SUSTAINED_LIMIT, HEADER_SUSTAINED_REMAINING, HEADER_SUSTAINED_RESET
+        )
+        if burst is None and sustained is None:
+            return
+        with self._rate_limit_lock:
+            self._rate_limit_status = RateLimitStatus(
+                burst=burst or self._rate_limit_status.burst,
+                sustained=sustained or self._rate_limit_status.sustained,
+            )
+
+    @staticmethod
+    def _seconds_until_window_resets(window: RateLimitWindow, now: datetime) -> float:
+        """Seconds until ``window`` allows another request, or 0 if it already does."""
+        if window.remaining is None or window.remaining > 0 or window.reset is None:
+            return 0.0
+        return max(0.0, (window.reset - now).total_seconds())
+
     def _check_rate_limit(self) -> None:
         """Check rate limits before making a request.
 
+        Metron's sustained (daily) limit varies per user based on OpenCollective
+        donor tier, so mokkari doesn't track it locally with a fixed quota.
+        Instead it trusts the most recently observed ``X-RateLimit-*`` response
+        headers, and only pre-empts a request once those headers show a window
+        is already exhausted.
+
         Raises:
-            RateLimitError: When the API rate limit is exceeded.
+            RateLimitError: When the last known rate-limit headers show the
+                burst or sustained window is exhausted and hasn't reset yet.
         """
-        acquired = self._limiter.try_acquire("metron", 1, blocking=False)
-        if not acquired:
-            item = RateItem("metron", cast("int", self._bucket.now()), weight=1)
-            delay_ms = cast("int", self._bucket.waiting(item))
-            delay = delay_ms / 1000 if delay_ms > 0 else 0
+        status = self.rate_limit_status
+        now = datetime.now(timezone.utc)
+        burst_wait = self._seconds_until_window_resets(status.burst, now)
+        sustained_wait = self._seconds_until_window_resets(status.sustained, now)
 
-            failing_rate = self._bucket.failing_rate
-            if failing_rate is not None and failing_rate.interval >= Duration.DAY.value:
-                limit_type = "day"
-                limit_value = METRON_DAY_RATE_LIMIT
-            else:
-                limit_type = "minute"
-                limit_value = METRON_MINUTE_RATE_LIMIT
+        delay = max(burst_wait, sustained_wait)
+        if delay <= 0:
+            return
 
-            msg = (
-                f"Rate limit exceeded: You have reached the {limit_value:,} requests per {limit_type} limit. "
-                f"Please wait {format_time(delay)} before making another request."
-            )
-            LOGGER.warning(msg)
-            raise exceptions.RateLimitError(msg, retry_after=delay)
+        if sustained_wait >= burst_wait:
+            limit_type, limit_value = "day", status.sustained.limit
+        else:
+            limit_type, limit_value = "minute", status.burst.limit
+        limit_str = f"{limit_value:,}" if limit_value is not None else "your"
+
+        msg = (
+            f"Rate limit exceeded: You have reached the {limit_str} requests per {limit_type} limit. "
+            f"Please wait {format_time(delay)} before making another request."
+        )
+        LOGGER.warning(msg)
+        raise exceptions.RateLimitError(msg, retry_after=delay)
 
     def _request_data(
         self,
