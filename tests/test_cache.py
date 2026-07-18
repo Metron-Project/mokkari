@@ -5,10 +5,12 @@ This module contains tests for SqliteCache objects.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 import requests_mock
 
-from mokkari import api, exceptions
+from mokkari import api, exceptions, sqlite_cache
 
 
 class NoGet:
@@ -48,6 +50,19 @@ def test_no_store(dummy_username: str, dummy_password: str) -> None:
 
         with pytest.raises(exceptions.CacheError):
             m.series(5)
+
+
+def test_thread_safety() -> None:
+    """Concurrent get/store calls from multiple threads should not raise."""
+    cache = sqlite_cache.SqliteCache(":memory:")
+
+    def worker(i: int) -> None:
+        key = f"key-{i}"
+        cache.store(key, {"id": i})
+        assert cache.get(key) == {"id": i}
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(worker, range(100)))
 
 
 # def test_sql_store(dummy_username: str, dummy_password: str) -> None:
