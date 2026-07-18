@@ -81,6 +81,31 @@ except RateLimitError as e:
     issue = m.issue(31660)
 ```
 
+### Thread Safety
+
+A `Session` can be shared across threads, but the rate-limit check above is
+advisory rather than a hard gate: it only blocks once the last known response
+headers show a window is exhausted, and that check isn't synchronized with
+sending the request. Concurrent threads can therefore each pass the check and
+send their requests before either response updates `rate_limit_status`, letting
+a burst of threads momentarily exceed the per-minute limit (Metron's server-side
+limit still applies and will reject the excess requests).
+
+If you're calling a shared `Session` from multiple threads, cap your own
+concurrency instead of relying on `Session` to do it for you, e.g. keep a
+`ThreadPoolExecutor` at or below the burst limit:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+m = mokkari.api(username, password)
+
+# Keep worker count at or below the burst limit (20/min) to avoid racing
+# past the local rate-limit check.
+with ThreadPoolExecutor(max_workers=20) as executor:
+    issues = list(executor.map(m.issue, issue_ids))
+```
+
 ## Documentation
 
 [Read the project documentation](https://mokkari.readthedocs.io/en/stable/?badge=latest)

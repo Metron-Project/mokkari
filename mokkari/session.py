@@ -202,6 +202,18 @@ class Session:
     without making the API request. Applications must catch and handle this exception
     appropriately (see examples below).
 
+    **Thread safety**: A single ``Session`` can be shared across threads, but its
+    pre-emptive rate-limit check is advisory, not a hard gate: it only raises once the
+    *last known* response headers show a window is exhausted, and that check isn't
+    serialized with sending the request. Concurrent threads can each pass the check and
+    send their requests before a response comes back to update ``rate_limit_status``, so
+    a burst of threads can momentarily exceed the per-minute limit before local state
+    catches up (Metron's server-side limit is still authoritative and will reject the
+    excess requests). If you're calling a shared ``Session`` from multiple threads, cap
+    your own concurrency rather than relying on ``Session`` to do it for you — e.g. bound
+    a ``ThreadPoolExecutor`` at or below the burst limit, or gate requests with a
+    ``threading.Semaphore``.
+
     Features:
 
     - Automatic authentication with username/password
@@ -2115,6 +2127,13 @@ class Session:
         Instead it trusts the most recently observed ``X-RateLimit-*`` response
         headers, and only pre-empts a request once those headers show a window
         is already exhausted.
+
+        Not synchronized with request dispatch: this check and the subsequent
+        HTTP call are not serialized under a shared lock, so under concurrent
+        callers (e.g. multiple threads sharing one ``Session``) more than one
+        caller can pass this check before either request's response updates
+        ``rate_limit_status``. See the "Thread safety" note on ``Session`` for
+        guidance on bounding your own concurrency.
 
         Raises:
             RateLimitError: When the last known rate-limit headers show the
