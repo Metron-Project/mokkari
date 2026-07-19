@@ -5,7 +5,7 @@ This module provides the following classes:
 - Session: Main API client for interacting with the Metron Comics Database
 """
 
-__all__ = ["Session"]
+__all__ = ["RateLimitStatus", "RateLimitWindow", "Session"]
 
 import json
 import logging
