@@ -10,6 +10,7 @@ from mokkari.schemas.reading_list import (
     ReadingListIssue,
     ReadingListItem,
     ReadingListList,
+    ReadingListNav,
     ReadingListRead,
     User,
 )
@@ -271,9 +272,27 @@ def test_reading_list_read_creation(reading_list_read_data):
     assert reading_list.is_private is False
     assert reading_list.attribution_source == "CBRO"
     assert str(reading_list.attribution_url) == "https://example.com/reading-list"
+    assert reading_list.previous is None
+    assert reading_list.next is None
     assert reading_list.items_url == "https://api.example.com/reading_list/1/items/"
     assert reading_list.resource_url == "https://api.example.com/reading_list/1/"
     assert isinstance(reading_list.modified, datetime)
+
+
+def test_reading_list_read_with_previous_and_next(reading_list_read_data):
+    """Test creating a ReadingListRead with previous and next reading order links."""
+    data = {
+        **reading_list_read_data,
+        "previous": {"id": 2, "name": "Batgirl: Mother"},
+        "next": {"id": 3, "name": "Batgirl: The Book of Shiva"},
+    }
+    reading_list = ReadingListRead(**data)
+    assert isinstance(reading_list.previous, ReadingListNav)
+    assert reading_list.previous.id == 2
+    assert reading_list.previous.name == "Batgirl: Mother"
+    assert isinstance(reading_list.next, ReadingListNav)
+    assert reading_list.next.id == 3
+    assert reading_list.next.name == "Batgirl: The Book of Shiva"
 
 
 def test_reading_list_read_creation_minimal(user_data):
