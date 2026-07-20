@@ -6,6 +6,7 @@ This module provides the following classes:
 - ReadingListIssue
 - ReadingListItem
 - ReadingListList
+- ReadingListNav
 - ReadingListRead
 """
 
@@ -15,6 +16,7 @@ __all__ = [
     "ReadingListIssue",
     "ReadingListItem",
     "ReadingListList",
+    "ReadingListNav",
     "ReadingListRead",
 ]
 
@@ -159,6 +161,18 @@ class ReadingListList(BaseModel):
         return v
 
 
+class ReadingListNav(BaseModel):
+    """A data model representing a minimal reading list reference for previous/next links.
+
+    Attributes:
+        id (int): The unique identifier of the reading list.
+        name (str): The name of the reading list.
+    """
+
+    id: int
+    name: str
+
+
 class ReadingListRead(BaseModel):
     """A data model representing a reading list in detailed view.
 
@@ -174,6 +188,8 @@ class ReadingListRead(BaseModel):
         attribution_source (str): Source where this reading list information was obtained.
         attribution_url (HttpUrl, optional): URL of the specific page where this reading
             list was obtained.
+        previous (ReadingListNav, optional): The previous reading list in the reading order.
+        next (ReadingListNav, optional): The next reading list in the reading order.
         average_rating (float): The average rating of the reading list.
         rating_count (int): The number of ratings for the reading list.
         items_url (str): URL to the paginated items endpoint.
@@ -191,6 +207,8 @@ class ReadingListRead(BaseModel):
     is_private: bool = False
     attribution_source: str
     attribution_url: HttpUrl | None = Field(default=None, max_length=200)
+    previous: ReadingListNav | None = None
+    next: ReadingListNav | None = None
     average_rating: float | None = None
     rating_count: int
     items_url: str
