@@ -351,6 +351,8 @@ def test_issue_creation_full_data():
         "universes": [{"id": 1, "name": "DC Universe", "modified": now}],
         "reprints": [],
         "variants": [],
+        "average_rating": 4.25,
+        "rating_count": 8,
         "cv_id": 123456,
         "gcd_id": 654321,
         "resource_url": "https://example.com/issue/1",
@@ -366,6 +368,8 @@ def test_issue_creation_full_data():
     assert issue.price == Decimal("3.99")
     assert issue.rating.name == "T+"
     assert issue.page_count == 32
+    assert issue.average_rating == 4.25
+    assert issue.rating_count == 8
     assert issue.cv_id == 123456
     assert issue.gcd_id == 654321
 
@@ -396,6 +400,7 @@ def test_issue_creation_minimal_data():
         "desc": "",
         "price": None,
         "price_currency": "",
+        "rating_count": 0,
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -407,6 +412,8 @@ def test_issue_creation_minimal_data():
     assert issue.characters == []
     assert issue.teams == []
     assert issue.universes == []
+    assert issue.average_rating is None
+    assert issue.rating_count == 0
     assert issue.reprints == []
     assert issue.variants == []
     assert issue.cv_id is None
@@ -440,6 +447,7 @@ def test_issue_field_aliases():
         "desc": "",
         "price": None,
         "price_currency": "",
+        "rating_count": 0,
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -596,6 +604,7 @@ def test_empty_string_handling():
         "desc": "",
         "price": None,
         "price_currency": "",
+        "rating_count": 0,
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -635,6 +644,7 @@ def test_list_field_types():
         "desc": "",
         "price": None,
         "price_currency": "",
+        "rating_count": 0,
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
@@ -729,6 +739,7 @@ def test_optional_nested_objects():
         "desc": "",
         "price": None,
         "price_currency": "",
+        "rating_count": 0,
         "resource_url": "https://example.com/issue/1",
     }
     issue = Issue(**data)
