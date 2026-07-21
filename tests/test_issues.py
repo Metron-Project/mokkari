@@ -27,6 +27,7 @@ _BASE_ISSUE = {
     "desc": "",
     "price": None,
     "price_currency": "",
+    "rating_count": 0,
     "modified": _MODIFIED,
 }
 

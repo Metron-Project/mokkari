@@ -950,6 +950,7 @@ def test_issue(session: Session) -> None:
                 isbn="",
                 upc="",
                 desc="",
+                rating_count=0,
             ),
         ),
     ):

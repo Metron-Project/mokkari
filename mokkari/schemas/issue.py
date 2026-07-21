@@ -198,6 +198,8 @@ class Issue(CommonIssue):
         universes (list[BaseResource], optional): The universes related to the issue.
         reprints (list[Reprint], optional): The reprints of the issue.
         variants (list[Variant], optional): The variants of the issue.
+        average_rating (Decimal, optional): The average community rating (1-5) of the issue.
+        rating_count (int): The number of community ratings submitted for the issue.
         cv_id (int, optional): The Comic Vine ID of the issue.
         gcd_id (int, optional): The Grand Comics Database ID of the issue.
         resource_url (HttpUrl): The URL of the issue resource.
@@ -224,6 +226,8 @@ class Issue(CommonIssue):
     universes: list[BaseResource] = []
     reprints: list[Reprint] = []
     variants: list[Variant] = []
+    average_rating: Decimal | None = None
+    rating_count: int
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
