@@ -288,6 +288,27 @@ def test_series_list_with_year_end() -> None:
     assert series.year_end == 2018
 
 
+def test_series_with_alt_names() -> None:
+    """Test series with alternative names."""
+    series = Series(
+        **{
+            **_FULL_SERIES,
+            "id": 3315,
+            "name": "The Sandman",
+            "sort_name": "Sandman",
+            "alt_names": ["Sandman: The Dreaming"],
+            "resource_url": "https://metron.cloud/series/sandman-1989/",
+        }
+    )
+    assert series.alt_names == ["Sandman: The Dreaming"]
+
+
+def test_series_without_alt_names() -> None:
+    """Test that alt_names defaults to an empty list when absent."""
+    death = Series(**_FULL_SERIES)
+    assert death.alt_names == []
+
+
 def test_series_list_without_year_end() -> None:
     """Test that year_end is None when absent from a series list entry."""
     series = BaseSeries(
