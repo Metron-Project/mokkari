@@ -41,6 +41,7 @@ def issue_series_data():
         "id": 1,
         "name": "Batman",
         "sort_name": "Batman",
+        "alt_names": ["Bat-Man"],
         "volume": 1,
         "year_began": 1940,
         "series_type": {"id": 1, "name": "Ongoing Series"},
@@ -205,6 +206,7 @@ def test_issue_series_creation(issue_series_data):
     assert series.id == 1
     assert series.name == "Batman"
     assert series.sort_name == "Batman"
+    assert series.alt_names == ["Bat-Man"]
     assert series.volume == 1
     assert series.year_began == 1940
     assert series.series_type.name == "Ongoing Series"
@@ -224,6 +226,20 @@ def test_issue_series_creation_without_genres():
     }
     series = IssueSeries(**data)
     assert series.genres == []
+
+
+def test_issue_series_creation_without_alt_names():
+    """Test that alt_names defaults to an empty list when absent."""
+    data = {
+        "id": 1,
+        "name": "Batman",
+        "sort_name": "Batman",
+        "volume": 1,
+        "year_began": 1940,
+        "series_type": {"id": 1, "name": "Ongoing Series"},
+    }
+    series = IssueSeries(**data)
+    assert series.alt_names == []
 
 
 def test_issue_series_validation_missing_series_type():

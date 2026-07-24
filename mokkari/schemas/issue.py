@@ -121,6 +121,7 @@ class IssueSeries(BaseModel):
         id (int): The unique identifier of the issue series.
         name (str): The name of the issue series.
         sort_name (str): The name used for sorting the issue series.
+        alt_names (list[str], optional): Alternative names for the issue series.
         volume (int): The volume number of the issue series.
         year_began (int): The year the issue's series began.
         series_type (GenericItem): The type of the issue series.
@@ -131,6 +132,7 @@ class IssueSeries(BaseModel):
     id: int
     name: str
     sort_name: str
+    alt_names: list[str] = []
     volume: int
     year_began: int
     series_type: GenericItem
