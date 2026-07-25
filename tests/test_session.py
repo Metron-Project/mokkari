@@ -106,7 +106,7 @@ def dummy_cache():
     ],
     ids=lambda x: x if isinstance(x, str) else None,
 )
-def test__get_happy_path(  # noqa: PLR0913
+def test__get_happy_path(  # noqa: PLR0913, PLR0917
     session: Session,
     endpoint: list[str | int],
     params: dict[str, str] | None,
@@ -155,7 +155,7 @@ def test__get_raises_api_error_on_detail(session: Session) -> None:
     ],
     ids=lambda x: x if isinstance(x, str) else None,
 )
-def test__send(  # noqa: PLR0913
+def test__send(  # noqa: PLR0913, PLR0917
     session: Session,
     method: str,
     endpoint: list[str],

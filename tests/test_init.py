@@ -23,7 +23,7 @@ def test_api() -> None:
     m = None
     try:
         m = api(username="Something", passwd="Else")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"mokkari.api() raised {exc} unexpectedly!")
 
     assert m.__class__.__name__ == session.Session.__name__

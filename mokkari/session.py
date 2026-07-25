@@ -1991,7 +1991,7 @@ class Session:
 
         return header, files, data_dict
 
-    def _execute_http_request(  # noqa: PLR0913
+    def _execute_http_request(  # noqa: PLR0913, PLR0917
         self,
         method: str,
         url: str,
