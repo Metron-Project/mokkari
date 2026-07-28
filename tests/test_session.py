@@ -1,3 +1,4 @@
+# ruff: noqa: S106
 """Test Session module.
 
 This module contains tests for Session objects.
@@ -72,7 +73,7 @@ from mokkari.session import Session
 def session() -> Session:
     # Arrange
     # Provide a Session with dummy credentials and no cache
-    return Session(username="user", passwd="pass", cache=None, user_agent="pytest", dev_mode=False)  # noqa: S106
+    return Session(username="user", passwd="pass", cache=None, user_agent="pytest", dev_mode=False)
 
 
 @pytest.fixture
@@ -90,6 +91,69 @@ def dummy_cache():
             self._store[key] = value
 
     return DummyCache()
+
+
+def test_session_init_raises_without_any_credentials() -> None:
+    """Test that Session() raises AuthenticationError with no credentials."""
+    with pytest.raises(exceptions.AuthenticationError):
+        Session()
+
+
+def test_session_init_raises_with_partial_basic_auth_and_no_token() -> None:
+    """Test that partial username/passwd without a token raises AuthenticationError."""
+    with pytest.raises(exceptions.AuthenticationError):
+        Session(username="user")
+
+    with pytest.raises(exceptions.AuthenticationError):
+        Session(passwd="pass")
+
+
+def test_session_init_basic_auth_sets_auth_tuple() -> None:
+    """Test that username/passwd authentication sets a Basic Auth tuple."""
+    s = Session(username="user", passwd="pass")
+
+    assert s._auth == ("user", "pass")
+    assert "Authorization" not in s.header
+
+
+def test_session_init_token_sets_bearer_header() -> None:
+    """Test that api_token authentication sets a Bearer Authorization header."""
+    s = Session(api_token="abc123")
+
+    assert s.header["Authorization"] == "Bearer abc123"
+    assert s._auth is None
+
+
+def test_session_init_token_takes_precedence_over_basic_auth() -> None:
+    """Test that api_token takes precedence when username/passwd are also given."""
+    s = Session(username="user", passwd="pass", api_token="abc123")
+
+    assert s.header["Authorization"] == "Bearer abc123"
+    assert s._auth is None
+
+
+def test_execute_http_request_uses_basic_auth(session: Session, monkeypatch) -> None:
+    """Test that _execute_http_request sends a Basic Auth tuple for username/passwd sessions."""
+    mock_request = MagicMock(return_value=MagicMock(headers={}))
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+
+    assert mock_request.call_args.kwargs["auth"] == ("user", "pass")
+
+
+def test_execute_http_request_uses_bearer_header(monkeypatch) -> None:
+    """Test that _execute_http_request sends no auth tuple for token sessions."""
+    token_session = Session(api_token="abc123")
+    mock_request = MagicMock(return_value=MagicMock(headers={}))
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    token_session._execute_http_request(
+        "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
+    )
+
+    assert mock_request.call_args.kwargs["auth"] is None
+    assert mock_request.call_args.kwargs["headers"]["Authorization"] == "Bearer abc123"
 
 
 @pytest.mark.parametrize(
