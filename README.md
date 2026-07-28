@@ -13,6 +13,20 @@ A python wrapper for the [Metron Comic Book Database](https://metron.cloud) API.
 pip install mokkari
 ```
 
+## Authentication
+
+Mokkari supports two authentication methods:
+
+```python
+import mokkari
+
+# Token authentication (generate a token from your metron.cloud account page)
+m = mokkari.api(api_token="your-api-token")
+
+# Username/password (Basic Auth)
+m = mokkari.api(username, password)
+```
+
 ## Example Usage
 
 ```python

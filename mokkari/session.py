@@ -216,7 +216,7 @@ class Session:
 
     Features:
 
-    - Automatic authentication with username/password
+    - Automatic authentication with username/password or a Bearer API token
     - Rate limiting driven by Metron's response headers, with clear error messages
     - Optional SQLite caching for improved performance
     - Comprehensive error handling and validation
@@ -231,10 +231,13 @@ class Session:
         cache: Optional SqliteCache instance for caching responses to improve performance.
         user_agent: Optional custom user agent string to append to the default user agent.
         dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
+        api_token: API token for Bearer-token authentication. Takes precedence
+            over username/passwd when both are provided.
 
     Attributes:
-        username (str): The username used for API authentication.
-        passwd (str): The password used for API authentication.
+        username (str | None): The username used for API authentication.
+        passwd (str | None): The password used for API authentication.
+        api_token (str | None): The API token used for Bearer-token authentication, if provided.
         header (dict): HTTP headers sent with each request, including User-Agent.
         api_url (str): The base URL for API requests (production or development).
         cache (SqliteCache | None): The cache instance if provided.
@@ -246,6 +249,9 @@ class Session:
         >>> session = Session("username", "password")
         >>> issue = session.issue(1)
         >>> print(issue)
+
+        Token authentication:
+        >>> session = Session(api_token="your-api-token")
 
         With caching:
         >>> from mokkari.sqlite_cache import SqliteCache
@@ -301,6 +307,8 @@ class Session:
         >>> print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
 
     Raises:
+        AuthenticationError: If neither an api_token nor a complete username/passwd
+            pair is provided.
         ApiError: For general API errors, authentication failures, or network issues.
         RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
         CacheError: For cache-related errors.
@@ -322,13 +330,14 @@ class Session:
         UniversePost,
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
-        username: str,
-        passwd: str,
+        username: str | None = None,
+        passwd: str | None = None,
         cache: sqlite_cache.SqliteCache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
+        api_token: str | None = None,
     ) -> None:
         """Initialize a Session object with authentication and configuration.
 
@@ -342,13 +351,29 @@ class Session:
             cache: Optional SqliteCache instance for response caching.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
+            api_token: API token for Bearer-token authentication. Takes precedence
+                over username/passwd when both are provided.
+
+        Raises:
+            AuthenticationError: If neither api_token nor a complete username/passwd
+                pair is provided.
         """
+        has_basic_auth = username is not None and passwd is not None
+        if api_token is None and not has_basic_auth:
+            raise exceptions.AuthenticationError
+
         self.username = username
         self.passwd = passwd
+        self.api_token = api_token
         self.header = {
             "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
             f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
         }
+        if api_token is not None:
+            self.header["Authorization"] = f"Bearer {api_token}"
+            self._auth = None
+        else:
+            self._auth = (username, passwd)
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
         self._rate_limit_lock = threading.Lock()
@@ -2022,7 +2047,7 @@ class Session:
                 url,
                 params=params,
                 timeout=REQUEST_TIMEOUT,
-                auth=(self.username, self.passwd),
+                auth=self._auth,
                 headers=header,
                 data=data_dict,
                 files=files,

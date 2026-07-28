@@ -7,15 +7,16 @@ from importlib.metadata import version
 # Keep this at beginning of file to prevent circular import with session
 __version__ = version("mokkari")
 
-from mokkari import exceptions, session, sqlite_cache
+from mokkari import session, sqlite_cache
 
 
-def api(
+def api(  # noqa: PLR0913, PLR0917
     username: str | None = None,
     passwd: str | None = None,
     cache: sqlite_cache.SqliteCache | None = None,
     user_agent: str | None = None,
     dev_mode: bool = False,
+    api_token: str | None = None,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
@@ -26,18 +27,26 @@ def api(
         user_agent: The user agent string for the application using Mokkari.
             For example 'Foo Bar/1.0'.
         dev_mode: Whether the library should be run against a local Metron instance.
+        api_token: An API token used for Bearer-token authentication. Takes
+            precedence over username/passwd when both are provided.
 
     Returns:
         A Session object.
 
     Raises:
-        AuthenticationError: If Metron returns with an invalid API credentials response.
+        AuthenticationError: If neither an api_token nor a complete username/passwd
+            pair is provided.
 
     Examples:
         >>> m = api("username", "password")
+        >>> m = api(api_token="your-token-here")
 
     """
-    if username is None or passwd is None:
-        raise exceptions.AuthenticationError
-
-    return session.Session(username, passwd, cache=cache, user_agent=user_agent, dev_mode=dev_mode)
+    return session.Session(
+        username=username,
+        passwd=passwd,
+        cache=cache,
+        user_agent=user_agent,
+        dev_mode=dev_mode,
+        api_token=api_token,
+    )
