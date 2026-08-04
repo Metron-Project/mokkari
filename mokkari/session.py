@@ -29,6 +29,7 @@ from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
 from mokkari.schemas.collection import (
+    CollectionAddItem,
     CollectionList,
     CollectionRead,
     CollectionStats,
@@ -1659,6 +1660,51 @@ class Session:
         return self._patch_resource(
             ResourceEndpoint.COLLECTION, _id, data, CollectionUpdateResponse
         )
+
+    def collection_add(self, data: CollectionAddItem) -> CollectionRead:
+        """Add an issue to the authenticated user's collection.
+
+        Note: This endpoint requires authentication.
+
+        Args:
+            data: CollectionAddItem object containing the issue_id and optional
+                  quantity, grade, and purchase details.
+
+        Returns:
+            CollectionRead: The created (or updated, if the issue was already
+                             in the collection) collection item.
+
+        Raises:
+            ApiError: If the issue is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> from mokkari.schemas.collection import CollectionAddItem
+            >>> item = session.collection_add(CollectionAddItem(issue_id=1, quantity=2))
+            >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
+        """
+        return self._handle_write_request(
+            "POST", [ResourceEndpoint.COLLECTION, "add"], data, CollectionRead
+        )
+
+    def collection_delete(self, _id: int) -> None:
+        """Remove an item from the authenticated user's collection.
+
+        Note: Users can only remove items from their own collection.
+
+        Args:
+            _id: The unique identifier for the collection item to remove.
+
+        Raises:
+            ApiError: If the collection item is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("username", "password")
+            >>> session.collection_delete(1)
+        """
+        self._send_void("DELETE", [ResourceEndpoint.COLLECTION, _id])
 
     # Pull list methods
     def pull_list(self) -> PullListRead:

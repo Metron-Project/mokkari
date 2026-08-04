@@ -10,6 +10,7 @@ This module provides the following classes:
 - CollectionIssue
 - CollectionList
 - CollectionRead
+- CollectionAddItem
 - MissingIssue
 - MissingSeries
 - CollectionFormatStat
@@ -22,6 +23,7 @@ This module provides the following classes:
 
 __all__ = [
     "BookFormat",
+    "CollectionAddItem",
     "CollectionFormatStat",
     "CollectionIssue",
     "CollectionList",
@@ -273,6 +275,36 @@ class CollectionRead(BaseModel):
     resource_url: str
     created_on: datetime
     modified: datetime
+
+
+class CollectionAddItem(BaseModel):
+    """A data model representing a request to add an issue to the collection.
+
+    Attributes:
+        issue_id (int): The unique identifier of the issue to add.
+        quantity (int): Number of copies owned (default 1).
+        book_format (str): Format of the comic (print, digital, or both). Defaults to PRINT.
+        grade (Decimal, optional): Comic book grade (CGC scale).
+        grading_company (str): Professional grading company.
+        purchase_date (date, optional): Date when the issue was purchased.
+        purchase_price (Decimal, optional): Price paid for this issue.
+        purchase_price_currency (str): Currency for purchase_price (default "USD").
+        purchase_store (str): Store or vendor where purchased.
+        storage_location (str): Physical location where the issue is stored.
+        notes (str): Additional notes about this collection item.
+    """
+
+    issue_id: int
+    quantity: int = Field(default=1, ge=1)
+    book_format: str = BookFormat.PRINT.value
+    grade: Decimal | None = None
+    grading_company: str = ""
+    purchase_date: date | None = None
+    purchase_price: Decimal | None = None
+    purchase_price_currency: str = "USD"
+    purchase_store: str = ""
+    storage_location: str = ""
+    notes: str = ""
 
 
 class MissingIssue(BaseModel):
