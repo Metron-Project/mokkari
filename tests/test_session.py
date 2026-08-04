@@ -20,6 +20,7 @@ from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
 from mokkari.schemas.collection import (
+    CollectionAddItem,
     CollectionFormatStat,
     CollectionIssue,
     CollectionList,
@@ -1919,6 +1920,79 @@ def test_collection_patch_api_error(session: Session) -> None:
         pytest.raises(exceptions.ApiError),
     ):
         session.collection_patch(1, data)
+
+
+def test_collection_add(session: Session) -> None:
+    # Arrange
+    add_request = CollectionAddItem(issue_id=1, quantity=2, purchase_price=Decimal("3.99"))
+    resp = {
+        "id": 100,
+        "user": {"id": 1, "username": "test"},
+        "issue": {
+            "id": 1,
+            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
+            "number": "1",
+            "cover_date": "2024-01-01",
+            "modified": "2024-01-01T12:00:00Z",
+        },
+        "quantity": 2,
+        "book_format": "PRINT",
+        "grading_company": "",
+        "is_read": False,
+        "resource_url": "https://api.example.com/collection/100/",
+        "created_on": "2024-01-01T12:00:00Z",
+        "modified": "2024-01-01T12:00:00Z",
+    }
+    with (
+        patch.object(session, "_send", return_value=resp),
+        patch(
+            "mokkari.session.TypeAdapter.validate_python",
+            return_value=CollectionRead(
+                id=100,
+                user=User(id=1, username="test"),
+                issue=CollectionIssue(
+                    id=1,
+                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
+                    number="1",
+                    cover_date=datetime.date(2024, 1, 1),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                ),
+                quantity=2,
+                book_format="PRINT",
+                grading_company="",
+                is_read=False,
+                resource_url="https://api.example.com/collection/100/",
+                created_on=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+            ),
+        ),
+    ):
+        # Act
+        result = session.collection_add(add_request)
+        # Assert
+        assert isinstance(result, CollectionRead)
+        assert result.id == 100
+        assert result.quantity == 2
+
+
+def test_collection_add_api_error(session: Session) -> None:
+    # Arrange
+    add_request = CollectionAddItem(issue_id=1)
+    with (
+        patch.object(session, "_send", side_effect=exceptions.ApiError("fail")),
+        pytest.raises(exceptions.ApiError),
+    ):
+        session.collection_add(add_request)
+
+
+def test_collection_delete(session: Session) -> None:
+    # Arrange
+    with patch.object(session, "_send_void") as mock_send_void:
+        # Act
+        result = session.collection_delete(1)
+        # Assert
+        assert result is None
+        mock_send_void.assert_called_once_with("DELETE", ["collection", 1])
 
 
 @pytest.mark.parametrize(

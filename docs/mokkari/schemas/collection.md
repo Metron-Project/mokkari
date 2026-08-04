@@ -1,4 +1,5 @@
 :::mokkari.schemas.collection.BookFormat
+:::mokkari.schemas.collection.CollectionAddItem
 :::mokkari.schemas.collection.CollectionFormatStat
 :::mokkari.schemas.collection.CollectionIssue
 :::mokkari.schemas.collection.CollectionList
