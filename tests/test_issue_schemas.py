@@ -46,6 +46,7 @@ def issue_series_data():
         "year_began": 1940,
         "series_type": {"id": 1, "name": "Ongoing Series"},
         "genres": [{"id": 1, "name": "Superhero"}],
+        "language": "en",
     }
 
 
@@ -212,6 +213,7 @@ def test_issue_series_creation(issue_series_data):
     assert series.series_type.name == "Ongoing Series"
     assert len(series.genres) == 1
     assert series.genres[0].name == "Superhero"
+    assert series.language == "en"
 
 
 def test_issue_series_creation_without_genres():
@@ -240,6 +242,20 @@ def test_issue_series_creation_without_alt_names():
     }
     series = IssueSeries(**data)
     assert series.alt_names == []
+
+
+def test_issue_series_creation_without_language():
+    """Test that language defaults to an empty string when absent."""
+    data = {
+        "id": 1,
+        "name": "Batman",
+        "sort_name": "Batman",
+        "volume": 1,
+        "year_began": 1940,
+        "series_type": {"id": 1, "name": "Ongoing Series"},
+    }
+    series = IssueSeries(**data)
+    assert series.language == ""
 
 
 def test_issue_series_validation_missing_series_type():
@@ -683,10 +699,24 @@ def test_price_post_creation_gbp():
     assert price.currency == "GBP"
 
 
+def test_price_post_creation_eur():
+    """Test creating a PricePost with EUR currency."""
+    price = PricePost(amount=Decimal("3.99"), currency="EUR")
+    assert price.amount == Decimal("3.99")
+    assert price.currency == "EUR"
+
+
+def test_price_post_creation_itl():
+    """Test creating a PricePost with ITL currency."""
+    price = PricePost(amount=Decimal(3990), currency="ITL")
+    assert price.amount == Decimal(3990)
+    assert price.currency == "ITL"
+
+
 def test_price_post_invalid_currency():
     """Test that PricePost rejects unsupported currency codes."""
     with pytest.raises(ValidationError):
-        PricePost(amount=Decimal("3.99"), currency="EUR")
+        PricePost(amount=Decimal("3.99"), currency="JPY")
 
 
 def test_price_post_missing_fields():

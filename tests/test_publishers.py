@@ -35,6 +35,33 @@ def test_known_publishers() -> None:
     assert marvel.resource_url.__str__() == "https://metron.cloud/publisher/marvel/"
 
 
+def test_publisher_with_alt_names() -> None:
+    """Test publisher with alternative names."""
+    publisher = Publisher(
+        id=2,
+        name="Bongo Comics",
+        country="US",
+        desc="Bongo Comics.",
+        alt_names=["Bongo Comics Group"],
+        modified="2019-06-23T15:13:19.432378-04:00",
+        resource_url="https://metron.cloud/publisher/bongo-comics/",
+    )
+    assert publisher.alt_names == ["Bongo Comics Group"]
+
+
+def test_publisher_without_alt_names() -> None:
+    """Test that alt_names defaults to an empty list when absent."""
+    marvel = Publisher(
+        id=1,
+        name="Marvel",
+        country="US",
+        desc="Marvel Comics.",
+        modified="2019-06-23T15:13:19.432378-04:00",
+        resource_url="https://metron.cloud/publisher/marvel/",
+    )
+    assert marvel.alt_names == []
+
+
 def test_publisher_list(talker: Session) -> None:
     """Test the PublishersList."""
     data = {

@@ -309,6 +309,27 @@ def test_series_without_alt_names() -> None:
     assert death.alt_names == []
 
 
+def test_series_with_language() -> None:
+    """Test series with a language code."""
+    series = Series(
+        **{
+            **_FULL_SERIES,
+            "id": 5000,
+            "name": "Topolino",
+            "sort_name": "Topolino",
+            "language": "it",
+            "resource_url": "https://metron.cloud/series/topolino/",
+        }
+    )
+    assert series.language == "it"
+
+
+def test_series_without_language() -> None:
+    """Test that language defaults to an empty string when absent."""
+    death = Series(**_FULL_SERIES)
+    assert death.language == ""
+
+
 def test_series_list_without_year_end() -> None:
     """Test that year_end is None when absent from a series list entry."""
     series = BaseSeries(

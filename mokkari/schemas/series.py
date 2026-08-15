@@ -78,6 +78,7 @@ class Series(CommonSeries):
         name (str): The name of the series.
         sort_name (str): The name used for sorting the series.
         alt_names (list[str], optional): Alternative names for the series.
+        language (str, optional): The ISO 639-1 language code of the series.
         series_type (GenericItem): The type of the series.
         status (str): The status of the series.
         publisher (GenericItem): The publisher of the series.
@@ -94,6 +95,7 @@ class Series(CommonSeries):
     name: str
     sort_name: str
     alt_names: list[str] = []
+    language: str = ""
     series_type: GenericItem
     status: str
     publisher: GenericItem
@@ -114,6 +116,7 @@ class SeriesPost(BaseModel):
         name (str, optional): The name of the series.
         sort_name (str, optional): The name used for sorting the series.
         alt_names (list[str], optional): Alternative names for the series.
+        language (str, optional): The ISO 639-1 language code of the series. Defaults to 'en'.
         volume (int, optional): The volume number of the series.
         series_type (int, optional): The ID of the series type.
         status (int, optional): The ID of the series status.
@@ -131,6 +134,7 @@ class SeriesPost(BaseModel):
     name: str | None = None
     sort_name: str | None = None
     alt_names: list[str] | None = None
+    language: str | None = None
     volume: int | None = None
     series_type: int | None = None
     status: int | None = None
@@ -153,6 +157,7 @@ class SeriesPostResponse(BaseResource, SeriesPost):
         name (str, optional): The name of the series.
         sort_name (str, optional): The name used for sorting the series.
         alt_names (list[str], optional): Alternative names for the series.
+        language (str, optional): The ISO 639-1 language code of the series. Defaults to 'en'.
         volume (int, optional): The volume number of the series.
         series_type (int, optional): The ID of the series type.
         status (int, optional): The ID of the series status.
