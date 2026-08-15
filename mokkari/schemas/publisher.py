@@ -1,3 +1,4 @@
+# ruff: noqa: RUF012
 """Publisher module.
 
 This module provides the following classes:
@@ -32,6 +33,7 @@ class Publisher(BaseResource):
     """A data model representing a publisher that extends BaseResource.
 
     Attributes:
+        alt_names (list[str], optional): Alternative names for the publisher.
         founded (int, optional): The year the publisher was founded.
         country: str: An ISO 3166-1 2-letter country code.
         desc (str): The description of the publisher.
@@ -41,6 +43,7 @@ class Publisher(BaseResource):
         resource_url (HttpUrl): The URL of the publisher resource.
     """
 
+    alt_names: list[str] = []
     founded: int | None = None
     country: Annotated[str, ensure_country_code_length]
     desc: str
@@ -55,6 +58,7 @@ class PublisherPost(BaseModel):
 
     Attributes:
         name (str, optional): The name of the publisher.
+        alt_names (list[str], optional): Alternative names for the publisher.
         founded (int, optional): The year the publisher was founded.
         country: str: An ISO 3166-1 2-letter country code. Defaults to 'US'.
         desc (str, optional): The description of the publisher.
@@ -64,6 +68,7 @@ class PublisherPost(BaseModel):
     """
 
     name: str | None = None
+    alt_names: list[str] | None = None
     founded: int | None = None
     country: Annotated[str, ensure_country_code_length] = "US"
     desc: str | None = None

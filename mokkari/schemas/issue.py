@@ -62,11 +62,11 @@ class PricePost(BaseModel):
 
     Attributes:
         amount (Decimal): The price amount.
-        currency (str): The currency code (USD or GBP).
+        currency (str): The currency code (USD, GBP, EUR, or ITL).
     """
 
     amount: Decimal
-    currency: Literal["USD", "GBP"]
+    currency: Literal["USD", "GBP", "EUR", "ITL"]
 
 
 class CreditPost(BaseModel):
@@ -126,6 +126,7 @@ class IssueSeries(BaseModel):
         year_began (int): The year the issue's series began.
         series_type (GenericItem): The type of the issue series.
         genres (list[GenericItem], optional): The genres associated with the issue series.
+        language (str, optional): The ISO 639-1 language code of the issue series.
     """
 
     # TODO: Should this have the status field?
@@ -137,6 +138,7 @@ class IssueSeries(BaseModel):
     year_began: int
     series_type: GenericItem
     genres: list[GenericItem] = []
+    language: str = ""
 
 
 class CommonIssue(BaseModel):
@@ -248,7 +250,7 @@ class IssuePost(BaseModel):
         store_date (date, optional): The store date of the issue.
         foc_date (date, optional): The final order cutoff date of the issue.
         price (Decimal | PricePost, optional): The price of the issue. Pass a plain Decimal for
-            USD or a PricePost object for non-USD currencies (e.g. GBP).
+            USD or a PricePost object for non-USD currencies (e.g. GBP, EUR, ITL).
         rating (int, optional): The ID of the rating of the issue.
         sku (str, optional): The SKU of the issue.
         isbn (str, optional): The ISBN of the issue.
