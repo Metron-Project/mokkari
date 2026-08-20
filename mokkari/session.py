@@ -86,6 +86,10 @@ HEADER_SUSTAINED_LIMIT: Final[str] = "X-RateLimit-Sustained-Limit"
 HEADER_SUSTAINED_REMAINING: Final[str] = "X-RateLimit-Sustained-Remaining"
 HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 
+# Reports whether the most recent response was served from Metron's cache
+# ("HIT") or generated fresh ("MISS").
+HEADER_CACHE: Final[str] = "X-Cache"
+
 
 @dataclass(frozen=True)
 class RateLimitWindow:
@@ -244,6 +248,9 @@ class Session:
         cache (SqliteCache | None): The cache instance if provided.
         rate_limit_status (RateLimitStatus): The most recently observed rate-limit
             state, parsed from Metron's response headers.
+        last_cache_status (str | None): The ``X-Cache`` value ("HIT" or "MISS")
+            from the most recently completed response, or ``None`` if that
+            endpoint isn't cached and so didn't report one.
 
     Examples:
         Basic usage:
@@ -306,6 +313,11 @@ class Session:
         >>> issue = session.issue(1)
         >>> status = session.rate_limit_status
         >>> print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
+
+        Checking whether the last response was served from Metron's cache:
+        >>> session = Session("username", "password")
+        >>> issue = session.issue(1)
+        >>> print(session.last_cache_status)  # "HIT" or "MISS"
 
     Raises:
         AuthenticationError: If neither an api_token nor a complete username/passwd
@@ -379,6 +391,8 @@ class Session:
         self.cache = cache
         self._rate_limit_lock = threading.Lock()
         self._rate_limit_status = RateLimitStatus()
+        self._cache_status_lock = threading.Lock()
+        self._last_cache_status: str | None = None
 
     @property
     def rate_limit_status(self) -> RateLimitStatus:
@@ -390,6 +404,21 @@ class Session:
         """
         with self._rate_limit_lock:
             return self._rate_limit_status
+
+    @property
+    def last_cache_status(self) -> str | None:
+        """Return the ``X-Cache`` value from the most recent response, if any.
+
+        Metron reports whether a response was served from its cache (``"HIT"``)
+        or generated fresh (``"MISS"``) via the ``X-Cache`` header, but only on
+        endpoints that are actually cached — others omit the header entirely.
+        This is ``None`` until the first request completes, and also resets to
+        ``None`` after any request whose endpoint isn't cached, so it always
+        reflects only the most recently completed request rather than a stale
+        value from an earlier, cached one.
+        """
+        with self._cache_status_lock:
+            return self._last_cache_status
 
     def _get(
         self,
@@ -2106,6 +2135,7 @@ class Session:
             raise exceptions.ApiError(msg) from err
 
         self._update_rate_limit_status(response.headers)
+        self._update_cache_status(response.headers)
         return response
 
     def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:
@@ -2182,6 +2212,17 @@ class Session:
                 burst=burst or self._rate_limit_status.burst,
                 sustained=sustained or self._rate_limit_status.sustained,
             )
+
+    def _update_cache_status(self, headers: Any) -> None:
+        """Update the session's last-observed ``X-Cache`` status from response headers.
+
+        Unlike rate-limit headers, ``X-Cache`` is per-endpoint: Metron only adds it
+        on the paths that actually go through its response cache and omits it
+        entirely elsewhere. So a missing header resets the status to ``None``
+        rather than preserving a stale value from a previous, cached endpoint.
+        """
+        with self._cache_status_lock:
+            self._last_cache_status = headers.get(HEADER_CACHE)
 
     @staticmethod
     def _seconds_until_window_resets(window: RateLimitWindow, now: datetime) -> float:
