@@ -2302,6 +2302,32 @@ def test_update_rate_limit_status_ignores_response_without_headers(session: Sess
     assert session.rate_limit_status.burst.limit == 20
 
 
+def test_last_cache_status_defaults_to_none(session: Session) -> None:
+    """A fresh session has no observed cache status until a request completes."""
+    assert session.last_cache_status is None
+
+
+def test_update_cache_status_parses_header(session: Session) -> None:
+    """The X-Cache header is captured into the session's last-observed cache status."""
+    session._update_cache_status({"X-Cache": "HIT"})
+
+    assert session.last_cache_status == "HIT"
+
+
+def test_update_cache_status_resets_when_header_absent(session: Session) -> None:
+    """A response missing the X-Cache header means that endpoint isn't cached.
+
+    Unlike rate-limit headers, X-Cache is per-endpoint (Metron only adds it on
+    cached paths), so a missing header should reset the status to None rather
+    than keep showing a stale HIT/MISS from an earlier, cached endpoint.
+    """
+    session._update_cache_status({"X-Cache": "HIT"})
+
+    session._update_cache_status({})
+
+    assert session.last_cache_status is None
+
+
 def test_check_rate_limit_allows_request_when_no_state_observed(session: Session) -> None:
     """Nothing is known yet, so the first request is never pre-emptively blocked."""
     session._check_rate_limit()  # should not raise
@@ -2431,6 +2457,52 @@ def test_request_data_updates_rate_limit_status_from_response(
     assert result == {"id": 1, "name": "Test"}
     assert session.rate_limit_status.burst.remaining == 18
     assert session.rate_limit_status.sustained.remaining == 4998
+
+
+def test_request_data_updates_cache_status_from_response(session: Session, monkeypatch) -> None:
+    """A successful response's X-Cache header should update the session's cache status."""
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {"X-Cache": "MISS"}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1, "name": "Test"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    result = session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert result == {"id": 1, "name": "Test"}
+    assert session.last_cache_status == "MISS"
+
+
+def test_request_data_resets_cache_status_for_uncached_endpoint(
+    session: Session, monkeypatch
+) -> None:
+    """A subsequent request to an uncached endpoint should clear a prior HIT/MISS."""
+    session._last_cache_status = "HIT"
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1, "name": "Test"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    session._request_data("GET", "https://test.com/api/pull_list")
+
+    assert session.last_cache_status is None
 
 
 # ============================================================================
