@@ -234,7 +234,7 @@ exclude = [
 useLibraryCodeForTypes = true
 reportMissingImports = true
 reportImportCycles = true
-pythonVersion = "3.10"
+pythonVersion = "3.14"
 pythonPlatform = "All"
 
 [tool.pytest.ini_options]
