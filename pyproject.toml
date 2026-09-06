@@ -218,11 +218,13 @@ omit = [
 [tool.pyright]
 exclude = [
   "**/__pycache__",
+  "**/.*",
   "**/node_modules",
   ".git",
   ".tox",
   ".mypy_cache",
   ".pytest_cache",
+  ".venv",
   ".venv*",
   "cache",
   "dist",
@@ -234,7 +236,7 @@ exclude = [
 useLibraryCodeForTypes = true
 reportMissingImports = true
 reportImportCycles = true
-pythonVersion = "3.10"
+pythonVersion = "3.14"
 pythonPlatform = "All"
 
 [tool.pytest.ini_options]

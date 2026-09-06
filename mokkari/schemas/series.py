@@ -65,10 +65,18 @@ class BaseSeries(CommonSeries):
     Attributes:
         display_name (str): The display name of the base series.
         year_end (int, optional): The year the series ended.
+        publisher (GenericItem): The publisher of the series.
+        series_type (GenericItem): The type of the series.
+        cv_id (int, optional): The Comic Vine ID of the series.
+        gcd_id (int, optional): The Grand Comics Database ID of the series.
     """
 
     display_name: str = Field(alias="series")
     year_end: int | None = None
+    publisher: GenericItem
+    series_type: GenericItem
+    cv_id: int | None = None
+    gcd_id: int | None = None
 
 
 class Series(CommonSeries):
