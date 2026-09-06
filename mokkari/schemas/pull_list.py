@@ -44,6 +44,7 @@ class PullListSeriesDetail(BaseModel):
         year_began (int): The year the series began.
         year_end (int, optional): The year the series ended.
         volume (int): The volume number of the series.
+        issue_count (int): The number of issues in the series.
         modified (datetime): The date and time when the series was last modified.
     """
 
@@ -52,6 +53,7 @@ class PullListSeriesDetail(BaseModel):
     year_began: int
     year_end: int | None = None
     volume: int
+    issue_count: int
     modified: datetime
 
 

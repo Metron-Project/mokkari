@@ -4,12 +4,13 @@ This module contains tests for Series objects.
 """
 
 import json
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 import requests_mock
 
 from mokkari import exceptions
+from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.series import BaseSeries, Series
 from mokkari.session import Session
 
@@ -49,6 +50,7 @@ def test_series_with_imprint() -> None:
             "resource_url": "https://metron.cloud/series/sandman-1989/",
         }
     )
+    assert sandman.imprint is not None
     assert sandman.imprint.id == 1
     assert sandman.imprint.name == "Vertigo Comics"
 
@@ -108,6 +110,10 @@ def test_series_list(talker: Session) -> None:
                 "year_began": 2016,
                 "year_end": None,
                 "issue_count": 125,
+                "publisher": {"id": 1, "name": "DC Comics"},
+                "series_type": {"id": 2, "name": "Ongoing Series"},
+                "cv_id": None,
+                "gcd_id": None,
                 "modified": _MODIFIED,
             },
             {
@@ -117,6 +123,10 @@ def test_series_list(talker: Session) -> None:
                 "year_began": 1940,
                 "year_end": 2011,
                 "issue_count": 14,
+                "publisher": {"id": 1, "name": "DC Comics"},
+                "series_type": {"id": 2, "name": "Ongoing Series"},
+                "cv_id": None,
+                "gcd_id": None,
                 "modified": _MODIFIED,
             },
             {
@@ -126,6 +136,10 @@ def test_series_list(talker: Session) -> None:
                 "year_began": 2005,
                 "year_end": None,
                 "issue_count": 10,
+                "publisher": {"id": 1, "name": "DC Comics"},
+                "series_type": {"id": 5, "name": "Limited Series"},
+                "cv_id": None,
+                "gcd_id": None,
                 "modified": _MODIFIED,
             },
         ],
@@ -141,9 +155,11 @@ def test_series_list(talker: Session) -> None:
     assert series[1].id == 2547
     assert series[1].volume == 1
     assert series[1].issue_count == 14
+    assert series[1].publisher.name == "DC Comics"
     assert series[2].id == 11897
     assert series[2].display_name == "All Star Batman & Robin, The Boy Wonder (2005)"
     assert series[2].volume == 1
+    assert series[2].series_type.name == "Limited Series"
 
 
 def test_series_issues_list(talker: Session) -> None:
@@ -283,7 +299,9 @@ def test_series_list_with_year_end() -> None:
         year_began=2018,
         year_end=2018,
         issue_count=5,
-        modified=_MODIFIED,
+        publisher=GenericItem(id=1, name="Marvel"),
+        series_type=GenericItem(id=11, name="Limited Series"),
+        modified=datetime.fromisoformat(_MODIFIED),
     )
     assert series.year_end == 2018
 
@@ -339,6 +357,8 @@ def test_series_list_without_year_end() -> None:
         year_began=2019,
         year_end=None,
         issue_count=5,
-        modified=_MODIFIED,
+        publisher=GenericItem(id=1, name="Marvel"),
+        series_type=GenericItem(id=11, name="Limited Series"),
+        modified=datetime.fromisoformat(_MODIFIED),
     )
     assert series.year_end is None
