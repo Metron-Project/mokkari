@@ -1,6 +1,6 @@
 import js from "@eslint/js";
+import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import arrayFunc from "eslint-plugin-array-func";
-import eslintComments from "eslint-plugin-eslint-comments";
 import jsonc from "eslint-plugin-jsonc";
 import markdown from "eslint-plugin-markdown";
 import noConstructorBind from "eslint-plugin-no-constructor-bind";
@@ -39,6 +39,7 @@ export default [
     ],
   },
   {
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs", "**/*.md/*.js"],
     languageOptions: {
       globals: {
         ...globals.node,
@@ -126,12 +127,6 @@ export default [
     files: ["**/*.md/*.sh"],
     rules: {
       "prettier/prettier": ["error", { parser: "sh" }],
-    },
-  },
-  {
-    files: ["*.yaml", "*.yml"],
-    rules: {
-      "unicorn/filename-case": "off",
     },
   },
   {
