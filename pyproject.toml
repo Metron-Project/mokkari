@@ -218,11 +218,13 @@ omit = [
 [tool.pyright]
 exclude = [
   "**/__pycache__",
+  "**/.*",
   "**/node_modules",
   ".git",
   ".tox",
   ".mypy_cache",
   ".pytest_cache",
+  ".venv",
   ".venv*",
   "cache",
   "dist",
