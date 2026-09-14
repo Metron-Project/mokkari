@@ -97,7 +97,6 @@ def test_pull_list_series_detail_valid_data():
         "year_began": 2018,
         "year_end": 2018,
         "volume": 1,
-        "issue_count": 5,
         "modified": "2024-12-27T11:29:08.281134-05:00",
     }
     detail = PullListSeriesDetail(**data)
@@ -106,7 +105,6 @@ def test_pull_list_series_detail_valid_data():
     assert detail.year_began == 2018
     assert detail.year_end == 2018
     assert detail.volume == 1
-    assert detail.issue_count == 5
 
 
 def test_pull_list_series_detail_ongoing_series():
@@ -117,7 +115,6 @@ def test_pull_list_series_detail_ongoing_series():
         "year_began": 1940,
         "year_end": None,
         "volume": 1,
-        "issue_count": 900,
         "modified": "2024-01-01T12:00:00Z",
     }
     detail = PullListSeriesDetail(**data)
@@ -135,7 +132,6 @@ def test_pull_list_series_valid_data():
             "year_began": 2018,
             "year_end": 2018,
             "volume": 1,
-            "issue_count": 5,
             "modified": "2024-12-27T11:29:08.281134-05:00",
         },
         "added_on": "2026-05-20T16:46:36.044123-04:00",
@@ -146,7 +142,6 @@ def test_pull_list_series_valid_data():
     assert entry.series.name == "Death of the Inhumans (2018)"
     assert entry.series.year_began == 2018
     assert entry.series.year_end == 2018
-    assert entry.series.issue_count == 5
     assert isinstance(entry.added_on, datetime)
     assert entry.added_on.year == 2026
 
