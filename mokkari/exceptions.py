@@ -6,6 +6,7 @@ This module provides the following classes:
 - RateLimitError: Raised when API rate limits are exceeded
 - AuthenticationError: Missing or invalid authentication credentials
 - CacheError: Errors related to cache operations
+- RateLimiterError: Errors related to an injected rate limiter object
 """
 
 from __future__ import annotations
@@ -89,4 +90,12 @@ class CacheError(Exception):
 
     def __init__(self: CacheError, *args, **kwargs: dict[str, any]) -> None:
         """Initialize an CacheError."""
+        Exception.__init__(self, *args, **kwargs)
+
+
+class RateLimiterError(Exception):
+    """Class for any errors raised by an injected rate limiter object."""
+
+    def __init__(self: RateLimiterError, *args, **kwargs: dict[str, any]) -> None:
+        """Initialize a RateLimiterError."""
         Exception.__init__(self, *args, **kwargs)
