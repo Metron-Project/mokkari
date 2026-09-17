@@ -126,6 +126,36 @@ with ThreadPoolExecutor(max_workers=20) as executor:
     issues = list(executor.map(m.issue, issue_ids))
 ```
 
+### Pacing (opt-in)
+
+Passing `rate_limiter` closes the gap described above: instead of racing past an
+advisory check, every HTTP send is dispatched through the rate limiter first,
+which can block a caller until capacity actually frees rather than letting it
+send anyway. `mokkari.rate_limit.HeaderPacedRateLimiter` is a ready-to-use
+implementation that paces from the same `X-RateLimit-*` headers, tightening its
+estimate as responses come in and accounting for requests that are in flight but
+haven't responded yet:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+import mokkari
+from mokkari.rate_limit import HeaderPacedRateLimiter
+
+m = mokkari.api(username, password, rate_limiter=HeaderPacedRateLimiter())
+
+with ThreadPoolExecutor(max_workers=20) as executor:
+    issues = list(executor.map(m.issue, issue_ids))
+```
+
+A rate limiter is scoped to the `Session` it's passed to — construct one per
+`Session` rather than sharing an instance across sessions using different
+credentials. Passing your own object works too, as long as it implements the
+`acquire`/`release` methods described in
+[`mokkari.rate_limit.RateLimiter`](https://mokkari.readthedocs.io/en/stable/mokkari/rate_limit/).
+Leaving `rate_limiter` unset (the default) keeps the raise-immediately behavior
+described above.
+
 ## Documentation
 
 [Read the project documentation](https://mokkari.readthedocs.io/en/stable/?badge=latest)
