@@ -6,6 +6,8 @@ This module contains tests for Session objects.
 
 import datetime
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -16,6 +18,7 @@ from requests.exceptions import ConnectionError as ConnError, HTTPError
 
 import mokkari.session as session_module
 from mokkari import exceptions
+from mokkari.rate_limit import HeaderPacedRateLimiter
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -2479,6 +2482,200 @@ def test_request_data_updates_cache_status_from_response(session: Session, monke
 
     assert result == {"id": 1, "name": "Test"}
     assert session.last_cache_status == "MISS"
+
+
+def test_session_rate_limiter_defaults_to_none() -> None:
+    """A Session with no rate_limiter argument has one set to None."""
+    session = Session(username="user", passwd="pass")
+
+    assert session.rate_limiter is None
+
+
+def test_execute_http_request_dispatches_to_rate_limiter_when_set(
+    session: Session, monkeypatch
+) -> None:
+    """When a rate_limiter is configured, it gates and observes every HTTP send."""
+    calls = []
+
+    class FakeLimiter:
+        def acquire(self, status):
+            calls.append(("acquire", status))
+
+        def release(self, status):
+            calls.append(("release", status))
+
+    session.rate_limiter = FakeLimiter()
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {"X-RateLimit-Burst-Remaining": "19"}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    result = session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert result == {"id": 1}
+    assert [call for call, _ in calls] == ["acquire", "release"]
+    # release is called with the status as updated by this response.
+    assert calls[1][1].burst.remaining == 19
+
+
+def test_execute_http_request_falls_back_to_check_rate_limit_when_no_limiter(
+    session: Session, monkeypatch
+) -> None:
+    """With no rate_limiter set (the default), behavior is unchanged: fail fast."""
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+    session._rate_limit_status = session_module.RateLimitStatus(
+        burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
+    )
+
+    mock_request_called = {"called": False}
+
+    def mock_request(*args, **kwargs):
+        mock_request_called["called"] = True
+        return MagicMock()
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    with pytest.raises(exceptions.RateLimitError):
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert not mock_request_called["called"]
+
+
+def test_rate_limiter_release_called_with_none_on_connection_error(
+    session: Session, monkeypatch
+) -> None:
+    """A connection error releases the limiter's slot with status=None."""
+    calls = []
+
+    class FakeLimiter:
+        def acquire(self, status):
+            calls.append(("acquire", status))
+
+        def release(self, status):
+            calls.append(("release", status))
+
+    session.rate_limiter = FakeLimiter()
+
+    def mock_request(*args, **kwargs):
+        msg = "boom"
+        raise ConnError(msg)
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    with pytest.raises(exceptions.ApiError):
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert calls == [("acquire", session_module.RateLimitStatus()), ("release", None)]
+
+
+def test_rate_limiter_missing_acquire_raises_rate_limiter_error(
+    session: Session, monkeypatch
+) -> None:
+    """A rate_limiter object missing acquire() raises RateLimiterError."""
+
+    class NoAcquire:
+        def release(self, status):
+            pass
+
+    session.rate_limiter = NoAcquire()
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: MagicMock())
+
+    with pytest.raises(exceptions.RateLimiterError):
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+
+def test_rate_limiter_missing_release_raises_rate_limiter_error(
+    session: Session, monkeypatch
+) -> None:
+    """A rate_limiter object missing release() raises RateLimiterError."""
+
+    class NoRelease:
+        def acquire(self, status):
+            pass
+
+    session.rate_limiter = NoRelease()
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    with pytest.raises(exceptions.RateLimiterError):
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+
+def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
+    """A real HeaderPacedRateLimiter shared across threads never exceeds its window."""
+    limiter = HeaderPacedRateLimiter()
+    paced_session = Session(
+        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
+    )
+
+    max_observed = {"value": 0}
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=2)
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {
+                "X-RateLimit-Burst-Limit": "3",
+                "X-RateLimit-Burst-Remaining": "3",
+                "X-RateLimit-Burst-Reset": str(int(reset.timestamp())),
+            }
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": 1}
+
+    def mock_request(*args, **kwargs):
+        # limiter.acquire() has already reserved this request's slot by the
+        # time requests.request would be called, so _in_flight here includes it.
+        max_observed["value"] = max(max_observed["value"], limiter._in_flight)
+        time.sleep(0.02)  # widen the window so concurrent callers actually overlap
+        return DummyResp()
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    # Prime the limiter's estimate before the concurrent batch starts: with
+    # nothing observed yet it would let every caller straight through, since
+    # a gate with no prior information can't restrict anything (the same
+    # "gate opens" behavior a real client sees on its very first request).
+    seed_status = session_module.RateLimitStatus(
+        burst=session_module.RateLimitWindow(limit=3, remaining=3, reset=reset)
+    )
+    limiter.acquire(seed_status)
+    limiter.release(seed_status)
+
+    def worker(_):
+        paced_session._request_data("GET", "https://test.com/api/issue/1")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(worker, range(20)))
+
+    # Sanity check that this test actually exercised concurrency, not a fluke pass.
+    assert max_observed["value"] >= 2
+    assert max_observed["value"] <= 3
+    assert limiter._in_flight == 0
 
 
 def test_request_data_resets_cache_status_for_uncached_endpoint(

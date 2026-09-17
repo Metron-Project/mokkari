@@ -3,6 +3,9 @@
 This module provides the following classes:
 
 - Session: Main API client for interacting with the Metron Comics Database
+
+``RateLimitStatus`` and ``RateLimitWindow`` are defined in
+:mod:`mokkari.rate_limit` and re-exported here for backwards compatibility.
 """
 
 __all__ = ["RateLimitStatus", "RateLimitWindow", "Session"]
@@ -13,7 +16,6 @@ import platform
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
@@ -24,7 +26,8 @@ from urllib.parse import urlencode
 import requests
 from pydantic import TypeAdapter, ValidationError
 
-from mokkari import __version__, exceptions, sqlite_cache
+from mokkari import __version__, exceptions, rate_limit, sqlite_cache
+from mokkari.rate_limit import RateLimitStatus, RateLimitWindow
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -89,38 +92,6 @@ HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 # Reports whether the most recent response was served from Metron's cache
 # ("HIT") or generated fresh ("MISS").
 HEADER_CACHE: Final[str] = "X-Cache"
-
-
-@dataclass(frozen=True)
-class RateLimitWindow:
-    """A single rate-limit window (e.g. burst or sustained) as last reported by Metron.
-
-    Attributes:
-        limit: The maximum number of requests allowed in this window.
-        remaining: The number of requests left in the current window.
-        reset: When the window resets, as a UTC datetime.
-    """
-
-    limit: int | None = None
-    remaining: int | None = None
-    reset: datetime | None = None
-
-
-@dataclass(frozen=True)
-class RateLimitStatus:
-    """The most recently observed rate-limit state for a Session.
-
-    Populated from the ``X-RateLimit-*`` headers Metron sends with every
-    response. All fields are ``None`` until the first request completes.
-
-    Attributes:
-        burst: The short-term (per-minute) window, fixed for all users.
-        sustained: The daily window, whose limit varies by OpenCollective
-            donor tier.
-    """
-
-    burst: RateLimitWindow = field(default_factory=RateLimitWindow)
-    sustained: RateLimitWindow = field(default_factory=RateLimitWindow)
 
 
 class ResourceEndpoint:
@@ -207,17 +178,19 @@ class Session:
     without making the API request. Applications must catch and handle this exception
     appropriately (see examples below).
 
-    **Thread safety**: A single ``Session`` can be shared across threads, but its
+    **Thread safety**: A single ``Session`` can be shared across threads. By default its
     pre-emptive rate-limit check is advisory, not a hard gate: it only raises once the
     *last known* response headers show a window is exhausted, and that check isn't
     serialized with sending the request. Concurrent threads can each pass the check and
     send their requests before a response comes back to update ``rate_limit_status``, so
     a burst of threads can momentarily exceed the per-minute limit before local state
     catches up (Metron's server-side limit is still authoritative and will reject the
-    excess requests). If you're calling a shared ``Session`` from multiple threads, cap
-    your own concurrency rather than relying on ``Session`` to do it for you — e.g. bound
-    a ``ThreadPoolExecutor`` at or below the burst limit, or gate requests with a
-    ``threading.Semaphore``.
+    excess requests). If you're calling a shared ``Session`` from multiple threads without
+    a ``rate_limiter``, cap your own concurrency rather than relying on ``Session`` to do
+    it for you — e.g. bound a ``ThreadPoolExecutor`` at or below the burst limit, or gate
+    requests with a ``threading.Semaphore``. Passing a ``rate_limiter`` (see ``Args``)
+    closes this gap: every HTTP send is dispatched through it instead, so it can block
+    concurrent callers until capacity actually frees rather than letting them race.
 
     Features:
 
@@ -238,6 +211,10 @@ class Session:
         dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
         api_token: API token for Bearer-token authentication. Takes precedence
             over username/passwd when both are provided.
+        rate_limiter: Optional pacing gate to dispatch every HTTP send
+            through, in place of the default fail-fast check. See
+            :class:`mokkari.rate_limit.RateLimiter`. Defaults to ``None``,
+            which preserves the default raise-immediately behavior exactly.
 
     Attributes:
         username (str | None): The username used for API authentication.
@@ -246,6 +223,7 @@ class Session:
         header (dict): HTTP headers sent with each request, including User-Agent.
         api_url (str): The base URL for API requests (production or development).
         cache (SqliteCache | None): The cache instance if provided.
+        rate_limiter (RateLimiter | None): The injected pacing gate, if provided.
         rate_limit_status (RateLimitStatus): The most recently observed rate-limit
             state, parsed from Metron's response headers.
         last_cache_status (str | None): The ``X-Cache`` value ("HIT" or "MISS")
@@ -314,6 +292,11 @@ class Session:
         >>> status = session.rate_limit_status
         >>> print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
 
+        Pacing requests instead of raising, under concurrent use:
+        >>> from mokkari.rate_limit import HeaderPacedRateLimiter
+        >>> session = Session("username", "password", rate_limiter=HeaderPacedRateLimiter())
+        >>> issue = session.issue(1)  # blocks instead of raising if a window is exhausted
+
         Checking whether the last response was served from Metron's cache:
         >>> session = Session("username", "password")
         >>> issue = session.issue(1)
@@ -325,6 +308,7 @@ class Session:
         ApiError: For general API errors, authentication failures, or network issues.
         RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
         CacheError: For cache-related errors.
+        RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
 
@@ -351,6 +335,7 @@ class Session:
         user_agent: str | None = None,
         dev_mode: bool = False,
         api_token: str | None = None,
+        rate_limiter: rate_limit.RateLimiter | None = None,
     ) -> None:
         """Initialize a Session object with authentication and configuration.
 
@@ -366,6 +351,8 @@ class Session:
             dev_mode: If True, use local development server instead of production.
             api_token: API token for Bearer-token authentication. Takes precedence
                 over username/passwd when both are provided.
+            rate_limiter: Optional pacing gate dispatched on every HTTP send,
+                in place of the default fail-fast check. Defaults to ``None``.
 
         Raises:
             AuthenticationError: If neither api_token nor a complete username/passwd
@@ -389,6 +376,7 @@ class Session:
             self._auth = (username, passwd)
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
+        self.rate_limiter = rate_limiter
         self._rate_limit_lock = threading.Lock()
         self._rate_limit_status = RateLimitStatus()
         self._cache_status_lock = threading.Lock()
@@ -544,7 +532,6 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
         url = self.api_url.format("/".join(str(e) for e in endpoint))
-        self._check_rate_limit()
         header, files, data_dict = self._prepare_request_payload(data)
         response = self._execute_http_request(method, url, {}, header, data_dict, files)
         try:
@@ -2115,7 +2102,10 @@ class Session:
 
         Raises:
             ApiError: For connection errors or timeouts.
+            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
+            RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         """
+        self._acquire_rate_limit_slot()
         try:
             response = requests.request(
                 method,
@@ -2131,11 +2121,13 @@ class Session:
             requests.exceptions.ConnectionError,
             requests.exceptions.ReadTimeout,
         ) as err:
+            self._release_rate_limit_slot(None)
             msg = f"Connection error: {err!r}"
             raise exceptions.ApiError(msg) from err
 
         self._update_rate_limit_status(response.headers)
         self._update_cache_status(response.headers)
+        self._release_rate_limit_slot(self.rate_limit_status)
         return response
 
     def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:
@@ -2231,6 +2223,46 @@ class Session:
             return 0.0
         return max(0.0, (window.reset - now).total_seconds())
 
+    def _acquire_rate_limit_slot(self) -> None:
+        """Dispatch to the injected rate limiter, or fall back to the fail-fast check.
+
+        This is the single choke point for rate limiting: every HTTP send
+        goes through ``_execute_http_request``, which calls this first. When
+        no ``rate_limiter`` is configured, behavior is identical to calling
+        ``_check_rate_limit()`` directly.
+
+        Raises:
+            RateLimitError: When ``rate_limiter`` is unset and the last known
+                rate-limit headers show a window is exhausted and hasn't reset yet.
+            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
+        """
+        if self.rate_limiter is None:
+            self._check_rate_limit()
+            return
+        try:
+            self.rate_limiter.acquire(self.rate_limit_status)
+        except AttributeError as e:
+            msg = f"Rate limiter object passed in is missing attribute: {e!r}"
+            raise exceptions.RateLimiterError(msg) from e
+
+    def _release_rate_limit_slot(self, status: RateLimitStatus | None) -> None:
+        """Release the slot reserved by ``_acquire_rate_limit_slot``, if a limiter is set.
+
+        Args:
+            status: The freshly updated rate-limit status after the request
+                completed, or ``None`` if it failed before headers were received.
+
+        Raises:
+            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
+        """
+        if self.rate_limiter is None:
+            return
+        try:
+            self.rate_limiter.release(status)
+        except AttributeError as e:
+            msg = f"Rate limiter object passed in is missing attribute: {e!r}"
+            raise exceptions.RateLimiterError(msg) from e
+
     def _check_rate_limit(self) -> None:
         """Check rate limits before making a request.
 
@@ -2310,8 +2342,6 @@ class Session:
         if params is None:
             params = {}
 
-        self._check_rate_limit()
-
         # Prepare request payload (data serialization and file handling)
         header, files, data_dict = self._prepare_request_payload(data)
 
@@ -2346,8 +2376,6 @@ class Session:
             ApiError: For connection errors, HTTP errors, or invalid JSON responses.
             RateLimitError: When the API rate limit is exceeded.
         """
-        self._check_rate_limit()
-
         header = self.header.copy()
         if if_modified_since:
             header["If-Modified-Since"] = if_modified_since
