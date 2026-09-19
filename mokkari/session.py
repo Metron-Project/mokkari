@@ -258,7 +258,11 @@ class Session:
         ...     print(f"Rate limited: {e}")
         ...     print(f"Waiting {format_time(e.retry_after)}...")
         ...     time.sleep(e.retry_after)
-        ...     issue = session.issue(1)  # Retry after waiting
+        ...     issue = session.issue(1)  # Retry after waiting; may raise again, see below
+
+        ``retry_after`` is a lower bound: if the server has lowered your limit below what
+        you've already used, waiting that long may not be enough and the retry can raise
+        ``RateLimitError`` again, which is why the loop below keeps retrying.
 
         Handling minute vs daily rate limits:
         >>> import time
@@ -2310,7 +2314,9 @@ class Session:
 
         Raises:
             RateLimitError: When the last known rate-limit headers show the
-                burst or sustained window is exhausted and hasn't reset yet.
+                burst or sustained window is exhausted and hasn't reset yet. Its
+                ``retry_after`` is a lower bound, as the reported reset only frees
+                one slot in a window that holds more requests than its limit allows.
         """
         status = self.rate_limit_status
         now = datetime.now(timezone.utc)

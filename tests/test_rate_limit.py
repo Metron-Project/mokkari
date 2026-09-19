@@ -59,6 +59,20 @@ def test_window_estimate_clears_after_reset_passes() -> None:
     assert estimate.reset is None
 
 
+def test_window_estimate_keeps_held_reset_when_lower_remaining_has_none() -> None:
+    """A tighter response missing its reset header doesn't discard the reset already held."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    reset = now + datetime.timedelta(seconds=60)
+    estimate = _WindowEstimate()
+
+    estimate.tighten(5, reset, now)
+    estimate.tighten(0, None, now)
+
+    assert estimate.remaining == 0
+    assert estimate.reset == reset
+    assert estimate.wait_seconds(in_flight=0, now=now) == pytest.approx(60, abs=2)
+
+
 def test_window_estimate_wait_seconds_zero_when_room_available() -> None:
     """No wait is needed when remaining exceeds in-flight requests."""
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -76,6 +90,14 @@ def test_window_estimate_wait_seconds_positive_when_exhausted() -> None:
     wait = estimate.wait_seconds(in_flight=2, now=now)
 
     assert wait == pytest.approx(30, abs=2)
+
+
+def test_window_estimate_wait_seconds_zero_when_reset_unknown() -> None:
+    """An exhausted window with no known reset isn't held, as nothing would ever refresh it."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    estimate = _WindowEstimate(remaining=0, reset=None)
+
+    assert estimate.wait_seconds(in_flight=0, now=now) == 0.0
 
 
 def test_send_log_allows_sends_until_limit_reached() -> None:
@@ -334,6 +356,59 @@ def test_daily_429_headers_make_the_next_acquire_raise() -> None:
         limiter.acquire(RateLimitStatus())
     assert time.monotonic() - start < 0.05
     assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
+    assert limiter._in_flight == 0
+
+
+def test_acquire_sends_when_sustained_window_is_exhausted_without_a_reset() -> None:
+    """With no reset to report, the request goes out and a 429 is left to back callers off."""
+    limiter = HeaderPacedRateLimiter()
+    status = RateLimitStatus(sustained=RateLimitWindow(limit=10, remaining=0, reset=None))
+
+    limiter.acquire(status)
+
+    assert limiter._in_flight == 1
+
+
+def test_daily_429_without_retry_after_raises_again_after_a_lower_bound_wait() -> None:
+    """A daily 429 with no Retry-After still raises, and the reset reported is only a lower bound.
+
+    When the server lowers the daily limit below what a user has already used,
+    DRF has no wait to report and omits Retry-After, while the reset it does
+    report frees just one slot. Waiting out that reset can therefore be
+    rejected again, now with a later reset.
+    """
+    limiter = HeaderPacedRateLimiter(burst_period=0.05)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    first = RateLimitStatus(
+        sustained=RateLimitWindow(
+            limit=100, remaining=0, reset=now + datetime.timedelta(seconds=0.2)
+        )
+    )
+
+    limiter.acquire(RateLimitStatus())
+    limiter.on_rate_limited(0)  # no Retry-After on the 429
+    limiter.release(first)
+
+    with pytest.raises(RateLimitError) as first_error:
+        limiter.acquire(RateLimitStatus())
+    assert first_error.value.retry_after <= 0.2
+
+    time.sleep(0.3)  # wait out the reported reset
+
+    later = RateLimitStatus(
+        sustained=RateLimitWindow(
+            limit=100,
+            remaining=0,
+            reset=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+        )
+    )
+    limiter.acquire(RateLimitStatus())  # the reset has passed, so this request goes out...
+    limiter.on_rate_limited(0)
+    limiter.release(later)  # ...and is rejected again with a later reset
+
+    with pytest.raises(RateLimitError) as second_error:
+        limiter.acquire(RateLimitStatus())
+    assert second_error.value.retry_after == pytest.approx(3600, abs=5)
     assert limiter._in_flight == 0
 
 
