@@ -2106,6 +2106,10 @@ class Session:
             RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         """
         self._acquire_rate_limit_slot()
+        # The slot is held from here on, so it must be released on every exit path, not just
+        # the connection errors we translate. ``status`` stays ``None`` unless headers were
+        # received and folded into the session's rate-limit state.
+        status: RateLimitStatus | None = None
         try:
             response = requests.request(
                 method,
@@ -2117,17 +2121,17 @@ class Session:
                 data=data_dict,
                 files=files,
             )
+            self._update_rate_limit_status(response.headers)
+            status = self.rate_limit_status
+            self._update_cache_status(response.headers)
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.ReadTimeout,
         ) as err:
-            self._release_rate_limit_slot(None)
             msg = f"Connection error: {err!r}"
             raise exceptions.ApiError(msg) from err
-
-        self._update_rate_limit_status(response.headers)
-        self._update_cache_status(response.headers)
-        self._release_rate_limit_slot(self.rate_limit_status)
+        finally:
+            self._release_rate_limit_slot(status)
         return response
 
     def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:

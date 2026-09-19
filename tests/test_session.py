@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import HttpUrl, ValidationError
-from requests.exceptions import ConnectionError as ConnError, HTTPError
+from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
 
 import mokkari.session as session_module
 from mokkari import exceptions
@@ -2575,6 +2575,84 @@ def test_rate_limiter_release_called_with_none_on_connection_error(
         session._request_data("GET", "https://test.com/api/issue/1")
 
     assert calls == [("acquire", session_module.RateLimitStatus()), ("release", None)]
+
+
+def test_rate_limiter_release_called_on_unhandled_request_exception(
+    session: Session, monkeypatch
+) -> None:
+    """An exception other than ConnectionError/ReadTimeout still releases the slot."""
+    calls = []
+
+    class FakeLimiter:
+        def acquire(self, status):
+            calls.append(("acquire", status))
+
+        def release(self, status):
+            calls.append(("release", status))
+
+    session.rate_limiter = FakeLimiter()
+
+    def mock_request(*args, **kwargs):
+        msg = "too many redirects"
+        raise TooManyRedirects(msg)
+
+    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+
+    with pytest.raises(TooManyRedirects):
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert calls == [("acquire", session_module.RateLimitStatus()), ("release", None)]
+
+
+def test_rate_limiter_release_called_when_status_update_raises(
+    session: Session, monkeypatch
+) -> None:
+    """A failure while processing response headers still releases the slot."""
+    calls = []
+
+    class FakeLimiter:
+        def acquire(self, status):
+            calls.append(("acquire", status))
+
+        def release(self, status):
+            calls.append(("release", status))
+
+    session.rate_limiter = FakeLimiter()
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {"X-RateLimit-Burst-Remaining": "not-an-int"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    with pytest.raises(ValueError, match="invalid literal"):
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert [call for call, _ in calls] == ["acquire", "release"]
+
+
+def test_rate_limiter_not_released_when_acquire_fails(session: Session, monkeypatch) -> None:
+    """If acquire() raises, no slot was reserved, so release() must not be called."""
+    calls = []
+
+    class FakeLimiter:
+        def acquire(self, _status):
+            calls.append("acquire")
+            msg = "no capacity"
+            raise RuntimeError(msg)
+
+        def release(self, _status):
+            calls.append("release")
+
+    session.rate_limiter = FakeLimiter()
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: MagicMock())
+
+    with pytest.raises(RuntimeError, match="no capacity"):
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert calls == ["acquire"]
 
 
 def test_rate_limiter_missing_acquire_raises_rate_limiter_error(
