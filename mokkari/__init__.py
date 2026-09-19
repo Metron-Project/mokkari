@@ -7,7 +7,7 @@ from importlib.metadata import version
 # Keep this at beginning of file to prevent circular import with session
 __version__ = version("mokkari")
 
-from mokkari import session, sqlite_cache
+from mokkari import rate_limit, session, sqlite_cache
 
 
 def api(  # noqa: PLR0913, PLR0917
@@ -17,6 +17,7 @@ def api(  # noqa: PLR0913, PLR0917
     user_agent: str | None = None,
     dev_mode: bool = False,
     api_token: str | None = None,
+    rate_limiter: rate_limit.RateLimiter | None = None,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
@@ -29,6 +30,8 @@ def api(  # noqa: PLR0913, PLR0917
         dev_mode: Whether the library should be run against a local Metron instance.
         api_token: An API token used for Bearer-token authentication. Takes
             precedence over username/passwd when both are provided.
+        rate_limiter: Optional pacing gate dispatched on every HTTP send, in
+            place of the default fail-fast rate-limit check. Defaults to ``None``.
 
     Returns:
         A Session object.
@@ -49,4 +52,5 @@ def api(  # noqa: PLR0913, PLR0917
         user_agent=user_agent,
         dev_mode=dev_mode,
         api_token=api_token,
+        rate_limiter=rate_limiter,
     )

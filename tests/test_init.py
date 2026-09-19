@@ -35,3 +35,12 @@ def test_api() -> None:
         print(f"mokkari.api() raised {exc} unexpectedly!")
 
     assert m.__class__.__name__ == session.Session.__name__
+
+
+def test_api_forwards_rate_limiter() -> None:
+    """api() forwards a rate_limiter object through to the Session it constructs."""
+    sentinel = object()
+
+    m = api(username="Something", passwd="Else", rate_limiter=sentinel)
+
+    assert m.rate_limiter is sentinel

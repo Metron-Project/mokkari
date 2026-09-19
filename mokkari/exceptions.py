@@ -6,6 +6,7 @@ This module provides the following classes:
 - RateLimitError: Raised when API rate limits are exceeded
 - AuthenticationError: Missing or invalid authentication credentials
 - CacheError: Errors related to cache operations
+- RateLimiterError: Errors related to an injected rate limiter object
 """
 
 from __future__ import annotations
@@ -22,8 +23,9 @@ class ApiError(Exception):
 class RateLimitError(Exception):
     """Exception raised when API rate limits are exceeded.
 
-    This exception is raised when either the fixed per-minute burst limit (20
-    requests) or the per-day sustained limit is exceeded. The sustained limit
+    This exception is raised when either the per-minute burst limit (20
+    requests at minimum, raised by the server when load allows) or the per-day
+    sustained limit is exceeded. The sustained limit
     varies per user — it's 5,000/day by default, higher for OpenCollective
     donors — so mokkari doesn't know it in advance; it's read from the
     ``X-RateLimit-*`` headers Metron returns with each response. The exception
@@ -89,4 +91,12 @@ class CacheError(Exception):
 
     def __init__(self: CacheError, *args, **kwargs: dict[str, any]) -> None:
         """Initialize an CacheError."""
+        Exception.__init__(self, *args, **kwargs)
+
+
+class RateLimiterError(Exception):
+    """Class for any errors raised by an injected rate limiter object."""
+
+    def __init__(self: RateLimiterError, *args, **kwargs: dict[str, any]) -> None:
+        """Initialize a RateLimiterError."""
         Exception.__init__(self, *args, **kwargs)
