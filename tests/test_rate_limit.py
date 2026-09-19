@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from mokkari.exceptions import RateLimitError
 from mokkari.rate_limit import (
     HeaderPacedRateLimiter,
     RateLimitStatus,
@@ -246,8 +247,8 @@ def test_on_rate_limited_never_shortens_an_existing_backoff() -> None:
 
 def test_on_rate_limited_blocks_already_waiting_callers() -> None:
     """A caller already blocked in acquire is held up by a 429 reported meanwhile."""
-    limiter = HeaderPacedRateLimiter(burst_period=0.1)
-    status = RateLimitStatus(burst=RateLimitWindow(limit=1))
+    limiter = HeaderPacedRateLimiter(burst_period=1.0)
+    status = RateLimitStatus(burst=RateLimitWindow(limit=10))  # 0.1s spacing
     limiter.acquire(status)
     limiter.release(status)
 
@@ -258,52 +259,76 @@ def test_on_rate_limited_blocks_already_waiting_callers() -> None:
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(waiter)
-        time.sleep(0.02)  # let the waiter block on the full window
-        limiter.on_rate_limited(0.3)
+        time.sleep(0.02)  # let the waiter block on the spacing wait
+        limiter.on_rate_limited(0.5)
         elapsed = future.result(timeout=2)
 
-    assert elapsed >= 0.28
+    # Spacing alone would release the waiter after ~0.1s.
+    assert elapsed >= 0.45
 
 
-def test_acquire_blocks_until_sustained_reset_when_exhausted() -> None:
-    """An exhausted sustained window blocks until its reported reset time, then proceeds."""
+def test_acquire_raises_when_sustained_window_is_exhausted() -> None:
+    """An exhausted daily window raises with the time until reset instead of blocking."""
     limiter = HeaderPacedRateLimiter()
-    now = datetime.datetime.now(datetime.timezone.utc)
-    reset = now + datetime.timedelta(seconds=0.1)
-    status = RateLimitStatus(sustained=RateLimitWindow(limit=1, remaining=0, reset=reset))
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=2)
+    status = RateLimitStatus(sustained=RateLimitWindow(limit=5000, remaining=0, reset=reset))
 
     start = time.monotonic()
-    limiter.acquire(status)
+    with pytest.raises(RateLimitError) as exc_info:
+        limiter.acquire(status)
     elapsed = time.monotonic() - start
 
-    assert elapsed >= 0.08
+    assert elapsed < 0.05
+    assert exc_info.value.retry_after == pytest.approx(7200, abs=5)
+    assert "5,000 requests per day" in str(exc_info.value)
+    assert "1 hour, 59 minutes" in str(exc_info.value)
 
 
-def test_release_wakes_a_blocked_acquire() -> None:
-    """A caller blocked on the sustained window proceeds as soon as a release frees a slot."""
+def test_acquire_raising_for_sustained_window_reserves_no_slot() -> None:
+    """A failed acquire holds no slot, so nothing is left in flight."""
     limiter = HeaderPacedRateLimiter()
-    now = datetime.datetime.now(datetime.timezone.utc)
-    reset = now + datetime.timedelta(seconds=5)
-    status = RateLimitStatus(sustained=RateLimitWindow(limit=1, remaining=1, reset=reset))
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    status = RateLimitStatus(sustained=RateLimitWindow(limit=10, remaining=0, reset=reset))
 
-    # First caller takes the only slot.
+    with pytest.raises(RateLimitError):
+        limiter.acquire(status)
+
+    assert limiter._in_flight == 0
+
+
+def test_acquire_raises_when_in_flight_requests_hold_the_last_sustained_slot() -> None:
+    """A request in flight counts against the daily window, and its release frees the slot."""
+    limiter = HeaderPacedRateLimiter()
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    status = RateLimitStatus(sustained=RateLimitWindow(limit=10, remaining=1, reset=reset))
+
+    limiter.acquire(status)
+    with pytest.raises(RateLimitError):
+        limiter.acquire(status)
+
+    limiter.release(None)
     limiter.acquire(status)
 
-    results = []
 
-    def waiter() -> None:
-        limiter.acquire(status)
-        results.append("acquired")
+def test_acquire_does_not_raise_once_sustained_reset_has_passed() -> None:
+    """A window whose reported reset time is already past doesn't count as exhausted."""
+    limiter = HeaderPacedRateLimiter()
+    past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    status = RateLimitStatus(sustained=RateLimitWindow(limit=10, remaining=0, reset=past))
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(waiter)
-        time.sleep(0.05)  # give the waiter a moment to block on the exhausted slot
-        assert results == []
+    limiter.acquire(status)
 
-        limiter.release(status)
-        future.result(timeout=2)
 
-    assert results == ["acquired"]
+def test_acquire_raises_for_a_backoff_longer_than_a_burst_window() -> None:
+    """A 429 Retry-After longer than a burst window can only be the daily window, so raise."""
+    limiter = HeaderPacedRateLimiter()
+
+    limiter.on_rate_limited(3600)
+
+    with pytest.raises(RateLimitError) as exc_info:
+        limiter.acquire(RateLimitStatus())
+    assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
+    assert limiter._in_flight == 0
 
 
 def test_concurrent_acquire_never_exceeds_burst_limit_in_a_period() -> None:

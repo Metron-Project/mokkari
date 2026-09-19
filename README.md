@@ -150,6 +150,27 @@ with ThreadPoolExecutor(max_workers=20) as executor:
     issues = list(executor.map(m.issue, issue_ids))
 ```
 
+The limiter only blocks for the per-minute window, whose waits are seconds long.
+When the daily limit is exhausted it raises `RateLimitError` instead of blocking
+for what could be hours, with `retry_after` set to the time until the daily
+window resets (the same happens for a 429 whose `Retry-After` is longer than a
+minute). That leaves it to your application to tell the user and either wait or
+quit:
+
+```python
+import time
+
+from mokkari.exceptions import RateLimitError
+from mokkari.session import format_time
+
+try:
+    issue = m.issue(31660)
+except RateLimitError as e:
+    if input(f"Daily limit reached. Wait {format_time(e.retry_after)}? (y/n): ") == "y":
+        time.sleep(e.retry_after)
+        issue = m.issue(31660)
+```
+
 A rate limiter is scoped to the `Session` it's passed to — construct one per
 `Session` rather than sharing an instance across sessions using different
 credentials. Passing your own object works too, as long as it implements the

@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Protocol
 
+from mokkari import exceptions
+
 __all__ = ["HeaderPacedRateLimiter", "RateLimitStatus", "RateLimitWindow", "RateLimiter"]
 
 
@@ -204,10 +206,14 @@ class HeaderPacedRateLimiter:
     The sustained (daily) window is too long to track with a local log, so
     it's held from the server-reported ``remaining`` and ``reset`` values,
     adjusted for requests that have been sent but haven't responded yet. A
-    caller that would exceed it blocks until the reported reset time, which
-    does compare Metron's clock to the local one; a clock running ahead only
-    costs a rejected request, since the resulting 429 backs everything off by
-    a relative ``Retry-After``.
+    caller that would exceed it gets a ``RateLimitError`` instead of being
+    blocked for what could be hours, with ``retry_after`` set to the time
+    until the reported reset, so the application can decide whether to wait
+    or quit. ``retry_after`` compares Metron's clock to the local one, so it's
+    advisory: if the clocks disagree and a caller retries early, the
+    resulting 429 backs everything off by a relative ``Retry-After``. A
+    ``Retry-After`` longer than a burst window can only come from the daily
+    window, so it raises the same way rather than blocking.
 
     This limiter only knows about requests it sent itself. Traffic from other
     processes sharing the account isn't visible to the burst window until
@@ -226,21 +232,28 @@ class HeaderPacedRateLimiter:
         self._condition = threading.Condition()
         self._burst = _SendLog(burst_period)
         self._sustained = _WindowEstimate()
+        self._sustained_limit: int | None = None
         self._in_flight = 0
         self._last_send: float | None = None
         self._blocked_until = 0.0
 
     def acquire(self, status: RateLimitStatus) -> None:
-        """Block until neither window is exhausted, then reserve a slot."""
+        """Block until the burst window has room, then reserve a slot.
+
+        Raises:
+            RateLimitError: If the sustained (daily) window is exhausted, or a
+                429 backoff longer than a burst window is in effect. Neither
+                is waited out, since either could take hours.
+        """
         with self._condition:
             self._observe(status)
             while True:
                 now = time.monotonic()
+                self._raise_if_daily_limit_reached(now)
                 wait = max(
                     self._blocked_until - now,
                     self._burst.wait_seconds(now),
                     self._spacing_wait(now),
-                    self._sustained.wait_seconds(self._in_flight, datetime.now(timezone.utc)),
                 )
                 if wait <= 0:
                     self._burst.record(now)
@@ -264,6 +277,26 @@ class HeaderPacedRateLimiter:
                 self._observe(status)
             self._condition.notify_all()
 
+    def _raise_if_daily_limit_reached(self, now: float) -> None:
+        """Raise ``RateLimitError`` rather than block on a wait that can only be the daily window."""
+        retry_after = self._sustained.wait_seconds(self._in_flight, datetime.now(timezone.utc))
+        limit = self._sustained_limit
+        if retry_after <= 0:
+            # A backoff longer than a burst window can't have come from the burst window.
+            retry_after = self._blocked_until - now
+            if retry_after <= self._burst.period:
+                return
+            limit = None
+        # Imported here because mokkari.session imports this module.
+        from mokkari.session import format_time  # noqa: PLC0415
+
+        limit_str = f"{limit:,}" if limit is not None else "your"
+        msg = (
+            f"Rate limit exceeded: You have reached the {limit_str} requests per day limit. "
+            f"Please wait {format_time(retry_after)} before making another request."
+        )
+        raise exceptions.RateLimitError(msg, retry_after=retry_after)
+
     def _spacing_wait(self, now: float) -> float:
         """Seconds until the next evenly spaced send is due, or 0 if it already is."""
         if self._last_send is None:
@@ -273,5 +306,7 @@ class HeaderPacedRateLimiter:
     def _observe(self, status: RateLimitStatus) -> None:
         if status.burst.limit is not None:
             self._burst.limit = status.burst.limit
+        if status.sustained.limit is not None:
+            self._sustained_limit = status.sustained.limit
         now = datetime.now(timezone.utc)
         self._sustained.tighten(status.sustained.remaining, status.sustained.reset, now)

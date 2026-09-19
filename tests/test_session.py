@@ -2749,6 +2749,29 @@ def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
     assert limiter._in_flight == 0
 
 
+def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
+    monkeypatch,
+) -> None:
+    """An exhausted daily window surfaces as RateLimitError and no HTTP request is sent."""
+    limiter = HeaderPacedRateLimiter()
+    paced_session = Session(
+        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
+    )
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    paced_session._rate_limit_status = session_module.RateLimitStatus(
+        sustained=session_module.RateLimitWindow(limit=5000, remaining=0, reset=reset)
+    )
+    sent = []
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: sent.append(1))
+
+    with pytest.raises(exceptions.RateLimitError) as exc_info:
+        paced_session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
+    assert sent == []
+    assert limiter._in_flight == 0
+
+
 def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypatch) -> None:
     """A 429 response reports its Retry-After to the limiter, then releases the slot."""
     calls = []
