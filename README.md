@@ -59,8 +59,8 @@ print(asm_68.desc)
 
 ## Rate Limiting
 
-The API has a fixed limit of 20 requests per minute, plus a daily limit that
-starts at 5,000 requests and is raised for
+The API allows at least 20 requests per minute (the server may allow more when
+load is low), plus a daily limit that starts at 5,000 requests and is raised for
 [OpenCollective](https://opencollective.com/metron) donors (up to 25,000/day).
 Because the daily limit varies per user, mokkari doesn't hardcode it — it reads
 the `X-RateLimit-*` headers Metron returns with every response and pre-empts a
@@ -120,11 +120,63 @@ from concurrent.futures import ThreadPoolExecutor
 
 m = mokkari.api(username, password)
 
-# Keep worker count at or below the burst limit (20/min) to avoid racing
-# past the local rate-limit check.
+# Keep worker count at or below the burst limit (20/min at minimum) to avoid
+# racing past the local rate-limit check.
 with ThreadPoolExecutor(max_workers=20) as executor:
     issues = list(executor.map(m.issue, issue_ids))
 ```
+
+### Pacing (opt-in)
+
+Passing `rate_limiter` closes the gap described above: instead of racing past an
+advisory check, every HTTP send is dispatched through the rate limiter first,
+which can block a caller until capacity actually frees rather than letting it
+send anyway. `mokkari.rate_limit.HeaderPacedRateLimiter` is a ready-to-use
+implementation. It sizes the per-minute window from the `X-RateLimit-*` headers
+but paces it from its own monotonic log of send times, so a local clock that has
+drifted from Metron's doesn't matter, and it spaces sends evenly across the
+window (at the 20/min floor, one every 3 seconds). If Metron still answers with
+a 429, it backs every caller off by the `Retry-After` value the server sent:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+import mokkari
+from mokkari.rate_limit import HeaderPacedRateLimiter
+
+m = mokkari.api(username, password, rate_limiter=HeaderPacedRateLimiter())
+
+with ThreadPoolExecutor(max_workers=20) as executor:
+    issues = list(executor.map(m.issue, issue_ids))
+```
+
+The limiter only blocks for the per-minute window, whose waits are seconds long.
+When the daily limit is exhausted it raises `RateLimitError` instead of blocking
+for what could be hours, with `retry_after` set to the time until the daily
+window resets. That leaves it to your application to tell the user and either
+wait or quit:
+
+```python
+import time
+
+from mokkari.exceptions import RateLimitError
+from mokkari.session import format_time
+
+try:
+    issue = m.issue(31660)
+except RateLimitError as e:
+    if input(f"Daily limit reached. Wait {format_time(e.retry_after)}? (y/n): ") == "y":
+        time.sleep(e.retry_after)
+        issue = m.issue(31660)
+```
+
+A rate limiter is scoped to the `Session` it's passed to — construct one per
+`Session` rather than sharing an instance across sessions using different
+credentials. Passing your own object works too, as long as it implements the
+`acquire`/`on_rate_limited`/`release` methods described in
+[`mokkari.rate_limit.RateLimiter`](https://mokkari.readthedocs.io/en/stable/mokkari/rate_limit/).
+Leaving `rate_limiter` unset (the default) keeps the raise-immediately behavior
+described above.
 
 ## Documentation
 

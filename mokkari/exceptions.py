@@ -6,6 +6,7 @@ This module provides the following classes:
 - RateLimitError: Raised when API rate limits are exceeded
 - AuthenticationError: Missing or invalid authentication credentials
 - CacheError: Errors related to cache operations
+- RateLimiterError: Errors related to an injected rate limiter object
 """
 
 from __future__ import annotations
@@ -22,8 +23,9 @@ class ApiError(Exception):
 class RateLimitError(Exception):
     """Exception raised when API rate limits are exceeded.
 
-    This exception is raised when either the fixed per-minute burst limit (20
-    requests) or the per-day sustained limit is exceeded. The sustained limit
+    This exception is raised when either the per-minute burst limit (20
+    requests at minimum, raised by the server when load allows) or the per-day
+    sustained limit is exceeded. The sustained limit
     varies per user — it's 5,000/day by default, higher for OpenCollective
     donors — so mokkari doesn't know it in advance; it's read from the
     ``X-RateLimit-*`` headers Metron returns with each response. The exception
@@ -39,6 +41,11 @@ class RateLimitError(Exception):
     Attributes:
         retry_after: Number of seconds to wait before the next request can be made.
                      This allows applications to implement programmatic retry logic.
+                     It is a lower bound: when Metron's window holds more requests
+                     than its limit allows (e.g. the server lowered the limit below
+                     what you've already used), the reset it reports frees only one
+                     slot, so a request sent after waiting this long can be rejected
+                     again with a new ``RateLimitError``.
 
     Note:
         Applications should catch this exception and implement appropriate retry
@@ -58,6 +65,7 @@ class RateLimitError(Exception):
         ...     #  Please wait 1 minute, 30 seconds before making another request."
         ...     print(f"Rate limited: {e}")
         ...     # Access the numeric delay value for programmatic retry
+        ...     # A lower bound, so be ready to catch RateLimitError again afterwards
         ...     time.sleep(e.retry_after)
     """
 
@@ -89,4 +97,12 @@ class CacheError(Exception):
 
     def __init__(self: CacheError, *args, **kwargs: dict[str, any]) -> None:
         """Initialize an CacheError."""
+        Exception.__init__(self, *args, **kwargs)
+
+
+class RateLimiterError(Exception):
+    """Class for any errors raised by an injected rate limiter object."""
+
+    def __init__(self: RateLimiterError, *args, **kwargs: dict[str, any]) -> None:
+        """Initialize a RateLimiterError."""
         Exception.__init__(self, *args, **kwargs)
