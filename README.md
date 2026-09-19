@@ -59,8 +59,8 @@ print(asm_68.desc)
 
 ## Rate Limiting
 
-The API has a fixed limit of 20 requests per minute, plus a daily limit that
-starts at 5,000 requests and is raised for
+The API allows at least 20 requests per minute (the server may allow more when
+load is low), plus a daily limit that starts at 5,000 requests and is raised for
 [OpenCollective](https://opencollective.com/metron) donors (up to 25,000/day).
 Because the daily limit varies per user, mokkari doesn't hardcode it — it reads
 the `X-RateLimit-*` headers Metron returns with every response and pre-empts a
@@ -120,8 +120,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 m = mokkari.api(username, password)
 
-# Keep worker count at or below the burst limit (20/min) to avoid racing
-# past the local rate-limit check.
+# Keep worker count at or below the burst limit (20/min at minimum) to avoid
+# racing past the local rate-limit check.
 with ThreadPoolExecutor(max_workers=20) as executor:
     issues = list(executor.map(m.issue, issue_ids))
 ```
@@ -132,9 +132,11 @@ Passing `rate_limiter` closes the gap described above: instead of racing past an
 advisory check, every HTTP send is dispatched through the rate limiter first,
 which can block a caller until capacity actually frees rather than letting it
 send anyway. `mokkari.rate_limit.HeaderPacedRateLimiter` is a ready-to-use
-implementation that paces from the same `X-RateLimit-*` headers, tightening its
-estimate as responses come in and accounting for requests that are in flight but
-haven't responded yet:
+implementation. It sizes the per-minute window from the `X-RateLimit-*` headers
+but paces it from its own monotonic log of send times, so a local clock that has
+drifted from Metron's doesn't matter, and it spaces sends evenly across the
+window (at the 20/min floor, one every 3 seconds). If Metron still answers with
+a 429, it backs every caller off by the `Retry-After` value the server sent:
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
@@ -151,7 +153,7 @@ with ThreadPoolExecutor(max_workers=20) as executor:
 A rate limiter is scoped to the `Session` it's passed to — construct one per
 `Session` rather than sharing an instance across sessions using different
 credentials. Passing your own object works too, as long as it implements the
-`acquire`/`release` methods described in
+`acquire`/`on_rate_limited`/`release` methods described in
 [`mokkari.rate_limit.RateLimiter`](https://mokkari.readthedocs.io/en/stable/mokkari/rate_limit/).
 Leaving `rate_limiter` unset (the default) keeps the raise-immediately behavior
 described above.

@@ -165,7 +165,8 @@ class Session:
 
     Metron enforces two rate-limit windows:
 
-    - A fixed burst limit of 20 requests per minute for every user.
+    - A burst limit of at least 20 requests per minute for every user. The server
+      raises it above that floor when load allows, so read it from the headers.
     - A sustained daily limit that starts at 5,000 requests, and is raised for
       OpenCollective donors (up to 25,000/day for the highest tier). Because
       this limit varies per user and can change at any time, Session does not
@@ -538,7 +539,7 @@ class Session:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             if err.response.status_code == requests.codes.too_many:
-                retry_after = float(response.headers.get("Retry-After", 0))
+                retry_after = self._retry_after_seconds(response)
                 msg = (
                     f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
                 )
@@ -2124,6 +2125,8 @@ class Session:
             self._update_rate_limit_status(response.headers)
             status = self.rate_limit_status
             self._update_cache_status(response.headers)
+            if response.status_code == requests.codes.too_many:
+                self._report_rate_limited(self._retry_after_seconds(response))
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.ReadTimeout,
@@ -2151,7 +2154,7 @@ class Session:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             if err.response.status_code == requests.codes.too_many:
-                retry_after = float(response.headers.get("Retry-After", 0))
+                retry_after = self._retry_after_seconds(response)
                 msg = (
                     f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
                 )
@@ -2245,6 +2248,28 @@ class Session:
             return
         try:
             self.rate_limiter.acquire(self.rate_limit_status)
+        except AttributeError as e:
+            msg = f"Rate limiter object passed in is missing attribute: {e!r}"
+            raise exceptions.RateLimiterError(msg) from e
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> float:
+        """Return the response's ``Retry-After`` value in seconds, or 0 if it has none."""
+        return float(response.headers.get("Retry-After", 0))
+
+    def _report_rate_limited(self, retry_after: float) -> None:
+        """Tell the injected rate limiter, if any, that Metron rejected a request with a 429.
+
+        Args:
+            retry_after: The response's ``Retry-After`` in seconds, or 0 if it had none.
+
+        Raises:
+            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
+        """
+        if self.rate_limiter is None:
+            return
+        try:
+            self.rate_limiter.on_rate_limited(retry_after)
         except AttributeError as e:
             msg = f"Rate limiter object passed in is missing attribute: {e!r}"
             raise exceptions.RateLimiterError(msg) from e

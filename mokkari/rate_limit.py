@@ -13,6 +13,8 @@ This module provides the following classes:
 from __future__ import annotations
 
 import threading
+import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Protocol
@@ -43,7 +45,8 @@ class RateLimitStatus:
     response. All fields are ``None`` until the first request completes.
 
     Attributes:
-        burst: The short-term (per-minute) window, fixed for all users.
+        burst: The short-term (per-minute) window. Its limit is 20 at minimum and
+            varies with server load.
         sustained: The daily window, whose limit varies by OpenCollective
             donor tier.
     """
@@ -77,6 +80,19 @@ class RateLimiter(Protocol):
         """
         ...
 
+    def on_rate_limited(self, retry_after: float) -> None:
+        """Record that Metron rejected a request with a 429 response.
+
+        Called once per rejected request, after the response comes back and
+        before ``release``. ``retry_after`` is the ``Retry-After`` value in
+        seconds, which is relative to the moment the server sent it and so
+        doesn't depend on the local clock matching the server's; it is ``0``
+        when the response carried no ``Retry-After`` header. This is the hook
+        for backing off after a rejection, since ``RateLimitStatus`` only
+        describes window state and not why a request was refused.
+        """
+        ...
+
     def release(self, status: RateLimitStatus | None) -> None:
         """Record that a request begun by a prior ``acquire`` call has finished.
 
@@ -93,7 +109,13 @@ class RateLimiter(Protocol):
 
 @dataclass
 class _WindowEstimate:
-    """A rate limiter's own held estimate of one window's remaining capacity."""
+    """A rate limiter's own held estimate of one window's remaining capacity.
+
+    Used for the sustained (daily) window, which is too long to track with a
+    local send log: it starts from the server's reported ``remaining`` and
+    ``reset`` instead, so it does depend on the local clock roughly agreeing
+    with Metron's.
+    """
 
     remaining: int | None = None
     reset: datetime | None = None
@@ -127,51 +149,129 @@ class _WindowEstimate:
         return max(0.0, (self.reset - now).total_seconds())
 
 
-class HeaderPacedRateLimiter:
-    """A ``RateLimiter`` that paces requests from Metron's rate-limit headers.
+class _SendLog:
+    """A rolling log of this process's own send times, on the monotonic clock.
 
-    Holds its own estimate of remaining burst/sustained capacity, tightened
-    (never loosened) from every ``acquire``/``release`` call across every
-    thread sharing the owning ``Session``, and adjusted for requests that
-    have been sent but whose response hasn't come back yet. A caller that
-    would exceed either window blocks until capacity frees, rather than
-    raising immediately.
+    Mirrors how Metron's throttle works: each request occupies a slot for one
+    ``period`` and slots free individually as they age out, rather than the
+    whole window resetting at once. Because it only ever compares local
+    monotonic timestamps with each other, it is unaffected by the local
+    wall clock drifting from the server's.
+    """
+
+    def __init__(self, period: float) -> None:
+        self.period = period
+        self.limit: int | None = None
+        self._sent: deque[float] = deque()
+
+    @property
+    def interval(self) -> float:
+        """Even spacing between sends that would just fill the window, or 0 if unknown."""
+        if self.limit is None or self.limit < 1:
+            return 0.0
+        return self.period / self.limit
+
+    def record(self, now: float) -> None:
+        """Log a send at ``now``."""
+        self._sent.append(now)
+
+    def wait_seconds(self, now: float) -> float:
+        """Seconds until a send fits in the window, or 0 if it already does."""
+        if self.limit is None or self.limit < 1:
+            return 0.0
+        cutoff = now - self.period
+        while self._sent and self._sent[0] <= cutoff:
+            self._sent.popleft()
+        if len(self._sent) < self.limit:
+            return 0.0
+        # The send that finally makes room is the (len - limit)th oldest to age out.
+        return self._sent[len(self._sent) - self.limit] + self.period - now
+
+
+class HeaderPacedRateLimiter:
+    """A ``RateLimiter`` that paces requests using Metron's rate-limit headers.
+
+    The burst (per-minute) window is paced from a monotonic log of this
+    limiter's own send times, so it doesn't depend on the local clock
+    matching Metron's, and sends are spaced evenly across the window
+    (``burst_period / limit`` apart) rather than sent back-to-back until it's
+    empty. The header-reported burst ``limit`` sizes the window and is
+    re-read from every response, so it follows the server raising or lowering
+    it with load. When Metron does reject a request with a 429, the
+    ``Retry-After`` it sends (a relative number of seconds) blocks every
+    caller for that long.
+
+    The sustained (daily) window is too long to track with a local log, so
+    it's held from the server-reported ``remaining`` and ``reset`` values,
+    adjusted for requests that have been sent but haven't responded yet. A
+    caller that would exceed it blocks until the reported reset time, which
+    does compare Metron's clock to the local one; a clock running ahead only
+    costs a rejected request, since the resulting 429 backs everything off by
+    a relative ``Retry-After``.
+
+    This limiter only knows about requests it sent itself. Traffic from other
+    processes sharing the account isn't visible to the burst window until
+    Metron returns a 429.
 
     Construct one instance per ``Session``; don't share an instance across
     Sessions using different credentials.
     """
 
-    def __init__(self) -> None:
-        """Initialize a HeaderPacedRateLimiter with no observed state."""
+    def __init__(self, burst_period: float = 60.0) -> None:
+        """Initialize a HeaderPacedRateLimiter with no observed state.
+
+        Args:
+            burst_period: Length in seconds of Metron's burst window.
+        """
         self._condition = threading.Condition()
-        self._burst = _WindowEstimate()
+        self._burst = _SendLog(burst_period)
         self._sustained = _WindowEstimate()
         self._in_flight = 0
+        self._last_send: float | None = None
+        self._blocked_until = 0.0
 
     def acquire(self, status: RateLimitStatus) -> None:
         """Block until neither window is exhausted, then reserve a slot."""
         with self._condition:
-            self._tighten(status)
+            self._observe(status)
             while True:
-                now = datetime.now(timezone.utc)
+                now = time.monotonic()
                 wait = max(
-                    self._burst.wait_seconds(self._in_flight, now),
-                    self._sustained.wait_seconds(self._in_flight, now),
+                    self._blocked_until - now,
+                    self._burst.wait_seconds(now),
+                    self._spacing_wait(now),
+                    self._sustained.wait_seconds(self._in_flight, datetime.now(timezone.utc)),
                 )
                 if wait <= 0:
+                    self._burst.record(now)
+                    self._last_send = now
                     self._in_flight += 1
                     return
                 self._condition.wait(timeout=wait)
+
+    def on_rate_limited(self, retry_after: float) -> None:
+        """Block every caller for ``retry_after`` seconds, or a full burst window if unknown."""
+        with self._condition:
+            delay = retry_after if retry_after > 0 else self._burst.period
+            self._blocked_until = max(self._blocked_until, time.monotonic() + delay)
+            self._condition.notify_all()
 
     def release(self, status: RateLimitStatus | None) -> None:
         """Release the slot reserved by ``acquire`` and record fresher headers, if any."""
         with self._condition:
             self._in_flight = max(0, self._in_flight - 1)
             if status is not None:
-                self._tighten(status)
+                self._observe(status)
             self._condition.notify_all()
 
-    def _tighten(self, status: RateLimitStatus) -> None:
+    def _spacing_wait(self, now: float) -> float:
+        """Seconds until the next evenly spaced send is due, or 0 if it already is."""
+        if self._last_send is None:
+            return 0.0
+        return self._last_send + self._burst.interval - now
+
+    def _observe(self, status: RateLimitStatus) -> None:
+        if status.burst.limit is not None:
+            self._burst.limit = status.burst.limit
         now = datetime.now(timezone.utc)
-        self._burst.tighten(status.burst.remaining, status.burst.reset, now)
         self._sustained.tighten(status.sustained.remaining, status.sustained.reset, now)

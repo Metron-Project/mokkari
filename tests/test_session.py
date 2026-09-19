@@ -2702,22 +2702,17 @@ def test_rate_limiter_missing_release_raises_rate_limiter_error(
 
 def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
     """A real HeaderPacedRateLimiter shared across threads never exceeds its window."""
-    limiter = HeaderPacedRateLimiter()
+    period = 0.3
+    limiter = HeaderPacedRateLimiter(burst_period=period)
     paced_session = Session(
         username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
     )
-
-    max_observed = {"value": 0}
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=2)
+    sent: list[float] = []
 
     class DummyResp:
         def __init__(self):
             self.status_code = 200
-            self.headers = {
-                "X-RateLimit-Burst-Limit": "3",
-                "X-RateLimit-Burst-Remaining": "3",
-                "X-RateLimit-Burst-Reset": str(int(reset.timestamp())),
-            }
+            self.headers = {"X-RateLimit-Burst-Limit": "3", "X-RateLimit-Burst-Remaining": "3"}
 
         def raise_for_status(self):
             pass
@@ -2726,34 +2721,144 @@ def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
             return {"id": 1}
 
     def mock_request(*args, **kwargs):
-        # limiter.acquire() has already reserved this request's slot by the
-        # time requests.request would be called, so _in_flight here includes it.
-        max_observed["value"] = max(max_observed["value"], limiter._in_flight)
+        sent.append(time.monotonic())
         time.sleep(0.02)  # widen the window so concurrent callers actually overlap
         return DummyResp()
 
     monkeypatch.setattr("mokkari.session.requests.request", mock_request)
 
-    # Prime the limiter's estimate before the concurrent batch starts: with
+    # Prime the limiter's burst limit before the concurrent batch starts: with
     # nothing observed yet it would let every caller straight through, since
     # a gate with no prior information can't restrict anything (the same
     # "gate opens" behavior a real client sees on its very first request).
-    seed_status = session_module.RateLimitStatus(
-        burst=session_module.RateLimitWindow(limit=3, remaining=3, reset=reset)
-    )
-    limiter.acquire(seed_status)
-    limiter.release(seed_status)
+    limiter.acquire(session_module.RateLimitStatus(burst=session_module.RateLimitWindow(limit=3)))
+    limiter.release(None)
 
     def worker(_):
         paced_session._request_data("GET", "https://test.com/api/issue/1")
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        list(executor.map(worker, range(20)))
+        list(executor.map(worker, range(10)))
 
-    # Sanity check that this test actually exercised concurrency, not a fluke pass.
-    assert max_observed["value"] >= 2
-    assert max_observed["value"] <= 3
+    # The primed send counts against the window too, so it's part of the log
+    # even though it never went through requests.request.
+    assert len(sent) == 10
+    sent.sort()
+    for t in sent:
+        assert len([x for x in sent if t <= x < t + period - 0.01]) <= 3
     assert limiter._in_flight == 0
+
+
+def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypatch) -> None:
+    """A 429 response reports its Retry-After to the limiter, then releases the slot."""
+    calls = []
+
+    class FakeLimiter:
+        def acquire(self, _status):
+            calls.append(("acquire",))
+
+        def on_rate_limited(self, retry_after):
+            calls.append(("on_rate_limited", retry_after))
+
+        def release(self, _status):
+            calls.append(("release",))
+
+    session.rate_limiter = FakeLimiter()
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 429
+            self.headers = {"Retry-After": "12"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+
+    assert calls == [("acquire",), ("on_rate_limited", 12.0), ("release",)]
+
+
+def test_rate_limiter_notified_of_429_without_retry_after(session: Session, monkeypatch) -> None:
+    """A 429 with no Retry-After header reports 0 to the limiter."""
+    reported = []
+
+    class FakeLimiter:
+        def acquire(self, _status):
+            pass
+
+        def on_rate_limited(self, retry_after):
+            reported.append(retry_after)
+
+        def release(self, _status):
+            pass
+
+    session.rate_limiter = FakeLimiter()
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 429
+            self.headers = {}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+
+    assert reported == [0.0]
+
+
+def test_rate_limiter_not_notified_of_successful_response(session: Session, monkeypatch) -> None:
+    """Non-429 responses never trigger the on_rate_limited hook."""
+    reported = []
+
+    class FakeLimiter:
+        def acquire(self, _status):
+            pass
+
+        def on_rate_limited(self, retry_after):
+            reported.append(retry_after)
+
+        def release(self, _status):
+            pass
+
+    session.rate_limiter = FakeLimiter()
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+
+    assert reported == []
+
+
+def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
+    session: Session, monkeypatch
+) -> None:
+    """A rate_limiter missing on_rate_limited() raises RateLimiterError on a 429, still releasing."""
+    calls = []
+
+    class NoHook:
+        def acquire(self, _status):
+            pass
+
+        def release(self, _status):
+            calls.append("release")
+
+    session.rate_limiter = NoHook()
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 429
+            self.headers = {"Retry-After": "1"}
+
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+
+    with pytest.raises(exceptions.RateLimiterError):
+        session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+
+    assert calls == ["release"]
 
 
 def test_request_data_resets_cache_status_for_uncached_endpoint(
