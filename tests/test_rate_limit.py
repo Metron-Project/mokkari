@@ -319,14 +319,20 @@ def test_acquire_does_not_raise_once_sustained_reset_has_passed() -> None:
     limiter.acquire(status)
 
 
-def test_acquire_raises_for_a_backoff_longer_than_a_burst_window() -> None:
-    """A 429 Retry-After longer than a burst window can only be the daily window, so raise."""
+def test_daily_429_headers_make_the_next_acquire_raise() -> None:
+    """A 429 that reports an exhausted daily window makes the next acquire raise, not block."""
     limiter = HeaderPacedRateLimiter()
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    status = RateLimitStatus(sustained=RateLimitWindow(limit=5000, remaining=0, reset=reset))
 
+    limiter.acquire(RateLimitStatus())
     limiter.on_rate_limited(3600)
+    limiter.release(status)
 
+    start = time.monotonic()
     with pytest.raises(RateLimitError) as exc_info:
         limiter.acquire(RateLimitStatus())
+    assert time.monotonic() - start < 0.05
     assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
     assert limiter._in_flight == 0
 

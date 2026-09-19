@@ -211,9 +211,9 @@ class HeaderPacedRateLimiter:
     until the reported reset, so the application can decide whether to wait
     or quit. ``retry_after`` compares Metron's clock to the local one, so it's
     advisory: if the clocks disagree and a caller retries early, the
-    resulting 429 backs everything off by a relative ``Retry-After``. A
-    ``Retry-After`` longer than a burst window can only come from the daily
-    window, so it raises the same way rather than blocking.
+    resulting 429 backs everything off by a relative ``Retry-After``. Metron
+    sends the daily window's headers on the 429 itself, so a rejection by the
+    daily limit updates this estimate and the next ``acquire`` raises too.
 
     This limiter only knows about requests it sent itself. Traffic from other
     processes sharing the account isn't visible to the burst window until
@@ -241,15 +241,14 @@ class HeaderPacedRateLimiter:
         """Block until the burst window has room, then reserve a slot.
 
         Raises:
-            RateLimitError: If the sustained (daily) window is exhausted, or a
-                429 backoff longer than a burst window is in effect. Neither
-                is waited out, since either could take hours.
+            RateLimitError: If the sustained (daily) window is exhausted. It
+                is not waited out, since that could take hours.
         """
         with self._condition:
             self._observe(status)
             while True:
                 now = time.monotonic()
-                self._raise_if_daily_limit_reached(now)
+                self._raise_if_daily_limit_reached()
                 wait = max(
                     self._blocked_until - now,
                     self._burst.wait_seconds(now),
@@ -277,19 +276,15 @@ class HeaderPacedRateLimiter:
                 self._observe(status)
             self._condition.notify_all()
 
-    def _raise_if_daily_limit_reached(self, now: float) -> None:
-        """Raise ``RateLimitError`` rather than block on a wait that can only be the daily window."""
+    def _raise_if_daily_limit_reached(self) -> None:
+        """Raise ``RateLimitError`` rather than block until an exhausted daily window resets."""
         retry_after = self._sustained.wait_seconds(self._in_flight, datetime.now(timezone.utc))
-        limit = self._sustained_limit
         if retry_after <= 0:
-            # A backoff longer than a burst window can't have come from the burst window.
-            retry_after = self._blocked_until - now
-            if retry_after <= self._burst.period:
-                return
-            limit = None
+            return
         # Imported here because mokkari.session imports this module.
         from mokkari.session import format_time  # noqa: PLC0415
 
+        limit = self._sustained_limit
         limit_str = f"{limit:,}" if limit is not None else "your"
         msg = (
             f"Rate limit exceeded: You have reached the {limit_str} requests per day limit. "

@@ -153,9 +153,8 @@ with ThreadPoolExecutor(max_workers=20) as executor:
 The limiter only blocks for the per-minute window, whose waits are seconds long.
 When the daily limit is exhausted it raises `RateLimitError` instead of blocking
 for what could be hours, with `retry_after` set to the time until the daily
-window resets (the same happens for a 429 whose `Retry-After` is longer than a
-minute). That leaves it to your application to tell the user and either wait or
-quit:
+window resets. That leaves it to your application to tell the user and either
+wait or quit:
 
 ```python
 import time

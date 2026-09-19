@@ -2772,6 +2772,42 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
     assert limiter._in_flight == 0
 
 
+def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatch) -> None:
+    """A 429 carrying an exhausted daily window stops the next request before it is sent."""
+    limiter = HeaderPacedRateLimiter()
+    paced_session = Session(
+        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
+    )
+    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    sent = []
+
+    class DummyResp:
+        def __init__(self):
+            self.status_code = 429
+            self.headers = {
+                "Retry-After": "3600",
+                "X-RateLimit-Sustained-Limit": "5000",
+                "X-RateLimit-Sustained-Remaining": "0",
+                "X-RateLimit-Sustained-Reset": str(int(reset.timestamp())),
+            }
+
+    def fake_request(*args, **kwargs):
+        sent.append(1)
+        return DummyResp()
+
+    monkeypatch.setattr("mokkari.session.requests.request", fake_request)
+
+    paced_session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    with pytest.raises(exceptions.RateLimitError) as exc_info:
+        paced_session._execute_http_request(
+            "GET", "https://test.com/api/issue/1", {}, {}, None, None
+        )
+
+    assert len(sent) == 1
+    assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
+    assert limiter._in_flight == 0
+
+
 def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypatch) -> None:
     """A 429 response reports its Retry-After to the limiter, then releases the slot."""
     calls = []
