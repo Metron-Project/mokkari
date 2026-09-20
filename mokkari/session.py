@@ -97,6 +97,14 @@ HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 HEADER_CACHE: Final[str] = "X-Cache"
 
 
+class _ServerRateLimitError(exceptions.RateLimitError):
+    """A ``RateLimitError`` for a 429 that Metron returned.
+
+    Unlike one raised locally before a request is sent, retrying this one after the
+    rate limiter has backed off can succeed.
+    """
+
+
 class ResourceEndpoint:
     """Constants for API resource endpoint names.
 
@@ -1995,7 +2003,9 @@ class Session:
 
         Raises:
             RateLimitError: If a page is rejected with a 429 that has no ``Retry-After`` more
-                than ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row.
+                than ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row, or, when a
+                ``rate_limiter`` is set, if the limiter itself refuses a request (its daily
+                window is exhausted).
         """
         has_next_page = True
         next_page = data["next"]
@@ -2013,14 +2023,24 @@ class Session:
             try:
                 response = self._request_data("GET", next_page)
             except exceptions.RateLimitError as e:
+                # A rate limiter that refuses the request itself (an exhausted daily window)
+                # is deliberately not waited out here: the caller decides whether to wait.
+                if self.rate_limiter is not None and not isinstance(e, _ServerRateLimitError):
+                    raise
                 # A missing Retry-After (0) can't be waited out, so don't retry it forever.
                 untimed_retries = untimed_retries + 1 if e.retry_after <= 0 else 0
                 if untimed_retries > MAX_UNTIMED_RATE_LIMIT_RETRIES:
                     raise
                 # Retry only this page rather than letting the error propagate
                 # and restart the entire paginated fetch from page 1.
-                LOGGER.warning("Rate limit during pagination; retrying page in %ss", e.retry_after)
-                time.sleep(e.retry_after + 2)  # Add buffer to ensure limit has reset
+                if self.rate_limiter is None:
+                    LOGGER.warning(
+                        "Rate limit during pagination; retrying page in %ss", e.retry_after
+                    )
+                    time.sleep(e.retry_after + 2)  # Add buffer to ensure limit has reset
+                else:
+                    # The limiter has already backed off from this 429; acquire() blocks.
+                    LOGGER.warning("Rate limit during pagination; retrying page via rate limiter")
                 continue
 
             untimed_retries = 0
@@ -2175,7 +2195,7 @@ class Session:
                 msg = (
                     f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
                 )
-                raise exceptions.RateLimitError(msg, retry_after=retry_after) from err
+                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
 

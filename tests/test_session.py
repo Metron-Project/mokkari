@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from pydantic import HttpUrl, ValidationError
 from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
 
@@ -2110,6 +2111,76 @@ def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
         # Assert
         assert out["results"] == [1, 2]
         assert sleep.call_args_list == [((7,),)] * attempts
+
+
+def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
+    session: Session,
+) -> None:
+    # Arrange: the limiter blocks in acquire(), so the loop shouldn't also sleep
+    session.rate_limiter = HeaderPacedRateLimiter()
+    data = {"results": [1], "next": "url2"}
+    error = session_module._ServerRateLimitError("limited", retry_after=5)
+    responses = [error, {"results": [2], "next": None}]
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=responses) as request,
+        patch.object(session, "_save_results_to_cache"),
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act
+        out = session._retrieve_all_results(data)
+        # Assert
+        assert out["results"] == [1, 2]
+        assert request.call_count == 2
+        sleep.assert_not_called()
+
+
+def test__retrieve_all_results_with_rate_limiter_propagates_limiter_refusal(
+    session: Session,
+) -> None:
+    # Arrange: the limiter refusing a request (daily window exhausted) isn't a 429 to retry
+    session.rate_limiter = HeaderPacedRateLimiter()
+    data = {"results": [1], "next": "url2"}
+    error = exceptions.RateLimitError("daily limit", retry_after=3600)
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=error) as request,
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act / Assert
+        with pytest.raises(exceptions.RateLimitError) as exc_info:
+            session._retrieve_all_results(data)
+        assert exc_info.value.retry_after == 3600
+        assert request.call_count == 1
+        sleep.assert_not_called()
+
+
+def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, monkeypatch) -> None:
+    """A real 429 is backed off by the limiter (not the loop), then the page is retried."""
+    session.rate_limiter = HeaderPacedRateLimiter()
+
+    def response(status_code: int, headers: dict[str, str], body: bytes) -> requests.Response:
+        resp = requests.Response()
+        resp.status_code = status_code
+        resp.headers.update(headers)
+        resp._content = body
+        return resp
+
+    responses = [
+        response(429, {"Retry-After": "0.2"}, b"{}"),
+        response(200, {}, b'{"results": [2], "next": null}'),
+    ]
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *_a, **_k: responses.pop(0))
+    data = {"results": [1], "next": "https://test.com/api/issue/?page=2"}
+
+    with patch("mokkari.session.time.sleep") as sleep:
+        start = time.monotonic()
+        out = session._retrieve_all_results(data)
+        elapsed = time.monotonic() - start
+
+    assert out["results"] == [1, 2]
+    assert elapsed >= 0.18
+    sleep.assert_not_called()
 
 
 def test__request_data_get(monkeypatch, session):
