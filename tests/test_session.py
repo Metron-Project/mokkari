@@ -2183,6 +2183,20 @@ def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, mo
     sleep.assert_not_called()
 
 
+def test__send_void_raises_server_rate_limit_error_on_429(session: Session, monkeypatch) -> None:
+    # Arrange
+    resp = requests.Response()
+    resp.status_code = 429
+    resp.headers["Retry-After"] = "7"
+    resp._content = b"{}"
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *_a, **_k: resp)
+    # Act / Assert: tagged like the 429s raised for GET/POST/PATCH, so callers can tell
+    # a rejection by Metron from one raised locally before sending
+    with pytest.raises(session_module._ServerRateLimitError) as exc_info:
+        session._send_void("DELETE", ["collection", 1])
+    assert exc_info.value.retry_after == 7
+
+
 def test__request_data_get(monkeypatch, session):
     # Arrange
     class DummyResp:

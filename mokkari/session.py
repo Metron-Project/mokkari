@@ -558,7 +558,7 @@ class Session:
                 msg = (
                     f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
                 )
-                raise exceptions.RateLimitError(msg, retry_after=retry_after) from err
+                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
 
