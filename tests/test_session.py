@@ -2201,7 +2201,8 @@ def test__retrieve_all_results_with_rate_limiter_propagates_limiter_refusal(
 
 def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, monkeypatch) -> None:
     """A real 429 is backed off by the limiter (not the loop), then the page is retried."""
-    session.rate_limiter = HeaderPacedRateLimiter()
+    limiter = HeaderPacedRateLimiter()
+    session.rate_limiter = limiter
 
     def response(status_code: int, headers: dict[str, str], body: bytes) -> requests.Response:
         resp = requests.Response()
@@ -2211,19 +2212,23 @@ def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, mo
         return resp
 
     responses = [
-        response(429, {"Retry-After": "0.2"}, b"{}"),
+        response(429, {"Retry-After": "0.01"}, b"{}"),
         response(200, {}, b'{"results": [2], "next": null}'),
     ]
     monkeypatch.setattr("mokkari.session.requests.request", lambda *_a, **_k: responses.pop(0))
     data = {"results": [1], "next": "https://test.com/api/issue/?page=2"}
 
-    with patch("mokkari.session.time.sleep") as sleep:
-        start = time.monotonic()
+    with (
+        patch("mokkari.session.time.sleep") as sleep,
+        patch.object(limiter, "acquire", wraps=limiter.acquire) as acquire,
+        patch.object(limiter, "on_rate_limited", wraps=limiter.on_rate_limited) as backed_off,
+    ):
         out = session._retrieve_all_results(data)
-        elapsed = time.monotonic() - start
 
+    # The limiter was told about the 429 and gated the retry; the loop didn't sleep itself.
     assert out["results"] == [1, 2]
-    assert elapsed >= 0.18
+    backed_off.assert_called_once_with(0.01)
+    assert acquire.call_count == 2
     sleep.assert_not_called()
 
 
