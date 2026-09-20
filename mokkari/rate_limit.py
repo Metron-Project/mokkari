@@ -17,11 +17,14 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Final, Protocol
 
 from mokkari import exceptions
 
 __all__ = ["HeaderPacedRateLimiter", "RateLimitStatus", "RateLimitWindow", "RateLimiter"]
+
+# Length in seconds of Metron's burst (per-minute) window.
+DEFAULT_BURST_PERIOD: Final[float] = 60.0
 
 
 @dataclass(frozen=True)
@@ -155,11 +158,6 @@ class _WindowEstimate:
         window really is exhausted, Metron's 429 backs callers off through
         ``on_rate_limited`` instead. Metron sends ``Remaining`` and ``Reset``
         together, so this only arises if a proxy strips one of them.
-
-        The result is a lower bound. Metron reports the reset as when the
-        oldest request in the window ages out, which frees only one slot; if the
-        window holds more requests than its limit allows (say the server lowered
-        the limit), several must age out before a request fits.
         """
         if self.remaining is None or self.remaining - in_flight > 0 or self.reset is None:
             return 0.0
@@ -224,19 +222,14 @@ class HeaderPacedRateLimiter:
     caller that would exceed it gets a ``RateLimitError`` instead of being
     blocked for what could be hours, with ``retry_after`` set to the time
     until the reported reset, so the application can decide whether to wait
-    or quit. ``retry_after`` is a lower bound, not a guarantee. Metron reports
-    the reset as when the oldest request in the window ages out, which frees
-    a single slot, so when the window holds more requests than its limit
-    allows (for example after the server lowers the daily limit below what
-    the user has already used) the real wait is longer, and a caller who
-    waits ``retry_after`` may be rejected again and should be ready to catch
-    ``RateLimitError`` a second time. It also compares Metron's clock to the
-    local one, so if the clocks disagree and a caller retries early, the
-    resulting 429 backs everything off instead. Metron sends the daily
-    window's headers on the 429 itself, so a rejection by the daily limit
-    updates this estimate and the next ``acquire`` raises too. That 429 may
-    carry no ``Retry-After``: in that same over-limit state DRF has no wait
-    to report and omits it, which ``on_rate_limited`` sees as ``0``.
+    or quit. ``retry_after`` is not a guarantee: another client sharing the
+    account can take the slot that frees, so a caller who waits
+    ``retry_after`` should be ready to catch ``RateLimitError`` a second
+    time. It also compares Metron's clock to the local one, so if the
+    clocks disagree and a caller retries early, the resulting 429 backs
+    everything off instead. Metron sends the daily window's headers on the
+    429 itself, so a rejection by the daily limit updates this estimate and
+    the next ``acquire`` raises too.
 
     This limiter only knows about requests it sent itself. Traffic from other
     processes sharing the account isn't visible to the burst window until
@@ -246,7 +239,7 @@ class HeaderPacedRateLimiter:
     Sessions using different credentials.
     """
 
-    def __init__(self, burst_period: float = 60.0) -> None:
+    def __init__(self, burst_period: float = DEFAULT_BURST_PERIOD) -> None:
         """Initialize a HeaderPacedRateLimiter with no observed state.
 
         Args:

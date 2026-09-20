@@ -13,11 +13,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from pydantic import HttpUrl, ValidationError
 from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
 
 import mokkari.session as session_module
-from mokkari import exceptions
+from mokkari import exceptions, rate_limit
 from mokkari.rate_limit import HeaderPacedRateLimiter
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
@@ -2051,6 +2052,218 @@ def test__retrieve_all_results_without_cache(session: Session) -> None:
         out = session._retrieve_all_results(data)
         # Assert
         assert out["results"] == [1, 2]
+
+
+def test__retrieve_all_results_raises_after_repeated_429s_without_retry_after(
+    session: Session,
+) -> None:
+    # Arrange
+    data = {"results": [1], "next": "url2"}
+    error = exceptions.RateLimitError("limited", retry_after=0)
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=error) as request,
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act
+        with pytest.raises(exceptions.RateLimitError):
+            session._retrieve_all_results(data)
+        # Assert
+        assert request.call_count == session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 1
+        # No Retry-After to honour, so each retry waits a full burst window rather than
+        # firing back-to-back.
+        assert sleep.call_args_list == [((rate_limit.DEFAULT_BURST_PERIOD,),)] * (
+            session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES
+        )
+
+
+def test__retrieve_all_results_untimed_retry_count_resets_after_a_page(session: Session) -> None:
+    # Arrange: more header-less 429s in total than the cap, but never that many in a row
+    data = {"results": [1], "next": "url2"}
+    error = exceptions.RateLimitError("limited", retry_after=0)
+    page2 = {"results": [2], "next": "url3"}
+    page3 = {"results": [3], "next": None}
+    responses = [error, error, error, page2, error, error, error, page3]
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=responses),
+        patch.object(session, "_save_results_to_cache"),
+        patch("mokkari.session.time.sleep"),
+    ):
+        # Act
+        out = session._retrieve_all_results(data)
+        # Assert
+        assert out["results"] == [1, 2, 3]
+
+
+def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
+    session: Session,
+) -> None:
+    # Arrange: a real Retry-After is a wait worth honouring, so it isn't held to the small
+    # untimed cap, only to the larger overall one
+    data = {"results": [1], "next": "url2"}
+    error = exceptions.RateLimitError("limited", retry_after=5)
+    attempts = session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 3
+    responses = [error] * attempts + [{"results": [2], "next": None}]
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=responses),
+        patch.object(session, "_save_results_to_cache"),
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act
+        out = session._retrieve_all_results(data)
+        # Assert
+        assert out["results"] == [1, 2]
+        assert sleep.call_args_list == [((5,),)] * attempts
+
+
+def test__retrieve_all_results_raises_after_repeated_429s_with_retry_after(
+    session: Session,
+) -> None:
+    # Arrange: another client keeps the account saturated, so every retry is rejected again
+    data = {"results": [1], "next": "url2"}
+    error = exceptions.RateLimitError("limited", retry_after=5)
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=error) as request,
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act
+        with pytest.raises(exceptions.RateLimitError):
+            session._retrieve_all_results(data)
+        # Assert
+        assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
+        assert sleep.call_args_list == [((5,),)] * session_module.MAX_RATE_LIMIT_RETRIES
+
+
+def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
+    session: Session,
+) -> None:
+    # Arrange: the limiter blocks in acquire(), so the loop shouldn't also sleep
+    session.rate_limiter = HeaderPacedRateLimiter()
+    data = {"results": [1], "next": "url2"}
+    error = session_module._ServerRateLimitError("limited", retry_after=5)
+    responses = [error, {"results": [2], "next": None}]
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=responses) as request,
+        patch.object(session, "_save_results_to_cache"),
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act
+        out = session._retrieve_all_results(data)
+        # Assert
+        assert out["results"] == [1, 2]
+        assert request.call_count == 2
+        sleep.assert_not_called()
+
+
+def test__retrieve_all_results_with_rate_limiter_caps_retries_of_a_non_blocking_limiter(
+    session: Session,
+) -> None:
+    # Arrange: a limiter whose acquire() returns at once never paces the retries
+    session.rate_limiter = HeaderPacedRateLimiter()
+    data = {"results": [1], "next": "url2"}
+    error = session_module._ServerRateLimitError("limited", retry_after=5)
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=error) as request,
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act
+        with pytest.raises(exceptions.RateLimitError):
+            session._retrieve_all_results(data)
+        # Assert
+        assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
+        sleep.assert_not_called()
+
+
+def test__retrieve_all_results_with_rate_limiter_retry_cap_resets_after_a_page(
+    session: Session,
+) -> None:
+    # Arrange: more 429s in total than the cap, but never that many in a row
+    session.rate_limiter = HeaderPacedRateLimiter()
+    data = {"results": [1], "next": "url2"}
+    error = session_module._ServerRateLimitError("limited", retry_after=5)
+    run = [error] * session_module.MAX_RATE_LIMIT_RETRIES
+    responses = [*run, {"results": [2], "next": "url3"}, *run, {"results": [3], "next": None}]
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=responses),
+        patch.object(session, "_save_results_to_cache"),
+    ):
+        # Act
+        out = session._retrieve_all_results(data)
+        # Assert
+        assert out["results"] == [1, 2, 3]
+
+
+def test__retrieve_all_results_with_rate_limiter_propagates_limiter_refusal(
+    session: Session,
+) -> None:
+    # Arrange: the limiter refusing a request (daily window exhausted) isn't a 429 to retry
+    session.rate_limiter = HeaderPacedRateLimiter()
+    data = {"results": [1], "next": "url2"}
+    error = exceptions.RateLimitError("daily limit", retry_after=3600)
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=error) as request,
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act / Assert
+        with pytest.raises(exceptions.RateLimitError) as exc_info:
+            session._retrieve_all_results(data)
+        assert exc_info.value.retry_after == 3600
+        assert request.call_count == 1
+        sleep.assert_not_called()
+
+
+def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, monkeypatch) -> None:
+    """A real 429 is backed off by the limiter (not the loop), then the page is retried."""
+    limiter = HeaderPacedRateLimiter()
+    session.rate_limiter = limiter
+
+    def response(status_code: int, headers: dict[str, str], body: bytes) -> requests.Response:
+        resp = requests.Response()
+        resp.status_code = status_code
+        resp.headers.update(headers)
+        resp._content = body
+        return resp
+
+    responses = [
+        response(429, {"Retry-After": "0.01"}, b"{}"),
+        response(200, {}, b'{"results": [2], "next": null}'),
+    ]
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *_a, **_k: responses.pop(0))
+    data = {"results": [1], "next": "https://test.com/api/issue/?page=2"}
+
+    with (
+        patch("mokkari.session.time.sleep") as sleep,
+        patch.object(limiter, "acquire", wraps=limiter.acquire) as acquire,
+        patch.object(limiter, "on_rate_limited", wraps=limiter.on_rate_limited) as backed_off,
+    ):
+        out = session._retrieve_all_results(data)
+
+    # The limiter was told about the 429 and gated the retry; the loop didn't sleep itself.
+    assert out["results"] == [1, 2]
+    backed_off.assert_called_once_with(0.01)
+    assert acquire.call_count == 2
+    sleep.assert_not_called()
+
+
+def test__send_void_raises_server_rate_limit_error_on_429(session: Session, monkeypatch) -> None:
+    # Arrange
+    resp = requests.Response()
+    resp.status_code = 429
+    resp.headers["Retry-After"] = "7"
+    resp._content = b"{}"
+    monkeypatch.setattr("mokkari.session.requests.request", lambda *_a, **_k: resp)
+    # Act / Assert: tagged like the 429s raised for GET/POST/PATCH, so callers can tell
+    # a rejection by Metron from one raised locally before sending
+    with pytest.raises(session_module._ServerRateLimitError) as exc_info:
+        session._send_void("DELETE", ["collection", 1])
+    assert exc_info.value.retry_after == 7
 
 
 def test__request_data_get(monkeypatch, session):
