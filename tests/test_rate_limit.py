@@ -369,13 +369,13 @@ def test_acquire_sends_when_sustained_window_is_exhausted_without_a_reset() -> N
     assert limiter._in_flight == 1
 
 
-def test_daily_429_without_retry_after_raises_again_after_a_lower_bound_wait() -> None:
-    """A daily 429 with no Retry-After still raises, and the reset reported is only a lower bound.
+def test_daily_429_without_retry_after_raises_again_after_the_reset_passes() -> None:
+    """A daily 429 with no Retry-After still raises, and can be followed by a later reset.
 
-    When the server lowers the daily limit below what a user has already used,
-    DRF has no wait to report and omits Retry-After, while the reset it does
-    report frees just one slot. Waiting out that reset can therefore be
-    rejected again, now with a later reset.
+    Metron always sends Retry-After, but the limiter doesn't rely on it: it
+    reads the daily window from the headers. If a request sent once the
+    reported reset has passed is rejected again with a later reset, the next
+    acquire raises again with the new wait.
     """
     limiter = HeaderPacedRateLimiter(burst_period=0.05)
     now = datetime.datetime.now(datetime.timezone.utc)

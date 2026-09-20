@@ -41,11 +41,9 @@ class RateLimitError(Exception):
     Attributes:
         retry_after: Number of seconds to wait before the next request can be made.
                      This allows applications to implement programmatic retry logic.
-                     It is a lower bound: when Metron's window holds more requests
-                     than its limit allows (e.g. the server lowered the limit below
-                     what you've already used), the reset it reports frees only one
-                     slot, so a request sent after waiting this long can be rejected
-                     again with a new ``RateLimitError``.
+                     It can fall up to a second short, since Metron reports times in
+                     whole seconds, so a request sent after waiting this long can be
+                     rejected again with a new ``RateLimitError``.
 
     Note:
         Applications should catch this exception and implement appropriate retry
@@ -65,7 +63,7 @@ class RateLimitError(Exception):
         ...     #  Please wait 1 minute, 30 seconds before making another request."
         ...     print(f"Rate limited: {e}")
         ...     # Access the numeric delay value for programmatic retry
-        ...     # A lower bound, so be ready to catch RateLimitError again afterwards
+        ...     # Can fall a second short, so be ready to catch RateLimitError again afterwards
         ...     time.sleep(e.retry_after)
     """
 
