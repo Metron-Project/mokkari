@@ -18,7 +18,7 @@ from pydantic import HttpUrl, ValidationError
 from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
 
 import mokkari.session as session_module
-from mokkari import exceptions
+from mokkari import exceptions, rate_limit
 from mokkari.rate_limit import HeaderPacedRateLimiter
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
@@ -2070,7 +2070,11 @@ def test__retrieve_all_results_raises_after_repeated_429s_without_retry_after(
             session._retrieve_all_results(data)
         # Assert
         assert request.call_count == session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 1
-        assert sleep.call_count == session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES
+        # No Retry-After to honour, so each retry waits a full burst window rather than
+        # firing back-to-back.
+        assert sleep.call_args_list == [((rate_limit.DEFAULT_BURST_PERIOD,),)] * (
+            session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES
+        )
 
 
 def test__retrieve_all_results_untimed_retry_count_resets_after_a_page(session: Session) -> None:

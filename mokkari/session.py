@@ -2034,10 +2034,11 @@ class Session:
                 # Retry only this page rather than letting the error propagate
                 # and restart the entire paginated fetch from page 1.
                 if self.rate_limiter is None:
-                    LOGGER.warning(
-                        "Rate limit during pagination; retrying page in %ss", e.retry_after
-                    )
-                    time.sleep(e.retry_after)
+                    # Floor a missing Retry-After at the burst window, as the limiter does,
+                    # so the capped retries are still spaced out rather than back-to-back.
+                    delay = e.retry_after if e.retry_after > 0 else rate_limit.DEFAULT_BURST_PERIOD
+                    LOGGER.warning("Rate limit during pagination; retrying page in %ss", delay)
+                    time.sleep(delay)
                 else:
                     # The limiter has already backed off from this 429; acquire() blocks.
                     LOGGER.warning("Rate limit during pagination; retrying page via rate limiter")

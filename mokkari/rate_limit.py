@@ -17,11 +17,14 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Final, Protocol
 
 from mokkari import exceptions
 
 __all__ = ["HeaderPacedRateLimiter", "RateLimitStatus", "RateLimitWindow", "RateLimiter"]
+
+# Length in seconds of Metron's burst (per-minute) window.
+DEFAULT_BURST_PERIOD: Final[float] = 60.0
 
 
 @dataclass(frozen=True)
@@ -236,7 +239,7 @@ class HeaderPacedRateLimiter:
     Sessions using different credentials.
     """
 
-    def __init__(self, burst_period: float = 60.0) -> None:
+    def __init__(self, burst_period: float = DEFAULT_BURST_PERIOD) -> None:
         """Initialize a HeaderPacedRateLimiter with no observed state.
 
         Args:
