@@ -78,11 +78,12 @@ SECONDS_PER_MINUTE: Final[int] = 60
 # Metron always sends ``Retry-After`` with a 429, so a rejection without one is
 # unexpected. Pagination retries a page this many times in a row before giving up.
 MAX_UNTIMED_RATE_LIMIT_RETRIES: Final[int] = 3
-# With a ``rate_limiter``, pacing a retry is the limiter's job, and the ``RateLimiter``
-# protocol lets an implementation return from ``acquire`` without blocking. Pagination
-# gives up on a page after this many 429s in a row so such a limiter can't turn the retry
-# into a tight loop. It's generous because each retry is normally a real, timed wait.
-MAX_LIMITED_RATE_LIMIT_RETRIES: Final[int] = 20
+# Pagination gives up on a page after this many 429s in a row, whether or not they carry
+# ``Retry-After``, so a call can't hang forever behind another client saturating the account.
+# With a ``rate_limiter`` it also stops one that returns from ``acquire`` without blocking
+# (the ``RateLimiter`` protocol allows it) from turning the retry into a tight loop. It's
+# generous because each retry is normally a real, timed wait.
+MAX_RATE_LIMIT_RETRIES: Final[int] = 20
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
@@ -2007,10 +2008,10 @@ class Session:
             dict[str, Any]: Dictionary containing all results retrieved by following pagination links.
 
         Raises:
-            RateLimitError: If a page is rejected with a 429 that has no ``Retry-After`` more
-                than ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row, or, when a
-                ``rate_limiter`` is set, if it rejects a page more than
-                ``MAX_LIMITED_RATE_LIMIT_RETRIES`` times in a row or the limiter itself
+            RateLimitError: If a page is rejected with a 429 more than
+                ``MAX_RATE_LIMIT_RETRIES`` times in a row, or more than
+                ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row when it has no
+                ``Retry-After``, or, when a ``rate_limiter`` is set, if the limiter itself
                 refuses a request (its daily window is exhausted).
         """
         has_next_page = True
@@ -2037,9 +2038,9 @@ class Session:
                 # A missing Retry-After (0) can't be waited out, so don't retry it forever.
                 untimed_retries = untimed_retries + 1 if e.retry_after <= 0 else 0
                 limited_retries += 1
-                if untimed_retries > MAX_UNTIMED_RATE_LIMIT_RETRIES or (
-                    self.rate_limiter is not None
-                    and limited_retries > MAX_LIMITED_RATE_LIMIT_RETRIES
+                if (
+                    untimed_retries > MAX_UNTIMED_RATE_LIMIT_RETRIES
+                    or limited_retries > MAX_RATE_LIMIT_RETRIES
                 ):
                     raise
                 # Retry only this page rather than letting the error propagate

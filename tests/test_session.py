@@ -2099,7 +2099,8 @@ def test__retrieve_all_results_untimed_retry_count_resets_after_a_page(session: 
 def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
     session: Session,
 ) -> None:
-    # Arrange: a real Retry-After is a wait worth honouring however often it recurs
+    # Arrange: a real Retry-After is a wait worth honouring, so it isn't held to the small
+    # untimed cap, only to the larger overall one
     data = {"results": [1], "next": "url2"}
     error = exceptions.RateLimitError("limited", retry_after=5)
     attempts = session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 3
@@ -2115,6 +2116,25 @@ def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
         # Assert
         assert out["results"] == [1, 2]
         assert sleep.call_args_list == [((5,),)] * attempts
+
+
+def test__retrieve_all_results_raises_after_repeated_429s_with_retry_after(
+    session: Session,
+) -> None:
+    # Arrange: another client keeps the account saturated, so every retry is rejected again
+    data = {"results": [1], "next": "url2"}
+    error = exceptions.RateLimitError("limited", retry_after=5)
+    with (
+        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session, "_request_data", side_effect=error) as request,
+        patch("mokkari.session.time.sleep") as sleep,
+    ):
+        # Act
+        with pytest.raises(exceptions.RateLimitError):
+            session._retrieve_all_results(data)
+        # Assert
+        assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
+        assert sleep.call_args_list == [((5,),)] * session_module.MAX_RATE_LIMIT_RETRIES
 
 
 def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
@@ -2155,7 +2175,7 @@ def test__retrieve_all_results_with_rate_limiter_caps_retries_of_a_non_blocking_
         with pytest.raises(exceptions.RateLimitError):
             session._retrieve_all_results(data)
         # Assert
-        assert request.call_count == session_module.MAX_LIMITED_RATE_LIMIT_RETRIES + 1
+        assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
         sleep.assert_not_called()
 
 
@@ -2166,7 +2186,7 @@ def test__retrieve_all_results_with_rate_limiter_retry_cap_resets_after_a_page(
     session.rate_limiter = HeaderPacedRateLimiter()
     data = {"results": [1], "next": "url2"}
     error = session_module._ServerRateLimitError("limited", retry_after=5)
-    run = [error] * session_module.MAX_LIMITED_RATE_LIMIT_RETRIES
+    run = [error] * session_module.MAX_RATE_LIMIT_RETRIES
     responses = [*run, {"results": [2], "next": "url3"}, *run, {"results": [3], "next": None}]
     with (
         patch.object(session, "_get_results_from_cache", return_value=None),
