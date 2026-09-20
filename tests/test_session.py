@@ -162,10 +162,20 @@ def test_execute_http_request_uses_bearer_header(monkeypatch) -> None:
     assert mock_request.call_args.kwargs["headers"]["Authorization"] == "Bearer abc123"
 
 
-def test_session_reuses_a_single_http_session(session: Session) -> None:
-    """Test that every request goes through the one pooled requests.Session."""
-    assert isinstance(session._http, requests.Session)
-    assert session._http is session._http
+def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> None:
+    """Test that successive requests all go through the one pooled requests.Session."""
+    http_session = session._http
+    mock_request = MagicMock(return_value=MagicMock(headers={}))
+    monkeypatch.setattr(http_session, "request", mock_request)
+    module_level_request = MagicMock()
+    monkeypatch.setattr(requests, "request", module_level_request)
+
+    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/2", {}, {}, None, None)
+
+    assert session._http is http_session
+    assert mock_request.call_count == 2
+    module_level_request.assert_not_called()
 
 
 def test_http_session_drops_cookies(session: Session) -> None:
