@@ -170,8 +170,8 @@ except RateLimitError as e:
         issue = m.issue(31660)
 ```
 
-Paginated list calls follow the same rules: if a page is rejected with a 429 they
-retry it through the limiter, which blocks until it's safe to send, and an
+Paginated list calls follow the same rules: if a page is rejected with a 429
+they retry it through the limiter, which blocks until it's safe to send, and an
 exhausted daily limit raises `RateLimitError` from the list call rather than
 being waited out.
 
