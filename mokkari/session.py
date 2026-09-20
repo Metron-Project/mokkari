@@ -10,6 +10,7 @@ This module provides the following classes:
 
 __all__ = ["RateLimitStatus", "RateLimitWindow", "Session"]
 
+import http.cookiejar
 import json
 import logging
 import platform
@@ -399,10 +400,41 @@ class Session:
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
         self.rate_limiter = rate_limiter
+        self._http = self._build_http_session()
         self._rate_limit_lock = threading.Lock()
         self._rate_limit_status = RateLimitStatus()
         self._cache_status_lock = threading.Lock()
         self._last_cache_status: str | None = None
+
+    @staticmethod
+    def _build_http_session() -> requests.Session:
+        """Build the ``requests.Session`` that pools connections across API calls.
+
+        Reusing one session keeps TCP/TLS connections to Metron alive between requests
+        instead of paying a fresh handshake each time. Credentials are still sent per
+        request, and cookies are refused outright so a stray ``Set-Cookie`` from the
+        server can't turn later requests into session-authenticated ones.
+        """
+        http_session = requests.Session()
+        http_session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
+        return http_session
+
+    def close(self) -> None:
+        """Close the pooled HTTP connections held by this session.
+
+        Calling this is optional; idle connections are also released when the ``Session``
+        is garbage collected. It is safe to call more than once, and the session can still
+        be used afterwards, at the cost of opening new connections.
+        """
+        self._http.close()
+
+    def __enter__(self) -> "Session":  # noqa: PYI034 - py310 has no typing.Self
+        """Enter the context manager, returning this session."""
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        """Exit the context manager, closing pooled connections."""
+        self.close()
 
     @property
     def rate_limit_status(self) -> RateLimitStatus:
@@ -2163,7 +2195,7 @@ class Session:
         # received and folded into the session's rate-limit state.
         status: RateLimitStatus | None = None
         try:
-            response = requests.request(
+            response = self._http.request(
                 method,
                 url,
                 params=params,
