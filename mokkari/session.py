@@ -78,6 +78,11 @@ SECONDS_PER_MINUTE: Final[int] = 60
 # Metron always sends ``Retry-After`` with a 429, so a rejection without one is
 # unexpected. Pagination retries a page this many times in a row before giving up.
 MAX_UNTIMED_RATE_LIMIT_RETRIES: Final[int] = 3
+# With a ``rate_limiter``, pacing a retry is the limiter's job, and the ``RateLimiter``
+# protocol lets an implementation return from ``acquire`` without blocking. Pagination
+# gives up on a page after this many 429s in a row so such a limiter can't turn the retry
+# into a tight loop. It's generous because each retry is normally a real, timed wait.
+MAX_LIMITED_RATE_LIMIT_RETRIES: Final[int] = 20
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
@@ -2004,12 +2009,14 @@ class Session:
         Raises:
             RateLimitError: If a page is rejected with a 429 that has no ``Retry-After`` more
                 than ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row, or, when a
-                ``rate_limiter`` is set, if the limiter itself refuses a request (its daily
-                window is exhausted).
+                ``rate_limiter`` is set, if it rejects a page more than
+                ``MAX_LIMITED_RATE_LIMIT_RETRIES`` times in a row or the limiter itself
+                refuses a request (its daily window is exhausted).
         """
         has_next_page = True
         next_page = data["next"]
         untimed_retries = 0
+        limited_retries = 0
 
         while has_next_page:
             if cached_response := self._get_results_from_cache(next_page):
@@ -2029,7 +2036,11 @@ class Session:
                     raise
                 # A missing Retry-After (0) can't be waited out, so don't retry it forever.
                 untimed_retries = untimed_retries + 1 if e.retry_after <= 0 else 0
-                if untimed_retries > MAX_UNTIMED_RATE_LIMIT_RETRIES:
+                limited_retries += 1
+                if untimed_retries > MAX_UNTIMED_RATE_LIMIT_RETRIES or (
+                    self.rate_limiter is not None
+                    and limited_retries > MAX_LIMITED_RATE_LIMIT_RETRIES
+                ):
                     raise
                 # Retry only this page rather than letting the error propagate
                 # and restart the entire paginated fetch from page 1.
@@ -2045,6 +2056,7 @@ class Session:
                 continue
 
             untimed_retries = 0
+            limited_retries = 0
             data["results"].extend(response["results"])
 
             self._save_results_to_cache(next_page, response)
