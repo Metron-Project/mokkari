@@ -271,8 +271,8 @@ class Session:
         ...     time.sleep(e.retry_after)
         ...     issue = session.issue(1)  # Retry after waiting; may raise again, see below
 
-        ``retry_after`` can fall up to a second short, since Metron reports times in whole
-        seconds, so the retry can raise ``RateLimitError`` again, which is why the loop
+        ``retry_after`` is when the next slot frees. Another client sharing your account can
+        take it first, so the retry can raise ``RateLimitError`` again, which is why the loop
         below keeps retrying.
 
         Handling minute vs daily rate limits:
@@ -2037,7 +2037,7 @@ class Session:
                     LOGGER.warning(
                         "Rate limit during pagination; retrying page in %ss", e.retry_after
                     )
-                    time.sleep(e.retry_after + 2)  # Add buffer to ensure limit has reset
+                    time.sleep(e.retry_after)
                 else:
                     # The limiter has already backed off from this 429; acquire() blocks.
                     LOGGER.warning("Rate limit during pagination; retrying page via rate limiter")
@@ -2348,8 +2348,8 @@ class Session:
         Raises:
             RateLimitError: When the last known rate-limit headers show the
                 burst or sustained window is exhausted and hasn't reset yet. Its
-                ``retry_after`` can fall up to a second short, as Metron reports the
-                reset in whole seconds.
+                ``retry_after`` is the time until the reset Metron reported, measured
+                against the local clock.
         """
         status = self.rate_limit_status
         now = datetime.now(timezone.utc)

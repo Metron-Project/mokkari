@@ -155,9 +155,6 @@ class _WindowEstimate:
         window really is exhausted, Metron's 429 backs callers off through
         ``on_rate_limited`` instead. Metron sends ``Remaining`` and ``Reset``
         together, so this only arises if a proxy strips one of them.
-
-        Metron reports the reset in whole seconds, so the result can fall up to
-        a second short.
         """
         if self.remaining is None or self.remaining - in_flight > 0 or self.reset is None:
             return 0.0
@@ -222,10 +219,10 @@ class HeaderPacedRateLimiter:
     caller that would exceed it gets a ``RateLimitError`` instead of being
     blocked for what could be hours, with ``retry_after`` set to the time
     until the reported reset, so the application can decide whether to wait
-    or quit. ``retry_after`` is not a guarantee: Metron reports the reset in
-    whole seconds, so it can fall up to a second short, and a caller who
-    waits ``retry_after`` should be ready to catch ``RateLimitError`` a
-    second time. It also compares Metron's clock to the local one, so if the
+    or quit. ``retry_after`` is not a guarantee: another client sharing the
+    account can take the slot that frees, so a caller who waits
+    ``retry_after`` should be ready to catch ``RateLimitError`` a second
+    time. It also compares Metron's clock to the local one, so if the
     clocks disagree and a caller retries early, the resulting 429 backs
     everything off instead. Metron sends the daily window's headers on the
     429 itself, so a rejection by the daily limit updates this estimate and

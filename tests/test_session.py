@@ -2110,7 +2110,7 @@ def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
         out = session._retrieve_all_results(data)
         # Assert
         assert out["results"] == [1, 2]
-        assert sleep.call_args_list == [((7,),)] * attempts
+        assert sleep.call_args_list == [((5,),)] * attempts
 
 
 def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
