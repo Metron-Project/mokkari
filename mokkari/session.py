@@ -436,6 +436,10 @@ class Session:
         Calling this is optional; idle connections are also released when the ``Session``
         is garbage collected. It is safe to call more than once, and the session can still
         be used afterwards, at the cost of opening new connections.
+
+        Only the HTTP connections are closed. A ``cache`` or ``rate_limiter`` passed to the
+        constructor is left untouched, since the caller owns it and may share it with other
+        sessions; ``SqliteCache`` in particular keeps its database connection open.
         """
         self._http.close()
 
