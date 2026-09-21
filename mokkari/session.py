@@ -85,6 +85,10 @@ MAX_UNTIMED_RATE_LIMIT_RETRIES: Final[int] = 3
 # (the ``RateLimiter`` protocol allows it) from turning the retry into a tight loop. It's
 # generous because each retry is normally a real, timed wait.
 MAX_RATE_LIMIT_RETRIES: Final[int] = 20
+# Connections kept open per host. ``requests`` defaults to 10, but a ``Session`` may be shared
+# across many threads; past the pool size urllib3 discards the extra connections (and logs
+# a warning each time) instead of reusing them, so every request beyond it pays a new handshake.
+HTTP_POOL_MAXSIZE: Final[int] = 32
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
@@ -416,6 +420,13 @@ class Session:
         server can't turn later requests into session-authenticated ones.
         """
         http_session = requests.Session()
+        # Only one host is ever contacted, so a single pool is enough; its size is what
+        # bounds how many concurrent threads can reuse a connection.
+        for prefix in ("https://", "http://"):
+            http_session.mount(
+                prefix,
+                requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=HTTP_POOL_MAXSIZE),
+            )
         http_session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
         return http_session
 

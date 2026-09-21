@@ -178,6 +178,15 @@ def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> 
     module_level_request.assert_not_called()
 
 
+@pytest.mark.parametrize("url", ["https://test.com/api/", "http://127.0.0.1:8000/api/"])
+def test_http_session_pool_fits_concurrent_threads(session: Session, url: str) -> None:
+    """Test that the pool holds enough connections that threads sharing a Session reuse them."""
+    pool_kw = session._http.get_adapter(url).poolmanager.connection_pool_kw
+
+    assert pool_kw["maxsize"] == session_module.HTTP_POOL_MAXSIZE
+    assert session_module.HTTP_POOL_MAXSIZE > requests.adapters.DEFAULT_POOLSIZE
+
+
 def test_http_session_drops_cookies(session: Session) -> None:
     """Test that Set-Cookie headers are never stored or replayed on later requests."""
     with requests_mock.Mocker(session=session._http) as m:
