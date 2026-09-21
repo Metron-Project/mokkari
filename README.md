@@ -196,10 +196,12 @@ with mokkari.api(api_token="your-token") as m:
 ```
 
 Closing is optional, and a closed session can still be used; it just opens new
-connections. Idle connections are dropped by the server after a while, so a
-request can very rarely fail with a connection error (`ApiError`) if the server
-closes one just as it is reused. Don't share a `Session` across forked
-processes; create one per process.
+connections. If the server drops an idle connection, the underlying HTTP
+library notices and discards it when the next request checks it out, so a
+request opens a fresh connection instead. The only failure is a race: if the
+server closes a connection in the instant it is reused, that request raises
+an `ApiError`. This is rare, and mokkari doesn't retry it automatically. Don't
+share a `Session` across forked processes; create one per process.
 
 ## Documentation
 
