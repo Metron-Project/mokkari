@@ -10,6 +10,7 @@ This module provides the following classes:
 
 __all__ = ["RateLimitStatus", "RateLimitWindow", "Session"]
 
+import http.cookiejar
 import json
 import logging
 import platform
@@ -84,6 +85,10 @@ MAX_UNTIMED_RATE_LIMIT_RETRIES: Final[int] = 3
 # (the ``RateLimiter`` protocol allows it) from turning the retry into a tight loop. It's
 # generous because each retry is normally a real, timed wait.
 MAX_RATE_LIMIT_RETRIES: Final[int] = 20
+# Connections kept open per host. ``requests`` defaults to 10, but a ``Session`` may be shared
+# across many threads; past the pool size urllib3 discards the extra connections (and logs
+# a warning each time) instead of reusing them, so every request beyond it pays a new handshake.
+HTTP_POOL_MAXSIZE: Final[int] = 32
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
@@ -399,10 +404,54 @@ class Session:
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
         self.rate_limiter = rate_limiter
+        self._http = self._build_http_session()
         self._rate_limit_lock = threading.Lock()
         self._rate_limit_status = RateLimitStatus()
         self._cache_status_lock = threading.Lock()
         self._last_cache_status: str | None = None
+
+    @staticmethod
+    def _build_http_session() -> requests.Session:
+        """Build the ``requests.Session`` that pools connections across API calls.
+
+        Reusing one session keeps TCP/TLS connections to Metron alive between requests
+        instead of paying a fresh handshake each time. Credentials are still sent per
+        request, and cookies are refused outright so a stray ``Set-Cookie`` from the
+        server can't turn later requests into session-authenticated ones.
+        """
+        http_session = requests.Session()
+        # Only one host is ever contacted, so a single pool is enough; its size is what
+        # bounds how many concurrent threads can reuse a connection.
+        for prefix in ("https://", "http://"):
+            http_session.mount(
+                prefix,
+                requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=HTTP_POOL_MAXSIZE),
+            )
+        http_session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
+        return http_session
+
+    def close(self) -> None:
+        """Close the pooled HTTP connections held by this session.
+
+        Calling this is optional. ``requests.Session`` has no finalizer of its own, so
+        without it the sockets are only released when they are finalized (promptly under
+        CPython's reference counting, but not guaranteed elsewhere), and Python may emit a
+        ``ResourceWarning`` for each one. It is safe to call more than once, and the session
+        can still be used afterwards, at the cost of opening new connections.
+
+        Only the HTTP connections are closed. A ``cache`` or ``rate_limiter`` passed to the
+        constructor is left untouched, since the caller owns it and may share it with other
+        sessions; ``SqliteCache`` in particular keeps its database connection open.
+        """
+        self._http.close()
+
+    def __enter__(self) -> "Session":  # noqa: PYI034 - py310 has no typing.Self
+        """Enter the context manager, returning this session."""
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        """Exit the context manager, closing pooled connections."""
+        self.close()
 
     @property
     def rate_limit_status(self) -> RateLimitStatus:
@@ -2163,7 +2212,7 @@ class Session:
         # received and folded into the session's rate-limit state.
         status: RateLimitStatus | None = None
         try:
-            response = requests.request(
+            response = self._http.request(
                 method,
                 url,
                 params=params,

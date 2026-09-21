@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+import requests_mock
 from pydantic import HttpUrl, ValidationError
 from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
 
@@ -140,7 +141,7 @@ def test_session_init_token_takes_precedence_over_basic_auth() -> None:
 def test_execute_http_request_uses_basic_auth(session: Session, monkeypatch) -> None:
     """Test that _execute_http_request sends a Basic Auth tuple for username/passwd sessions."""
     mock_request = MagicMock(return_value=MagicMock(headers={}))
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
 
@@ -151,7 +152,7 @@ def test_execute_http_request_uses_bearer_header(monkeypatch) -> None:
     """Test that _execute_http_request sends no auth tuple for token sessions."""
     token_session = Session(api_token="abc123")
     mock_request = MagicMock(return_value=MagicMock(headers={}))
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(token_session._http, "request", mock_request)
 
     token_session._execute_http_request(
         "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
@@ -159,6 +160,96 @@ def test_execute_http_request_uses_bearer_header(monkeypatch) -> None:
 
     assert mock_request.call_args.kwargs["auth"] is None
     assert mock_request.call_args.kwargs["headers"]["Authorization"] == "Bearer abc123"
+
+
+def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> None:
+    """Test that successive requests all go through the one pooled requests.Session."""
+    http_session = session._http
+    mock_request = MagicMock(return_value=MagicMock(headers={}))
+    monkeypatch.setattr(http_session, "request", mock_request)
+    module_level_request = MagicMock()
+    monkeypatch.setattr(requests, "request", module_level_request)
+
+    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/2", {}, {}, None, None)
+
+    assert session._http is http_session
+    assert mock_request.call_count == 2
+    module_level_request.assert_not_called()
+
+
+@pytest.mark.parametrize("url", ["https://test.com/api/", "http://127.0.0.1:8000/api/"])
+def test_http_session_pool_fits_concurrent_threads(session: Session, url: str) -> None:
+    """Test that the pool holds enough connections that threads sharing a Session reuse them."""
+    pool_kw = session._http.get_adapter(url).poolmanager.connection_pool_kw
+
+    assert pool_kw["maxsize"] == session_module.HTTP_POOL_MAXSIZE
+    assert session_module.HTTP_POOL_MAXSIZE > requests.adapters.DEFAULT_POOLSIZE
+
+
+def test_http_session_drops_cookies(session: Session) -> None:
+    """Test that Set-Cookie headers are never stored or replayed on later requests."""
+    with requests_mock.Mocker(session=session._http) as m:
+        m.get(
+            "https://test.com/api/issue/1/",
+            headers={"Set-Cookie": "sessionid=abc; Path=/"},
+            json={"id": 1},
+        )
+        m.get("https://test.com/api/issue/2/", json={"id": 2})
+
+        session._request_data("GET", "https://test.com/api/issue/1/")
+        session._request_data("GET", "https://test.com/api/issue/2/")
+
+        assert list(session._http.cookies) == []
+        assert "Cookie" not in m.last_request.headers
+
+
+def test_session_close_closes_http_session(session: Session, monkeypatch) -> None:
+    """Test that close() releases the pooled connections."""
+    mock_close = MagicMock()
+    monkeypatch.setattr(session._http, "close", mock_close)
+
+    session.close()
+
+    mock_close.assert_called_once_with()
+
+
+def test_session_context_manager_closes_on_exit(monkeypatch) -> None:
+    """Test that the context manager returns the session and closes it on exit."""
+    with Session(api_token="abc123") as s:
+        mock_close = MagicMock()
+        monkeypatch.setattr(s._http, "close", mock_close)
+        assert isinstance(s, Session)
+        mock_close.assert_not_called()
+
+    mock_close.assert_called_once_with()
+
+
+def test_session_context_manager_closes_on_error(monkeypatch) -> None:
+    """Test that the context manager closes the session even when the body raises."""
+    s = Session(api_token="abc123")
+    mock_close = MagicMock()
+    monkeypatch.setattr(s._http, "close", mock_close)
+
+    def use_session() -> None:
+        with s:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+    with pytest.raises(RuntimeError):
+        use_session()
+
+    mock_close.assert_called_once_with()
+
+
+def test_session_usable_after_close(session: Session) -> None:
+    """Test that close() is idempotent and a closed session reopens connections on demand."""
+    session.close()
+    session.close()
+
+    with requests_mock.Mocker(session=session._http) as m:
+        m.get("https://test.com/api/issue/1/", json={"id": 1})
+        assert session._request_data("GET", "https://test.com/api/issue/1/") == {"id": 1}
 
 
 @pytest.mark.parametrize(
@@ -2235,7 +2326,7 @@ def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, mo
         response(429, {"Retry-After": "0.01"}, b"{}"),
         response(200, {}, b'{"results": [2], "next": null}'),
     ]
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *_a, **_k: responses.pop(0))
+    monkeypatch.setattr(session._http, "request", lambda *_a, **_k: responses.pop(0))
     data = {"results": [1], "next": "https://test.com/api/issue/?page=2"}
 
     with (
@@ -2258,7 +2349,7 @@ def test__send_void_raises_server_rate_limit_error_on_429(session: Session, monk
     resp.status_code = 429
     resp.headers["Retry-After"] = "7"
     resp._content = b"{}"
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *_a, **_k: resp)
+    monkeypatch.setattr(session._http, "request", lambda *_a, **_k: resp)
     # Act / Assert: tagged like the 429s raised for GET/POST/PATCH, so callers can tell
     # a rejection by Metron from one raised locally before sending
     with pytest.raises(session_module._ServerRateLimitError) as exc_info:
@@ -2280,7 +2371,7 @@ def test__request_data_get(monkeypatch, session):
         def json(self):
             return self._json
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
     # Act
     out = session._request_data("GET", "url")
     # Assert
@@ -2301,7 +2392,7 @@ def test__request_data_post_list(monkeypatch, session):
         def json(self):
             return self._json
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
     # Act
     data = [MagicMock(model_dump=lambda: {"a": 1})]
     out = session._request_data("POST", "url", data=data)
@@ -2323,7 +2414,7 @@ def test__request_data_post_with_image(monkeypatch, session, tmp_path):
         def json(self):
             return self._json
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
     img_file = tmp_path / "img.png"
     img_file.write_bytes(b"abc")
     data = MagicMock(model_dump=lambda: {"image": str(img_file)})
@@ -2338,7 +2429,7 @@ def test__request_data_connection_error(monkeypatch, session):
     def raise_conn(*a, **k):
         raise ConnError
 
-    monkeypatch.setattr("mokkari.session.requests.request", raise_conn)
+    monkeypatch.setattr(session._http, "request", raise_conn)
     # Act & Assert
     with pytest.raises(exceptions.ApiError):
         session._request_data("GET", "url")
@@ -2361,17 +2452,17 @@ def test__request_data_detail(monkeypatch, session):
             return self._json
 
     # Test successful request (200)
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp(200))
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(200))
     out = session._request_data("GET", "url")
     assert out == {"foo": "bar"}
 
     # Test another successful status code (201)
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp(201))
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(201))
     out = session._request_data("GET", "url")
     assert out == {"foo": "bar"}
 
     # # Test client error (400) - should raise ApiError
-    # monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp(400))
+    # monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(400))
     # with pytest.raises(exceptions.ApiError):
     #     session._request_data("GET", "url")
 
@@ -2611,7 +2702,7 @@ def test_check_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
         mock_request_called["called"] = True
         return MagicMock()
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     with pytest.raises(exceptions.RateLimitError):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2634,7 +2725,7 @@ def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> 
         def json(self):
             return {"id": 1, "name": "Test"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     # Act
     result = session._request_data("GET", "https://test.com/api/issue/1")
@@ -2666,7 +2757,7 @@ def test_request_data_updates_rate_limit_status_from_response(
         def json(self):
             return {"id": 1, "name": "Test"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2689,7 +2780,7 @@ def test_request_data_updates_cache_status_from_response(session: Session, monke
         def json(self):
             return {"id": 1, "name": "Test"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2730,7 +2821,7 @@ def test_execute_http_request_dispatches_to_rate_limiter_when_set(
         def json(self):
             return {"id": 1}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2755,7 +2846,7 @@ def test_execute_http_request_falls_back_to_check_rate_limit_when_no_limiter(
         mock_request_called["called"] = True
         return MagicMock()
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     with pytest.raises(exceptions.RateLimitError):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2782,7 +2873,7 @@ def test_rate_limiter_release_called_with_none_on_connection_error(
         msg = "boom"
         raise ConnError(msg)
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     with pytest.raises(exceptions.ApiError):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2809,7 +2900,7 @@ def test_rate_limiter_release_called_on_unhandled_request_exception(
         msg = "too many redirects"
         raise TooManyRedirects(msg)
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     with pytest.raises(TooManyRedirects):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2837,7 +2928,7 @@ def test_rate_limiter_release_called_when_status_update_raises(
             self.status_code = 200
             self.headers = {"X-RateLimit-Burst-Remaining": "not-an-int"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     with pytest.raises(ValueError, match="invalid literal"):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2860,7 +2951,7 @@ def test_rate_limiter_not_released_when_acquire_fails(session: Session, monkeypa
 
     session.rate_limiter = FakeLimiter()
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: MagicMock())
 
     with pytest.raises(RuntimeError, match="no capacity"):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2879,7 +2970,7 @@ def test_rate_limiter_missing_acquire_raises_rate_limiter_error(
 
     session.rate_limiter = NoAcquire()
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: MagicMock())
 
     with pytest.raises(exceptions.RateLimiterError):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2907,7 +2998,7 @@ def test_rate_limiter_missing_release_raises_rate_limiter_error(
         def json(self):
             return {"id": 1}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     with pytest.raises(exceptions.RateLimiterError):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2938,7 +3029,7 @@ def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
         time.sleep(0.02)  # widen the window so concurrent callers actually overlap
         return DummyResp()
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(paced_session._http, "request", mock_request)
 
     # Prime the limiter's burst limit before the concurrent batch starts: with
     # nothing observed yet it would let every caller straight through, since
@@ -2975,7 +3066,7 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
         sustained=session_module.RateLimitWindow(limit=5000, remaining=0, reset=reset)
     )
     sent = []
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: sent.append(1))
+    monkeypatch.setattr(paced_session._http, "request", lambda *a, **k: sent.append(1))
 
     with pytest.raises(exceptions.RateLimitError) as exc_info:
         paced_session._request_data("GET", "https://test.com/api/issue/1")
@@ -3008,7 +3099,7 @@ def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatc
         sent.append(1)
         return DummyResp()
 
-    monkeypatch.setattr("mokkari.session.requests.request", fake_request)
+    monkeypatch.setattr(paced_session._http, "request", fake_request)
 
     paced_session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
     with pytest.raises(exceptions.RateLimitError) as exc_info:
@@ -3042,7 +3133,7 @@ def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypat
             self.status_code = 429
             self.headers = {"Retry-After": "12"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
 
@@ -3070,7 +3161,7 @@ def test_rate_limiter_notified_of_429_without_retry_after(session: Session, monk
             self.status_code = 429
             self.headers = {}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
 
@@ -3098,7 +3189,7 @@ def test_rate_limiter_not_notified_of_successful_response(session: Session, monk
             self.status_code = 200
             self.headers = {}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
 
@@ -3125,7 +3216,7 @@ def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
             self.status_code = 429
             self.headers = {"Retry-After": "1"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     with pytest.raises(exceptions.RateLimiterError):
         session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
@@ -3150,7 +3241,7 @@ def test_request_data_resets_cache_status_for_uncached_endpoint(
         def json(self):
             return {"id": 1, "name": "Test"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     session._request_data("GET", "https://test.com/api/pull_list")
 
@@ -3174,7 +3265,7 @@ def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) ->
         def raise_for_status(self):
             pass
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     # Act
     result = session.arc(
@@ -3200,7 +3291,7 @@ def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch
         def json(self):
             return {"id": 1, "name": "Updated Arc"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     with patch(
         "mokkari.session.TypeAdapter.validate_python",
@@ -3239,7 +3330,7 @@ def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
         captured_kwargs.update(kwargs)
         return DummyResp()
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     # Act
     session.arc(
@@ -3268,7 +3359,7 @@ def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monke
         captured_kwargs.update(kwargs)
         return DummyResp()
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     # Act — pass a naive datetime
     session.arc(1, if_modified_since=datetime.datetime(2025, 6, 15, 8, 30, 0))  # noqa: DTZ001
@@ -3294,7 +3385,7 @@ def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypa
         captured_kwargs.update(kwargs)
         return DummyResp()
 
-    monkeypatch.setattr("mokkari.session.requests.request", mock_request)
+    monkeypatch.setattr(session._http, "request", mock_request)
 
     # Create a US/Central-like timezone (UTC-6)
     cst = datetime.timezone(datetime.timedelta(hours=-6))
@@ -3327,7 +3418,7 @@ def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeyp
         def json(self):
             return {"id": 1, "name": "Fresh"}
 
-    monkeypatch.setattr("mokkari.session.requests.request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     with patch(
         "mokkari.session.TypeAdapter.validate_python",

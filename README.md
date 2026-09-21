@@ -183,6 +183,26 @@ credentials. Passing your own object works too, as long as it implements the
 Leaving `rate_limiter` unset (the default) keeps the raise-immediately behavior
 described above.
 
+## Connection Reuse
+
+A `Session` keeps its connections to Metron open between requests, so repeated
+calls don't pay a new TCP/TLS handshake each time. Cookies are never stored or
+sent back. To release the connections deterministically, use the session as a
+context manager or call `close()`:
+
+```python
+with mokkari.api(api_token="your-token") as m:
+    issue = m.issue(1)
+```
+
+Closing is optional, and a closed session can still be used; it just opens new
+connections. If the server drops an idle connection, the underlying HTTP
+library notices and discards it when the next request checks it out, so a
+request opens a fresh connection instead. The only failure is a race: if the
+server closes a connection in the instant it is reused, that request raises
+an `ApiError`. This is rare, and mokkari doesn't retry it automatically. Don't
+share a `Session` across forked processes; create one per process.
+
 ## Documentation
 
 [Read the project documentation](https://mokkari.readthedocs.io/en/stable/?badge=latest)
