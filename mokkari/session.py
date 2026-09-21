@@ -433,9 +433,11 @@ class Session:
     def close(self) -> None:
         """Close the pooled HTTP connections held by this session.
 
-        Calling this is optional; idle connections are also released when the ``Session``
-        is garbage collected. It is safe to call more than once, and the session can still
-        be used afterwards, at the cost of opening new connections.
+        Calling this is optional. ``requests.Session`` has no finalizer of its own, so
+        without it the sockets are only released when they are finalized (promptly under
+        CPython's reference counting, but not guaranteed elsewhere), and Python may emit a
+        ``ResourceWarning`` for each one. It is safe to call more than once, and the session
+        can still be used afterwards, at the cost of opening new connections.
 
         Only the HTTP connections are closed. A ``cache`` or ``rate_limiter`` passed to the
         constructor is left untouched, since the caller owns it and may share it with other
