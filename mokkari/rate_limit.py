@@ -68,8 +68,10 @@ class RateLimiter(Protocol):
     fail-fast rate-limit check with one that blocks until a request may be
     sent. Session dispatches to it from the single point where every HTTP
     request is sent, so it applies uniformly regardless of which public
-    method triggered the call, and it is not shared between ``Session``
-    instances: construct a separate rate limiter per ``Session``.
+    method triggered the call. Construct a separate rate limiter object per
+    ``Session``; an implementation that keeps its state in shared storage,
+    such as ``mokkari.redis_rate_limit.RedisRateLimiter``, should key that
+    state by Metron account so every process using the account shares it.
     """
 
     def acquire(self, status: RateLimitStatus) -> None:
@@ -116,6 +118,24 @@ class RateLimiter(Protocol):
         ``release`` failures reaching the caller.
         """
         ...
+
+
+def daily_limit_error(limit: int | None, retry_after: float) -> exceptions.RateLimitError:
+    """Build the ``RateLimitError`` a limiter raises when the daily window is exhausted.
+
+    Args:
+        limit: The daily request limit last reported by Metron, if known.
+        retry_after: Seconds until the daily window resets.
+    """
+    # Imported here because mokkari.session imports this module.
+    from mokkari.session import format_time  # noqa: PLC0415
+
+    limit_str = f"{limit:,}" if limit is not None else "your"
+    msg = (
+        f"Rate limit exceeded: You have reached the {limit_str} requests per day limit. "
+        f"Please wait {format_time(retry_after)} before making another request."
+    )
+    return exceptions.RateLimitError(msg, retry_after=retry_after)
 
 
 @dataclass
@@ -301,18 +321,8 @@ class HeaderPacedRateLimiter:
     def _raise_if_daily_limit_reached(self) -> None:
         """Raise ``RateLimitError`` rather than block until an exhausted daily window resets."""
         retry_after = self._sustained.wait_seconds(self._in_flight, datetime.now(timezone.utc))
-        if retry_after <= 0:
-            return
-        # Imported here because mokkari.session imports this module.
-        from mokkari.session import format_time  # noqa: PLC0415
-
-        limit = self._sustained_limit
-        limit_str = f"{limit:,}" if limit is not None else "your"
-        msg = (
-            f"Rate limit exceeded: You have reached the {limit_str} requests per day limit. "
-            f"Please wait {format_time(retry_after)} before making another request."
-        )
-        raise exceptions.RateLimitError(msg, retry_after=retry_after)
+        if retry_after > 0:
+            raise daily_limit_error(self._sustained_limit, retry_after)
 
     def _spacing_wait(self, now: float) -> float:
         """Seconds until the next evenly spaced send is due, or 0 if it already is."""
