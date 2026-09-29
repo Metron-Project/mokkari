@@ -43,6 +43,7 @@ nav:
       - Session: mokkari/session.md
       - Sqlite_Cache: mokkari/sqlitecache.md
       - Rate Limiter: mokkari/rate_limit.md
+      - Redis Rate Limiter: mokkari/redis_rate_limit.md
       - Exceptions: mokkari/exceptions.md
   - Schemas:
       - Arc: mokkari/schemas/arc.md

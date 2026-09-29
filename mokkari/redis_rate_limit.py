@@ -189,6 +189,7 @@ class RedisRateLimiter:
             account: Identifies the Metron account whose limits are being
                 shared, such as its username. Limiters that share an
                 ``account`` share state, so use a distinct value per account.
+                It appears in key names, so don't use the API token itself.
             burst_period: Length in seconds of Metron's burst window.
             key_prefix: Prefix for every key this limiter creates.
         """

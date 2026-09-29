@@ -15,17 +15,18 @@ pip install mokkari
 
 ## Authentication
 
-Mokkari supports two authentication methods:
+Authenticate with an API token, which you can generate from your metron.cloud
+account page:
 
 ```python
 import mokkari
 
-# Token authentication (generate a token from your metron.cloud account page)
 m = mokkari.api(api_token="your-api-token")
-
-# Username/password (Basic Auth)
-m = mokkari.api(username, password)
 ```
+
+Username/password (Basic Auth) is still accepted with
+`mokkari.api(username, password)`, but it will be deprecated in the near future,
+so new code should use a token.
 
 ## Example Usage
 
@@ -33,9 +34,9 @@ m = mokkari.api(username, password)
 import mokkari
 
 # Your own config file to keep your credentials secret
-from config import username, password
+from config import api_token
 
-m = mokkari.api(username, password)
+m = mokkari.api(api_token=api_token)
 
 # Get all Marvel comics for the week of 2021-06-07
 this_week = m.issues_list(
@@ -85,7 +86,7 @@ import mokkari
 from mokkari.exceptions import RateLimitError
 import time
 
-m = mokkari.api(username, password)
+m = mokkari.api(api_token=api_token)
 
 try:
     issue = m.issue(31660)
@@ -118,7 +119,7 @@ concurrency instead of relying on `Session` to do it for you, e.g. keep a
 ```python
 from concurrent.futures import ThreadPoolExecutor
 
-m = mokkari.api(username, password)
+m = mokkari.api(api_token=api_token)
 
 # Keep worker count at or below the burst limit (20/min at minimum) to avoid
 # racing past the local rate-limit check.
@@ -144,7 +145,7 @@ from concurrent.futures import ThreadPoolExecutor
 import mokkari
 from mokkari.rate_limit import HeaderPacedRateLimiter
 
-m = mokkari.api(username, password, rate_limiter=HeaderPacedRateLimiter())
+m = mokkari.api(api_token=api_token, rate_limiter=HeaderPacedRateLimiter())
 
 with ThreadPoolExecutor(max_workers=20) as executor:
     issues = list(executor.map(m.issue, issue_ids))
@@ -175,13 +176,47 @@ they retry it through the limiter, which blocks until it's safe to send, and an
 exhausted daily limit raises `RateLimitError` from the list call rather than
 being waited out.
 
-A rate limiter is scoped to the `Session` it's passed to — construct one per
-`Session` rather than sharing an instance across sessions using different
+A rate limiter object is scoped to the `Session` it's passed to — construct one
+per `Session` rather than sharing an instance across sessions using different
 credentials. Passing your own object works too, as long as it implements the
 `acquire`/`on_rate_limited`/`release` methods described in
 [`mokkari.rate_limit.RateLimiter`](https://mokkari.readthedocs.io/en/stable/mokkari/rate_limit/).
 Leaving `rate_limiter` unset (the default) keeps the raise-immediately behavior
 described above.
+
+### Pacing across processes with Redis
+
+`HeaderPacedRateLimiter` only sees the requests its own process sends, so
+several workers using one account can overrun the per-minute window together
+until Metron answers with 429s. `mokkari.redis_rate_limit.RedisRateLimiter`
+paces the same way but keeps its state in Redis, so every process and host using
+the same `account` shares one per-minute window, one daily estimate and one 429
+backoff. Install the `redis` extra and pass it a client:
+
+```bash
+pip install mokkari[redis]
+```
+
+```python
+import redis
+
+import mokkari
+from mokkari.redis_rate_limit import RedisRateLimiter
+
+client = redis.Redis(host="localhost", port=6379)
+# Any stable name for your Metron account, such as its username. Don't use the
+# token itself: it becomes part of key names anyone with Redis access can read.
+m = mokkari.api(
+    api_token=api_token,
+    rate_limiter=RedisRateLimiter(client, account="your-username"),
+)
+```
+
+It raises `RateLimitError` on an exhausted daily limit just like
+`HeaderPacedRateLimiter`. Times come from the Redis server's clock, and every
+key expires on its own, so a worker that crashes mid-request can't leave the
+account blocked. If Redis is unreachable, `acquire` raises the client's
+connection error and the request isn't sent.
 
 ## Connection Reuse
 
