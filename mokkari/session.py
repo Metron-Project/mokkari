@@ -17,6 +17,7 @@ import platform
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import datetime, timezone
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
@@ -2346,8 +2347,19 @@ class Session:
         if self.rate_limiter is None:
             self._check_rate_limit()
             return
+        self._rate_limiter_method("acquire")(self.rate_limit_status)
+
+    def _rate_limiter_method(self, name: str) -> Callable[..., None]:
+        """Look up a required method on the injected rate limiter.
+
+        Only the lookup is guarded, so an ``AttributeError`` raised from inside the
+        limiter's own code isn't misreported as a missing method.
+
+        Raises:
+            RateLimiterError: If the rate limiter has no attribute ``name``.
+        """
         try:
-            self.rate_limiter.acquire(self.rate_limit_status)
+            return getattr(self.rate_limiter, name)
         except AttributeError as e:
             msg = f"Rate limiter object passed in is missing attribute: {e!r}"
             raise exceptions.RateLimiterError(msg) from e
@@ -2368,11 +2380,13 @@ class Session:
         """
         if self.rate_limiter is None:
             return
+        on_rate_limited = self._rate_limiter_method("on_rate_limited")
+        # The 429 is still reported to the caller as a RateLimitError, so a limiter that
+        # fails to record it (e.g. its backing store is unreachable) is logged, not raised.
         try:
-            self.rate_limiter.on_rate_limited(retry_after)
-        except AttributeError as e:
-            msg = f"Rate limiter object passed in is missing attribute: {e!r}"
-            raise exceptions.RateLimiterError(msg) from e
+            on_rate_limited(retry_after)
+        except Exception:
+            LOGGER.exception("Rate limiter on_rate_limited() failed; ignoring")
 
     def _release_rate_limit_slot(self, status: RateLimitStatus | None) -> None:
         """Release the slot reserved by ``_acquire_rate_limit_slot``, if a limiter is set.
@@ -2386,11 +2400,13 @@ class Session:
         """
         if self.rate_limiter is None:
             return
+        release = self._rate_limiter_method("release")
+        # This runs in a ``finally``, so raising here would discard a successful response
+        # or mask the request's own error; log a failing limiter instead.
         try:
-            self.rate_limiter.release(status)
-        except AttributeError as e:
-            msg = f"Rate limiter object passed in is missing attribute: {e!r}"
-            raise exceptions.RateLimiterError(msg) from e
+            release(status)
+        except Exception:
+            LOGGER.exception("Rate limiter release() failed; ignoring")
 
     def _check_rate_limit(self) -> None:
         """Check rate limits before making a request.

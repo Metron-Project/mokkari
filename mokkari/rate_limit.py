@@ -94,7 +94,9 @@ class RateLimiter(Protocol):
         doesn't depend on the local clock matching the server's; it is ``0``
         when the response carried no ``Retry-After`` header. This is the hook
         for backing off after a rejection, since ``RateLimitStatus`` only
-        describes window state and not why a request was refused.
+        describes window state and not why a request was refused. An exception
+        raised here is logged and ignored, since the caller still gets a
+        ``RateLimitError`` for the 429 itself.
         """
         ...
 
@@ -107,7 +109,11 @@ class RateLimiter(Protocol):
         ``RateLimitStatus`` reflecting that response's headers, or ``None``
         if the request failed before any headers were received (a connection
         error or timeout). This is the hook for decrementing an in-flight
-        request count and reconciling a local remaining-capacity estimate.
+        request count and reconciling a local remaining-capacity estimate. An
+        exception raised here is logged and ignored rather than allowed to
+        discard the response or mask the request's own error, so an
+        implementation backed by an external store should not rely on
+        ``release`` failures reaching the caller.
         """
         ...
 

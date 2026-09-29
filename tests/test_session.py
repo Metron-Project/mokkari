@@ -6,6 +6,7 @@ This module contains tests for Session objects.
 
 import datetime
 import json
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
@@ -3222,6 +3223,84 @@ def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
         session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
 
     assert calls == ["release"]
+
+
+def test_rate_limiter_internal_attribute_error_is_not_misreported(
+    session: Session, monkeypatch
+) -> None:
+    """An AttributeError raised inside acquire() propagates as-is, not as RateLimiterError."""
+
+    class Buggy:
+        def acquire(self, _status):
+            return None.missing
+
+        def release(self, _status):
+            pass
+
+    session.rate_limiter = Buggy()
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: MagicMock())
+
+    with pytest.raises(AttributeError) as exc_info:
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert not isinstance(exc_info.value, exceptions.RateLimiterError)
+
+
+def test_rate_limiter_release_failure_does_not_discard_response(
+    session: Session, monkeypatch, caplog
+) -> None:
+    """An exception from release() is logged and the successful response still returned."""
+
+    class FailingRelease:
+        def acquire(self, _status):
+            pass
+
+        def release(self, _status):
+            msg = "backing store unreachable"
+            raise ConnectionError(msg)
+
+    session.rate_limiter = FailingRelease()
+    response = MagicMock(status_code=200, headers={})
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: response)
+
+    with caplog.at_level(logging.ERROR, logger="mokkari.session"):
+        result = session._execute_http_request(
+            "GET", "https://test.com/api/issue/1", {}, {}, None, None
+        )
+
+    assert result is response
+    assert "release() failed" in caplog.text
+
+
+def test_rate_limiter_on_rate_limited_failure_still_releases(
+    session: Session, monkeypatch, caplog
+) -> None:
+    """An exception from on_rate_limited() is logged, and the slot is still released."""
+    calls = []
+
+    class FailingHook:
+        def acquire(self, _status):
+            pass
+
+        def on_rate_limited(self, _retry_after):
+            msg = "backing store unreachable"
+            raise ConnectionError(msg)
+
+        def release(self, _status):
+            calls.append("release")
+
+    session.rate_limiter = FailingHook()
+    response = MagicMock(status_code=429, headers={"Retry-After": "1"})
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: response)
+
+    with caplog.at_level(logging.ERROR, logger="mokkari.session"):
+        result = session._execute_http_request(
+            "GET", "https://test.com/api/issue/1", {}, {}, None, None
+        )
+
+    assert result is response
+    assert calls == ["release"]
+    assert "on_rate_limited() failed" in caplog.text
 
 
 def test_request_data_resets_cache_status_for_uncached_endpoint(
