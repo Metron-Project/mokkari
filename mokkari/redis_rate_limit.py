@@ -19,6 +19,8 @@ from uuid import uuid4
 from mokkari.rate_limit import DEFAULT_BURST_PERIOD, RateLimitStatus, daily_limit_error
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from redis import Redis
 
 __all__ = ["RedisRateLimiter"]
@@ -79,14 +81,27 @@ return {0, 0}
 """
 )
 
-# KEYS: daily estimate (hash), burst limit
+# KEYS: daily estimate (hash), burst limit, blocked until
 # ARGV: burst limit, daily limit, daily remaining, daily reset in epoch ms ('' if unknown),
-#       TTL in ms for state that has no reset of its own
+#       TTL in ms for state that has no reset of its own, burst remaining,
+#       burst reset in epoch ms
 _OBSERVE: Final[str] = (
     _NOW
     + """
 if ARGV[1] ~= '' then
   redis.call('SET', KEYS[2], ARGV[1], 'PX', ARGV[5])
+end
+
+-- Metron counts its burst window from when requests arrive, so a send the local log
+-- says is due can still land a moment early. An exhausted window blocks until the
+-- reported reset instead, which only ever extends a backoff already held.
+local burst_remaining = tonumber(ARGV[6])
+local burst_reset = tonumber(ARGV[7])
+if burst_remaining and burst_remaining <= 0 and burst_reset and burst_reset > now then
+  local held = tonumber(redis.call('GET', KEYS[3]))
+  if not held or burst_reset > held then
+    redis.call('SET', KEYS[3], burst_reset, 'PX', burst_reset - now)
+  end
 end
 
 local reset = tonumber(ARGV[4])
@@ -137,6 +152,11 @@ def _arg(value: int | None) -> int | str:
     return "" if value is None else value
 
 
+def _epoch_ms(moment: datetime | None) -> int | None:
+    """Convert an optional reset time to epoch milliseconds."""
+    return None if moment is None else round(moment.timestamp() * 1000)
+
+
 class RedisRateLimiter:
     """A ``RateLimiter`` that keeps its pacing state in Redis.
 
@@ -149,7 +169,10 @@ class RedisRateLimiter:
 
     - The burst (per-minute) window is a shared log of send times, and sends
       are spaced evenly across it (``burst_period / limit`` apart). The limit is
-      re-read from every response's headers.
+      re-read from every response's headers. When a response reports the burst
+      window exhausted, every caller also waits for its reported reset, since
+      Metron times its window from when requests arrive rather than when they
+      were sent.
     - When Metron rejects a request with a 429, every caller sharing the account
       is blocked for the ``Retry-After`` it sent, or a full burst window if none.
     - The daily window is held from the server-reported ``remaining`` and
@@ -248,17 +271,23 @@ class RedisRateLimiter:
             self._observe(status)
 
     def _observe(self, status: RateLimitStatus) -> None:
-        sustained = status.sustained
-        if status.burst.limit is None and sustained.limit is None and sustained.remaining is None:
+        burst, sustained = status.burst, status.sustained
+        if (
+            burst.limit is None
+            and burst.remaining is None
+            and sustained.limit is None
+            and sustained.remaining is None
+        ):
             return
-        reset_ms = None if sustained.reset is None else round(sustained.reset.timestamp() * 1000)
         self._observe_script(
-            keys=[self._daily_key, self._burst_limit_key],
+            keys=[self._daily_key, self._burst_limit_key, self._blocked_key],
             args=[
-                _arg(status.burst.limit),
+                _arg(burst.limit),
                 _arg(sustained.limit),
                 _arg(sustained.remaining),
-                _arg(reset_ms),
+                _arg(_epoch_ms(sustained.reset)),
                 _STATE_TTL_MS,
+                _arg(burst.remaining),
+                _arg(_epoch_ms(burst.reset)),
             ],
         )

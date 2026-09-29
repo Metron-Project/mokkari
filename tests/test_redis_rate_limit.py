@@ -46,20 +46,28 @@ def _limiter(server: fakeredis.FakeServer, account: str = "user", **kwargs) -> R
     return RedisRateLimiter(fakeredis.FakeRedis(server=server), account, **kwargs)
 
 
-def _status(
+def _in(seconds: float | None) -> datetime.datetime | None:
+    if seconds is None:
+        return None
+    return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=seconds)
+
+
+def _status(  # noqa: PLR0913
+    *,
     burst_limit: int | None = None,
     daily_limit: int | None = None,
     daily_remaining: int | None = None,
     daily_reset_in: float | None = None,
+    burst_remaining: int | None = None,
+    burst_reset_in: float | None = None,
 ) -> RateLimitStatus:
-    reset = None
-    if daily_reset_in is not None:
-        reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-            seconds=daily_reset_in
-        )
     return RateLimitStatus(
-        burst=RateLimitWindow(limit=burst_limit),
-        sustained=RateLimitWindow(limit=daily_limit, remaining=daily_remaining, reset=reset),
+        burst=RateLimitWindow(
+            limit=burst_limit, remaining=burst_remaining, reset=_in(burst_reset_in)
+        ),
+        sustained=RateLimitWindow(
+            limit=daily_limit, remaining=daily_remaining, reset=_in(daily_reset_in)
+        ),
     )
 
 
@@ -165,6 +173,45 @@ def test_on_rate_limited_without_retry_after_waits_a_burst_period(server, waits)
     assert waits[0] == pytest.approx(7, abs=0.1)
 
 
+def test_exhausted_burst_window_blocks_every_process_until_reset(server, waits) -> None:
+    """A response reporting no burst requests left holds every process until its reset."""
+    first = _limiter(server)
+    second = _limiter(server)
+
+    first.release(_status(burst_remaining=0, burst_reset_in=5))
+    with pytest.raises(_BlockedError):
+        second.acquire(RateLimitStatus())
+
+    assert waits[0] == pytest.approx(5, abs=0.1)
+
+
+@pytest.mark.parametrize(
+    ("remaining", "reset_in"),
+    [(1, 5), (0, -5), (0, None)],
+    ids=["requests-left", "reset-passed", "no-reset"],
+)
+def test_burst_window_with_room_does_not_block(server, waits, remaining, reset_in) -> None:
+    """Only an exhausted window with a reset still ahead holds sends back."""
+    limiter = _limiter(server)
+
+    limiter.release(_status(burst_remaining=remaining, burst_reset_in=reset_in))
+    limiter.acquire(RateLimitStatus())
+
+    assert waits == []
+
+
+def test_exhausted_burst_window_only_extends_the_backoff(server, waits) -> None:
+    """An earlier burst reset doesn't cut a longer 429 backoff short."""
+    limiter = _limiter(server)
+
+    limiter.on_rate_limited(10)
+    limiter.release(_status(burst_remaining=0, burst_reset_in=2))
+    with pytest.raises(_BlockedError):
+        limiter.acquire(RateLimitStatus())
+
+    assert waits[0] == pytest.approx(10, abs=0.1)
+
+
 def test_exhausted_daily_window_raises_across_processes(server, waits) -> None:
     """An exhausted daily window raises for every limiter on the account, without waiting."""
     first = _limiter(server)
@@ -259,3 +306,24 @@ def test_session_reports_429_to_redis(
     session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
 
     assert client.pttl(limiter._blocked_key) == pytest.approx(30_000, abs=1000)
+
+
+def test_session_reports_exhausted_burst_window_to_redis(
+    server, dummy_username: str, dummy_password: str, monkeypatch
+) -> None:
+    """Session passes Metron's burst headers through, so a spent window blocks sends."""
+    client = fakeredis.FakeRedis(server=server)
+    limiter = RedisRateLimiter(client, "user")
+    session = Session(dummy_username, dummy_password, rate_limiter=limiter)
+    reset = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + 30
+    headers = {
+        "X-RateLimit-Burst-Limit": "60",
+        "X-RateLimit-Burst-Remaining": "0",
+        "X-RateLimit-Burst-Reset": str(reset),
+    }
+    response = MagicMock(status_code=200, headers=headers)
+    monkeypatch.setattr(session._http, "request", lambda *_a, **_k: response)
+
+    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+
+    assert client.pttl(limiter._blocked_key) == pytest.approx(30_000, abs=1500)
