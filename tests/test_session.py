@@ -20,7 +20,7 @@ from pydantic import HttpUrl, ValidationError
 from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
 
 import mokkari.session as session_module
-from mokkari import exceptions, rate_limit
+from mokkari import exceptions, rate_limit, utils
 from mokkari.rate_limit import HeaderPacedRateLimiter
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
@@ -2558,14 +2558,9 @@ def test__prepare_request_payload_image_model_no_image_file(session: Session) ->
 # X-RateLimit-* response headers instead of a fixed local quota.
 
 
-def test_format_time_minutes_and_seconds() -> None:
-    """format_time formats a sub-hour delay as minutes and seconds."""
-    assert session_module.format_time(90.5) == "1 minute, 30 seconds"
-
-
-def test_format_time_hours() -> None:
-    """format_time formats a multi-hour delay correctly."""
-    assert session_module.format_time(9_000) == "2 hours, 30 minutes"
+def test_format_time_reexported_from_session() -> None:
+    """format_time stays importable from mokkari.session for backwards compatibility."""
+    assert session_module.format_time is utils.format_time
 
 
 def test_rate_limit_status_defaults_to_unknown(session: Session) -> None:

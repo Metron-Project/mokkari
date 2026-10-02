@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Final, Protocol
 
 from mokkari import exceptions
+from mokkari.utils import format_time
 
 __all__ = ["HeaderPacedRateLimiter", "RateLimitStatus", "RateLimitWindow", "RateLimiter"]
 
@@ -127,9 +128,6 @@ def daily_limit_error(limit: int | None, retry_after: float) -> exceptions.RateL
         limit: The daily request limit last reported by Metron, if known.
         retry_after: Seconds until the daily window resets.
     """
-    # Imported here because mokkari.session imports this module.
-    from mokkari.session import format_time  # noqa: PLC0415
-
     limit_str = f"{limit:,}" if limit is not None else "your"
     msg = (
         f"Rate limit exceeded: You have reached the {limit_str} requests per day limit. "

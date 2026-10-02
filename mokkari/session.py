@@ -5,10 +5,14 @@ This module provides the following classes:
 - Session: Main API client for interacting with the Metron Comics Database
 
 ``RateLimitStatus`` and ``RateLimitWindow`` are defined in
-:mod:`mokkari.rate_limit` and re-exported here for backwards compatibility.
+:mod:`mokkari.rate_limit`, and ``format_time`` in :mod:`mokkari.utils`; they are
+re-exported here for backwards compatibility.
 """
 
-__all__ = ["RateLimitStatus", "RateLimitWindow", "Session"]
+# TODO: Drop the backwards-compatibility re-exports (``RateLimitStatus``, ``RateLimitWindow``
+# and ``format_time``) from ``__all__`` and the docstring above with the next breaking release.
+# This module still uses them itself, so their imports stay.
+__all__ = ["RateLimitStatus", "RateLimitWindow", "Session", "format_time"]
 
 import http.cookiejar
 import json
@@ -70,13 +74,12 @@ from mokkari.schemas.wish_list import (
     WishListItemList,
     WishListItemRead,
 )
+from mokkari.utils import format_time
 
 LOGGER = logging.getLogger(__name__)
 
 # Constants
 REQUEST_TIMEOUT: Final[int] = 20
-SECONDS_PER_HOUR: Final[int] = 3_600
-SECONDS_PER_MINUTE: Final[int] = 60
 # Metron always sends ``Retry-After`` with a 429, so a rejection without one is
 # unexpected. Pagination retries a page this many times in a row before giving up.
 MAX_UNTIMED_RATE_LIMIT_RETRIES: Final[int] = 3
@@ -137,46 +140,6 @@ class ResourceEndpoint:
     UNIVERSE: Final[str] = "universe"
     PULL_LIST: Final[str] = "pull_list"
     WISH_LIST: Final[str] = "wish_list"
-
-
-def format_time(seconds: str | float) -> str:
-    """Format seconds into a verbose human-readable time string.
-
-    Args:
-        seconds: Number of seconds to format. Can be a string or float.
-
-    Returns:
-        str: Formatted time string (e.g., "2 hours, 30 minutes, 45 seconds").
-
-    Examples:
-        >>> format_time(3661)
-        "1 hour, 1 minute, 1 second"
-        >>> format_time(90)
-        "1 minute, 30 seconds"
-        >>> format_time(0)
-        "0 seconds"
-    """
-    total_seconds = int(seconds)
-
-    if total_seconds < 0:
-        return "0 seconds"
-
-    hours = total_seconds // SECONDS_PER_HOUR
-    minutes = (total_seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE
-    remaining_seconds = total_seconds % SECONDS_PER_MINUTE
-
-    parts = []
-
-    if hours > 0:
-        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-
-    if minutes > 0:
-        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
-
-    if remaining_seconds > 0 or not parts:
-        parts.append(f"{remaining_seconds} second{'s' if remaining_seconds != 1 else ''}")
-
-    return ", ".join(parts)
 
 
 class Session:

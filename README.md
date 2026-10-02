@@ -161,7 +161,7 @@ wait or quit:
 import time
 
 from mokkari.exceptions import RateLimitError
-from mokkari.session import format_time
+from mokkari.utils import format_time
 
 try:
     issue = m.issue(31660)
