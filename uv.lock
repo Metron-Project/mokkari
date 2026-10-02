@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [[package]]
@@ -780,8 +780,9 @@ wheels = [
 
 [[package]]
 name = "mokkari"
-version = "4.9.0rc1"
+version = "4.9.0"
 source = { editable = "." }
+default-groups = ["dev", "docs", "lint", "test"]
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
