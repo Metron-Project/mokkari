@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
@@ -79,15 +79,15 @@ class SqliteCache:
         with self._lock:
             self.con.execute(
                 "DELETE FROM responses WHERE expire < ?;",
-                (datetime.now(tz=timezone.utc).strftime("%Y-%m-%d"),),
+                (datetime.now(tz=UTC).strftime("%Y-%m-%d"),),
             )
             self.con.commit()
 
     def _determine_expire_str(self: SqliteCache) -> str:
         """Determine the expiration date string for cache data."""
         dt = (
-            datetime.now(tz=timezone.utc) + timedelta(days=self.expire)
+            datetime.now(tz=UTC) + timedelta(days=self.expire)
             if self.expire
-            else datetime.now(tz=timezone.utc)
+            else datetime.now(tz=UTC)
         )
         return dt.strftime("%Y-%m-%d")

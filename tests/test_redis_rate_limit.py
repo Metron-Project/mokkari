@@ -49,7 +49,7 @@ def _limiter(server: fakeredis.FakeServer, account: str = "user", **kwargs) -> R
 def _in(seconds: float | None) -> datetime.datetime | None:
     if seconds is None:
         return None
-    return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=seconds)
+    return datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=seconds)
 
 
 def _status(  # noqa: PLR0913
@@ -315,7 +315,7 @@ def test_session_reports_exhausted_burst_window_to_redis(
     client = fakeredis.FakeRedis(server=server)
     limiter = RedisRateLimiter(client, "user")
     session = Session(dummy_username, dummy_password, rate_limiter=limiter)
-    reset = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + 30
+    reset = int(datetime.datetime.now(datetime.UTC).timestamp()) + 30
     headers = {
         "X-RateLimit-Burst-Limit": "60",
         "X-RateLimit-Burst-Remaining": "0",

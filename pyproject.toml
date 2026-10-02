@@ -3,7 +3,7 @@ name = "mokkari"
 version = "4.9.0rc1"
 description = "Python wrapper for Metron API"
 authors = [{ name = "Brian Pepple", email = "bdpepple@gmail.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
@@ -14,11 +14,11 @@ classifiers = [
   "Environment :: Console",
   "Intended Audience :: Developers",
   "Natural Language :: English",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Internet",
   "Operating System :: MacOS :: MacOS X",
   "Operating System :: POSIX",
@@ -100,13 +100,18 @@ known_third_party = [
 extend-exclude = ["typings"]
 line-length = 100
 show-fixes = true
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 extend-ignore = [
   "S101",
   "D203",
   "D213",
+  # StrEnum would change str() of the public schema enums
+  # eslint-disable-next-line sonarjs/todo-tag
+  # TODO: Remove this ignore and switch the enums to StrEnum with the breaking release that
+  # removes the deprecated Basic auth.
+  "UP042",
   # Format ignores
   "W191",
   "E501",
@@ -265,7 +270,7 @@ testpaths = "tests"
 exclude = "*~,.git/*,.mypy_cache/*,.pytest_cache/*,.venv*,__pycache__/*,cache/*,dist/*,node_modules/*,test-results/*,typings/*"
 
 [tool.tox]
-env_list = ["3.10", "3.11", "3.12", "3.13"]
+env_list = ["3.11", "3.12", "3.13", "3.14", "3.15"]
 min_version = "4.22"
 
 [tool.tox.env_run_base]
