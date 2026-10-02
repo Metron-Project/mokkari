@@ -22,11 +22,11 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Final, TypeVar
+from typing import Any, Final, Self, TypeVar
 from urllib.parse import urlencode
 
 import requests
@@ -409,7 +409,7 @@ class Session:
         """
         self._http.close()
 
-    def __enter__(self) -> "Session":  # noqa: PYI034 - py310 has no typing.Self
+    def __enter__(self) -> Self:
         """Enter the context manager, returning this session."""
         return self
 
@@ -635,9 +635,9 @@ class Session:
         if if_modified_since is not None:
             url = self.api_url.format("/".join(str(e) for e in [resource_name, _id]))
             if if_modified_since.tzinfo is None:
-                if_modified_since = if_modified_since.replace(tzinfo=timezone.utc)
+                if_modified_since = if_modified_since.replace(tzinfo=UTC)
             else:
-                if_modified_since = if_modified_since.astimezone(timezone.utc)
+                if_modified_since = if_modified_since.astimezone(UTC)
             header_value = format_http_datetime(if_modified_since, usegmt=True)
             data = self._fetch_detail(url, header_value)
             if data is None:
@@ -2255,9 +2255,7 @@ class Session:
         return RateLimitWindow(
             limit=int(limit) if limit is not None else None,
             remaining=int(remaining) if remaining is not None else None,
-            reset=datetime.fromtimestamp(int(reset), tz=timezone.utc)
-            if reset is not None
-            else None,
+            reset=datetime.fromtimestamp(int(reset), tz=UTC) if reset is not None else None,
         )
 
     def _update_rate_limit_status(self, headers: Any) -> None:
@@ -2394,7 +2392,7 @@ class Session:
                 against the local clock.
         """
         status = self.rate_limit_status
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         burst_wait = self._seconds_until_window_resets(status.burst, now)
         sustained_wait = self._seconds_until_window_resets(status.sustained, now)
 

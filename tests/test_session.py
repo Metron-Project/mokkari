@@ -1595,7 +1595,7 @@ def test_collection(session: Session) -> None:
                 storage_location="Box 1",
                 notes="First appearance",
                 is_read=True,
-                date_read=datetime.datetime(2023, 1, 20, tzinfo=datetime.timezone.utc),
+                date_read=datetime.datetime(2023, 1, 20, tzinfo=datetime.UTC),
                 rating=5,
                 resource_url="https://api.example.com/collection/1/",
                 created_on=datetime.datetime.now(),
@@ -1892,7 +1892,7 @@ def test_collection_scrobble(session: Session) -> None:
     # Arrange
     scrobble_request = ScrobbleRequest(
         issue_id=1,
-        date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+        date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
         rating=5,
     )
     resp = {
@@ -1923,13 +1923,13 @@ def test_collection_scrobble(session: Session) -> None:
                     number="1",
                     cover_date=datetime.date(2024, 1, 1),
                     store_date=datetime.date(2023, 12, 15),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
                 ),
                 is_read=True,
-                date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+                date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
                 rating=5,
                 created=True,
-                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
             ),
         ),
     ):
@@ -1971,11 +1971,11 @@ def test_collection_scrobble_minimal(session: Session) -> None:
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
                     cover_date=datetime.date(2024, 1, 1),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
                 ),
                 is_read=True,
                 created=False,
-                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.timezone.utc),
+                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
             ),
         ),
     ):
@@ -2051,15 +2051,15 @@ def test_collection_add(session: Session) -> None:
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
                     cover_date=datetime.date(2024, 1, 1),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
                 ),
                 quantity=2,
                 book_format="PRINT",
                 grading_company="",
                 is_read=False,
                 resource_url="https://api.example.com/collection/100/",
-                created_on=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
-                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                created_on=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
             ),
         ),
     ):
@@ -2586,14 +2586,10 @@ def test_update_rate_limit_status_parses_headers(session: Session) -> None:
     status = session.rate_limit_status
     assert status.burst.limit == 20
     assert status.burst.remaining == 19
-    assert status.burst.reset == datetime.datetime.fromtimestamp(
-        1700000060, tz=datetime.timezone.utc
-    )
+    assert status.burst.reset == datetime.datetime.fromtimestamp(1700000060, tz=datetime.UTC)
     assert status.sustained.limit == 10_000
     assert status.sustained.remaining == 9_999
-    assert status.sustained.reset == datetime.datetime.fromtimestamp(
-        1700086400, tz=datetime.timezone.utc
-    )
+    assert status.sustained.reset == datetime.datetime.fromtimestamp(1700086400, tz=datetime.UTC)
 
 
 def test_update_rate_limit_status_ignores_response_without_headers(session: Session) -> None:
@@ -2638,7 +2634,7 @@ def test_check_rate_limit_allows_request_when_no_state_observed(session: Session
 
 def test_check_rate_limit_allows_request_when_remaining_positive(session: Session) -> None:
     """Test that a window with remaining quota does not block."""
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=30)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=30)
     session._rate_limit_status = session_module.RateLimitStatus(
         burst=session_module.RateLimitWindow(limit=20, remaining=5, reset=reset)
     )
@@ -2648,7 +2644,7 @@ def test_check_rate_limit_allows_request_when_remaining_positive(session: Sessio
 
 def test_check_rate_limit_raises_when_burst_exhausted(session: Session) -> None:
     """Test that an exhausted burst (minute) window raises RateLimitError."""
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
     session._rate_limit_status = session_module.RateLimitStatus(
         burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
@@ -2670,7 +2666,7 @@ def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> N
     tier rather than the default 5,000/day, since it's read straight from
     whatever the server last reported.
     """
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
     session._rate_limit_status = session_module.RateLimitStatus(
         sustained=session_module.RateLimitWindow(limit=10_000, remaining=0, reset=reset)
     )
@@ -2687,7 +2683,7 @@ def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> N
 
 def test_check_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
     """Test that an exhausted window prevents the HTTP request from being made."""
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
     session._rate_limit_status = session_module.RateLimitStatus(
         burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
@@ -2831,7 +2827,7 @@ def test_execute_http_request_falls_back_to_check_rate_limit_when_no_limiter(
     session: Session, monkeypatch
 ) -> None:
     """With no rate_limiter set (the default), behavior is unchanged: fail fast."""
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
     session._rate_limit_status = session_module.RateLimitStatus(
         burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
@@ -3057,7 +3053,7 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
     paced_session = Session(
         username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
     )
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     paced_session._rate_limit_status = session_module.RateLimitStatus(
         sustained=session_module.RateLimitWindow(limit=5000, remaining=0, reset=reset)
     )
@@ -3078,7 +3074,7 @@ def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatc
     paced_session = Session(
         username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
     )
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     sent = []
 
     class DummyResp:
@@ -3342,9 +3338,7 @@ def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) ->
     monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     # Act
-    result = session.arc(
-        1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
-    )
+    result = session.arc(1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC))
 
     # Assert
     assert result is None
@@ -3379,7 +3373,7 @@ def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch
     ):
         # Act
         result = session.arc(
-            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
         )
 
     # Assert
@@ -3409,7 +3403,7 @@ def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
     # Act
     session.arc(
         1,
-        if_modified_since=datetime.datetime(2025, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+        if_modified_since=datetime.datetime(2025, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
     )
 
     # Assert — verify the header was formatted as RFC 7231
@@ -3506,7 +3500,7 @@ def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeyp
     ):
         # Act — with if_modified_since, cache should be ignored
         result = session.arc(
-            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
         )
 
     # Assert — got the fresh data, not the cached
@@ -3561,7 +3555,7 @@ def test_wish_list(session: Session) -> None:
                     id=1,
                     item_count=5,
                     items_url="https://metron.cloud/api/wish_list/1/items/",
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
                 )
             ],
         ),
@@ -3606,13 +3600,11 @@ def test_wish_list_items(session: Session) -> None:
                         series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                         number="1",
                         cover_date=datetime.date(2024, 1, 1),
-                        modified=datetime.datetime(
-                            2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc
-                        ),
+                        modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
                     ),
                     status="Wanted",
                     priority=Priority.THREE,
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
                 )
             ],
         ),
@@ -3656,14 +3648,14 @@ def test_wish_list_add_item(session: Session) -> None:
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
                     cover_date=datetime.date(2024, 1, 1),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
                 ),
                 status="Wanted",
                 priority=Priority.TWO,
                 max_price_currency=None,
                 notes="High priority",
-                added_on=datetime.datetime(2024, 1, 1, 10, 0, 0, tzinfo=datetime.timezone.utc),
-                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+                added_on=datetime.datetime(2024, 1, 1, 10, 0, 0, tzinfo=datetime.UTC),
+                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
             ),
         ),
     ):

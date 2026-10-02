@@ -1,6 +1,6 @@
 """Tests for the issue module without using classes."""
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -344,7 +344,7 @@ def test_base_issue_field_alias():
 # Issue model tests
 def test_issue_creation_full_data():
     """Test creating a full Issue with all fields."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     data = {
         "id": 1,
         "number": "1",

@@ -24,7 +24,7 @@ from mokkari.rate_limit import (
 
 def test_window_estimate_tightens_on_lower_remaining() -> None:
     """A newly observed, lower remaining value replaces the held estimate."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     reset = now + datetime.timedelta(seconds=60)
     estimate = _WindowEstimate()
 
@@ -37,7 +37,7 @@ def test_window_estimate_tightens_on_lower_remaining() -> None:
 
 def test_window_estimate_ignores_higher_remaining() -> None:
     """A stale response reporting a higher remaining value doesn't loosen the estimate."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     reset = now + datetime.timedelta(seconds=60)
     estimate = _WindowEstimate()
 
@@ -49,7 +49,7 @@ def test_window_estimate_ignores_higher_remaining() -> None:
 
 def test_window_estimate_clears_after_reset_passes() -> None:
     """Once the held reset time has passed, the stale estimate is dropped entirely."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     past_reset = now - datetime.timedelta(seconds=1)
     estimate = _WindowEstimate(remaining=0, reset=past_reset)
 
@@ -61,7 +61,7 @@ def test_window_estimate_clears_after_reset_passes() -> None:
 
 def test_window_estimate_keeps_held_reset_when_lower_remaining_has_none() -> None:
     """A tighter response missing its reset header doesn't discard the reset already held."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     reset = now + datetime.timedelta(seconds=60)
     estimate = _WindowEstimate()
 
@@ -75,7 +75,7 @@ def test_window_estimate_keeps_held_reset_when_lower_remaining_has_none() -> Non
 
 def test_window_estimate_wait_seconds_zero_when_room_available() -> None:
     """No wait is needed when remaining exceeds in-flight requests."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     estimate = _WindowEstimate(remaining=5, reset=now + datetime.timedelta(seconds=60))
 
     assert estimate.wait_seconds(in_flight=2, now=now) == 0.0
@@ -83,7 +83,7 @@ def test_window_estimate_wait_seconds_zero_when_room_available() -> None:
 
 def test_window_estimate_wait_seconds_positive_when_exhausted() -> None:
     """A wait is reported when in-flight requests would exhaust the window."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     reset = now + datetime.timedelta(seconds=30)
     estimate = _WindowEstimate(remaining=2, reset=reset)
 
@@ -94,7 +94,7 @@ def test_window_estimate_wait_seconds_positive_when_exhausted() -> None:
 
 def test_window_estimate_wait_seconds_zero_when_reset_unknown() -> None:
     """An exhausted window with no known reset isn't held, as nothing would ever refresh it."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     estimate = _WindowEstimate(remaining=0, reset=None)
 
     assert estimate.wait_seconds(in_flight=0, now=now) == 0.0
@@ -220,7 +220,7 @@ def test_acquire_waits_for_send_log_when_limit_drops_below_logged_sends() -> Non
 def test_acquire_ignores_server_reset_time_for_burst_window() -> None:
     """A burst reset time on a drifted clock (far in the future) doesn't cause a long wait."""
     limiter = HeaderPacedRateLimiter()
-    far_future = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    far_future = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     status = RateLimitStatus(burst=RateLimitWindow(limit=5, remaining=0, reset=far_future))
 
     start = time.monotonic()
@@ -292,7 +292,7 @@ def test_on_rate_limited_blocks_already_waiting_callers() -> None:
 def test_acquire_raises_when_sustained_window_is_exhausted() -> None:
     """An exhausted daily window raises with the time until reset instead of blocking."""
     limiter = HeaderPacedRateLimiter()
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=2)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)
     status = RateLimitStatus(sustained=RateLimitWindow(limit=5000, remaining=0, reset=reset))
 
     start = time.monotonic()
@@ -309,7 +309,7 @@ def test_acquire_raises_when_sustained_window_is_exhausted() -> None:
 def test_acquire_raising_for_sustained_window_reserves_no_slot() -> None:
     """A failed acquire holds no slot, so nothing is left in flight."""
     limiter = HeaderPacedRateLimiter()
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     status = RateLimitStatus(sustained=RateLimitWindow(limit=10, remaining=0, reset=reset))
 
     with pytest.raises(RateLimitError):
@@ -321,7 +321,7 @@ def test_acquire_raising_for_sustained_window_reserves_no_slot() -> None:
 def test_acquire_raises_when_in_flight_requests_hold_the_last_sustained_slot() -> None:
     """A request in flight counts against the daily window, and its release frees the slot."""
     limiter = HeaderPacedRateLimiter()
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     status = RateLimitStatus(sustained=RateLimitWindow(limit=10, remaining=1, reset=reset))
 
     limiter.acquire(status)
@@ -335,7 +335,7 @@ def test_acquire_raises_when_in_flight_requests_hold_the_last_sustained_slot() -
 def test_acquire_does_not_raise_once_sustained_reset_has_passed() -> None:
     """A window whose reported reset time is already past doesn't count as exhausted."""
     limiter = HeaderPacedRateLimiter()
-    past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    past = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=1)
     status = RateLimitStatus(sustained=RateLimitWindow(limit=10, remaining=0, reset=past))
 
     limiter.acquire(status)
@@ -344,7 +344,7 @@ def test_acquire_does_not_raise_once_sustained_reset_has_passed() -> None:
 def test_daily_429_headers_make_the_next_acquire_raise() -> None:
     """A 429 that reports an exhausted daily window makes the next acquire raise, not block."""
     limiter = HeaderPacedRateLimiter()
-    reset = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     status = RateLimitStatus(sustained=RateLimitWindow(limit=5000, remaining=0, reset=reset))
 
     limiter.acquire(RateLimitStatus())
@@ -378,7 +378,7 @@ def test_daily_429_without_retry_after_raises_again_after_the_reset_passes() -> 
     acquire raises again with the new wait.
     """
     limiter = HeaderPacedRateLimiter(burst_period=0.05)
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     first = RateLimitStatus(
         sustained=RateLimitWindow(
             limit=100, remaining=0, reset=now + datetime.timedelta(seconds=0.2)
@@ -399,7 +399,7 @@ def test_daily_429_without_retry_after_raises_again_after_the_reset_passes() -> 
         sustained=RateLimitWindow(
             limit=100,
             remaining=0,
-            reset=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+            reset=datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
         )
     )
     limiter.acquire(RateLimitStatus())  # the reset has passed, so this request goes out...

@@ -16,7 +16,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final, Protocol
 
 from mokkari import exceptions
@@ -318,7 +318,7 @@ class HeaderPacedRateLimiter:
 
     def _raise_if_daily_limit_reached(self) -> None:
         """Raise ``RateLimitError`` rather than block until an exhausted daily window resets."""
-        retry_after = self._sustained.wait_seconds(self._in_flight, datetime.now(timezone.utc))
+        retry_after = self._sustained.wait_seconds(self._in_flight, datetime.now(UTC))
         if retry_after > 0:
             raise daily_limit_error(self._sustained_limit, retry_after)
 
@@ -333,5 +333,5 @@ class HeaderPacedRateLimiter:
             self._burst.limit = status.burst.limit
         if status.sustained.limit is not None:
             self._sustained_limit = status.sustained.limit
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._sustained.tighten(status.sustained.remaining, status.sustained.reset, now)
