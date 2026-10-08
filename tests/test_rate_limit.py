@@ -205,16 +205,23 @@ def test_acquire_waits_for_send_log_when_limit_drops_below_logged_sends() -> Non
     roomy = RateLimitStatus(burst=RateLimitWindow(limit=4))  # 0.1s spacing
     tight = RateLimitStatus(burst=RateLimitWindow(limit=2))  # 0.2s spacing
 
+    sends = []
     for _ in range(3):
         limiter.acquire(roomy)
+        # Read each send time as it's logged: the log drops sends once they're a full
+        # window old, so on a slow runner the first can be gone before the third is sent.
+        sends.append(limiter._burst._sent[-1])
         limiter.release(roomy)
-    start = time.monotonic()
+    _first, second, _third = sends
     limiter.acquire(tight)
-    elapsed = time.monotonic() - start
+    fourth = limiter._burst._sent[-1]
 
-    # Spacing alone would allow the next send 0.2s after the third; with three sends
-    # logged against a limit of 2, the second must also age out, 0.3s after the third.
-    assert elapsed >= 0.27
+    # Spacing alone would allow the next send 0.2s after the third, about 0.3s after the
+    # second; with three sends logged against a limit of 2, the second must also age out,
+    # a full 0.4s. This compares the limiter's own send times: timing from after the third
+    # send assumed it went out exactly 0.1s after the second, so a late wake-up there
+    # (common on macOS runners) cut the measured wait short by the same amount.
+    assert fourth - second >= 0.4 - 1e-9
 
 
 def test_acquire_ignores_server_reset_time_for_burst_window() -> None:
