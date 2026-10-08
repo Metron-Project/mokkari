@@ -107,11 +107,6 @@ extend-ignore = [
   "S101",
   "D203",
   "D213",
-  # StrEnum would change str() of the public schema enums
-  # eslint-disable-next-line sonarjs/todo-tag
-  # TODO: Remove this ignore and switch the enums to StrEnum with the breaking release that
-  # removes the deprecated Basic auth.
-  "UP042",
   # Format ignores
   "W191",
   "E501",

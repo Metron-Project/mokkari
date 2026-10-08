@@ -124,6 +124,8 @@ def test_book_format_enum():
     assert BookFormat.PRINT.value == "PRINT"
     assert BookFormat.DIGITAL.value == "DIGITAL"
     assert BookFormat.BOTH.value == "BOTH"
+    assert str(BookFormat.PRINT) == "PRINT"
+    assert f"{BookFormat.PRINT}" == "PRINT"
 
 
 # GradingCompany enum tests
@@ -132,6 +134,8 @@ def test_grading_company_enum():
     assert GradingCompany.CGC.value == "CGC"
     assert GradingCompany.CBCS.value == "CBCS"
     assert GradingCompany.PGX.value == "PGX"
+    assert str(GradingCompany.CGC) == "CGC"
+    assert f"{GradingCompany.CGC}" == "CGC"
 
 
 # Grade enum tests

@@ -51,6 +51,8 @@ def test_currency_enum_values():
     """Test Currency enum values."""
     assert Currency.USD.value == "USD"
     assert Currency.GBP.value == "GBP"
+    assert str(Currency.USD) == "USD"
+    assert f"{Currency.USD}" == "USD"
 
 
 # WishList tests

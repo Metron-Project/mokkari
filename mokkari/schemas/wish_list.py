@@ -23,7 +23,7 @@ __all__ = [
 
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, StrEnum
 
 from pydantic import Field
 
@@ -50,7 +50,7 @@ class Priority(int, Enum):
     FIVE = 5
 
 
-class Currency(str, Enum):
+class Currency(StrEnum):
     """Enumeration of supported currencies.
 
     Values:

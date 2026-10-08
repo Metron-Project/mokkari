@@ -43,7 +43,7 @@ __all__ = [
 
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, StrEnum
 
 from pydantic import Field
 
@@ -53,7 +53,7 @@ from mokkari.schemas.issue import BasicSeries
 from mokkari.schemas.user import User
 
 
-class BookFormat(str, Enum):
+class BookFormat(StrEnum):
     """Enumeration of book formats.
 
     Values:
@@ -68,7 +68,7 @@ class BookFormat(str, Enum):
     BOTH = "BOTH"
 
 
-class GradingCompany(str, Enum):
+class GradingCompany(StrEnum):
     """Enumeration of professional grading companies.
 
     Values:
