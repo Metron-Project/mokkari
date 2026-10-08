@@ -54,7 +54,7 @@ class RateLimitError(Exception):
         >>> from mokkari import Session
         >>> from mokkari.exceptions import RateLimitError
         >>> import time
-        >>> session = Session("username", "password")
+        >>> session = Session("your-api-token")
         >>> try:
         ...     issue = session.issue(1)
         ... except RateLimitError as e:
