@@ -123,20 +123,22 @@ def test_session_init_basic_auth_sets_auth_tuple() -> None:
     assert "Authorization" not in s.header
 
 
-def test_session_init_token_sets_bearer_header() -> None:
-    """Test that api_token authentication sets a Bearer Authorization header."""
+def test_session_init_keeps_token_out_of_header() -> None:
+    """Test that the token isn't stored in the header dict, which gets logged."""
     s = Session(api_token="abc123")
 
-    assert s.header["Authorization"] == "Bearer abc123"
-    assert s._auth is None
+    assert "Authorization" not in s.header
 
 
 def test_session_init_token_takes_precedence_over_basic_auth() -> None:
     """Test that api_token takes precedence when username/passwd are also given."""
     s = Session(username="user", passwd="pass", api_token="abc123")
 
-    assert s.header["Authorization"] == "Bearer abc123"
-    assert s._auth is None
+    with requests_mock.Mocker() as r:
+        r.get("https://test.com/api/issue/1", json={})
+        s._execute_http_request("GET", "https://test.com/api/issue/1", {}, s.header, None, None)
+
+    assert r.last_request.headers["Authorization"] == "Bearer abc123"
 
 
 def test_execute_http_request_uses_basic_auth(session: Session, monkeypatch) -> None:
@@ -149,18 +151,34 @@ def test_execute_http_request_uses_basic_auth(session: Session, monkeypatch) -> 
     assert mock_request.call_args.kwargs["auth"] == ("user", "pass")
 
 
-def test_execute_http_request_uses_bearer_header(monkeypatch) -> None:
-    """Test that _execute_http_request sends no auth tuple for token sessions."""
+def test_execute_http_request_sends_bearer_header() -> None:
+    """Test that _execute_http_request sends the token as a Bearer header."""
     token_session = Session(api_token="abc123")
-    mock_request = MagicMock(return_value=MagicMock(headers={}))
-    monkeypatch.setattr(token_session._http, "request", mock_request)
 
-    token_session._execute_http_request(
-        "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
-    )
+    with requests_mock.Mocker() as r:
+        r.get("https://test.com/api/issue/1", json={})
+        token_session._execute_http_request(
+            "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
+        )
 
-    assert mock_request.call_args.kwargs["auth"] is None
-    assert mock_request.call_args.kwargs["headers"]["Authorization"] == "Bearer abc123"
+    assert r.last_request.headers["Authorization"] == "Bearer abc123"
+
+
+def test_execute_http_request_ignores_netrc(tmp_path: Path, monkeypatch) -> None:
+    """Test that a netrc entry for the host doesn't replace the Bearer header."""
+    netrc = tmp_path / ".netrc"
+    netrc.write_text("machine test.com login user password pass\n")
+    netrc.chmod(0o600)
+    monkeypatch.setenv("NETRC", str(netrc))
+    token_session = Session(api_token="abc123")
+
+    with requests_mock.Mocker() as r:
+        r.get("https://test.com/api/issue/1", json={})
+        token_session._execute_http_request(
+            "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
+        )
+
+    assert r.last_request.headers["Authorization"] == "Bearer abc123"
 
 
 def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> None:

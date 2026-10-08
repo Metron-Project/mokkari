@@ -31,6 +31,7 @@ from urllib.parse import urlencode
 
 import requests
 from pydantic import TypeAdapter, ValidationError
+from requests.auth import AuthBase
 
 from mokkari import __version__, exceptions, rate_limit, sqlite_cache
 from mokkari.rate_limit import RateLimitStatus, RateLimitWindow
@@ -110,6 +111,22 @@ HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 # Reports whether the most recent response was served from Metron's cache
 # ("HIT") or generated fresh ("MISS").
 HEADER_CACHE: Final[str] = "X-Cache"
+
+
+class _BearerAuth(AuthBase):
+    """Attach the API token as a Bearer ``Authorization`` header.
+
+    Passing this as ``auth`` rather than setting the header directly matters: when a
+    request has no ``auth``, ``requests`` applies any ``~/.netrc`` entry for the host,
+    which would replace the Bearer header with Basic credentials.
+    """
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def __call__(self, r: requests.PreparedRequest) -> requests.PreparedRequest:
+        r.headers["Authorization"] = f"Bearer {self._token}"
+        return r
 
 
 class _ServerRateLimitError(exceptions.RateLimitError):
@@ -361,8 +378,8 @@ class Session:
             f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
         }
         if api_token is not None:
-            self.header["Authorization"] = f"Bearer {api_token}"
-            self._auth = None
+            # Kept out of ``header`` so the token isn't logged with the request headers.
+            self._auth = _BearerAuth(api_token)
         else:
             self._auth = (username, passwd)
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
