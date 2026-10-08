@@ -30,17 +30,17 @@ class NoStore:
         return
 
 
-def test_no_get(dummy_username: str, dummy_password: str) -> None:
+def test_no_get(dummy_api_token: str) -> None:
     """Test for retrieving failure."""
-    m = api(username=dummy_username, passwd=dummy_password, cache=NoGet())
+    m = api(api_token=dummy_api_token, cache=NoGet())
 
     with pytest.raises(exceptions.CacheError):
         m.series(5)
 
 
-def test_no_store(dummy_username: str, dummy_password: str) -> None:
+def test_no_store(dummy_api_token: str) -> None:
     """Test for saving data error."""
-    m = api(username=dummy_username, passwd=dummy_password, cache=NoStore())
+    m = api(api_token=dummy_api_token, cache=NoStore())
 
     with requests_mock.Mocker() as r:
         r.get(
@@ -65,12 +65,12 @@ def test_thread_safety() -> None:
         list(executor.map(worker, range(100)))
 
 
-# def test_sql_store(dummy_username: str, dummy_password: str) -> None:
+# def test_sql_store(dummy_api_token: str) -> None:
 #     """Test for saving data to the sqlite cache."""
 #     fresh_cache = sqlite_cache.SqliteCache(":memory:")
 #     test_cache = sqlite_cache.SqliteCache("tests/testing_mock.sqlite")
 
-#     m = api(username=dummy_username, passwd=dummy_password, cache=fresh_cache)
+#     m = api(api_token=dummy_api_token, cache=fresh_cache)
 #     url = "https://metron.cloud/api/series/1/"
 
 #     assert fresh_cache.get(url) is None

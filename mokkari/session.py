@@ -15,11 +15,13 @@ re-exported here for backwards compatibility.
 __all__ = ["RateLimitStatus", "RateLimitWindow", "Session", "format_time"]
 
 import http.cookiejar
+import inspect
 import json
 import logging
 import platform
 import threading
 import time
+import warnings
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -96,6 +98,12 @@ MAX_RATE_LIMIT_RETRIES: Final[int] = 20
 HTTP_POOL_MAXSIZE: Final[int] = 32
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
+BASIC_AUTH_DEPRECATION: Final[str] = (
+    "Username/password (Basic auth) authentication is deprecated and will be removed "
+    "in mokkari 5.0. Use an API token from your metron.cloud account page instead: "
+    "mokkari.api(api_token=...)."
+)
+_PACKAGE_DIR: Final[Path] = Path(__file__).parent
 
 # Metron reports rate-limit state via these response headers rather than a
 # fixed quota: the "sustained" (daily) limit varies per user based on
@@ -111,6 +119,23 @@ HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 # Reports whether the most recent response was served from Metron's cache
 # ("HIT") or generated fresh ("MISS").
 HEADER_CACHE: Final[str] = "X-Cache"
+
+
+def _external_stacklevel() -> int:
+    """Return the ``warnings.warn`` stacklevel of the first caller outside mokkari.
+
+    A warning raised in ``Session.__init__`` should point at the user's code whether
+    they called ``Session`` directly or went through ``mokkari.api()``. Python only shows
+    a ``DeprecationWarning`` by default when it's attributed to ``__main__``, so pointing
+    it at mokkari's own frames would hide it. Python 3.12's ``skip_file_prefixes`` does
+    this too, but 4.x still supports 3.11.
+    """
+    frame = inspect.currentframe()
+    level = 0
+    while frame is not None and Path(frame.f_code.co_filename).is_relative_to(_PACKAGE_DIR):
+        frame = frame.f_back
+        level += 1
+    return level
 
 
 class _BearerAuth(AuthBase):
@@ -208,8 +233,10 @@ class Session:
     - Development mode for testing against a local instances of Metron.
 
     Args:
-        username: Username for Metron API authentication.
-        passwd: Password for Metron API authentication.
+        username: Username for Metron API authentication. Deprecated: Basic auth will
+            be removed in mokkari 5.0, so use ``api_token`` instead.
+        passwd: Password for Metron API authentication. Deprecated along with
+            ``username``.
         cache: Optional SqliteCache instance for caching responses to improve performance.
         user_agent: Optional custom user agent string to append to the default user agent.
         dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
@@ -236,7 +263,7 @@ class Session:
 
     Examples:
         Basic usage:
-        >>> session = Session("username", "password")
+        >>> session = Session(api_token="your-api-token")
         >>> issue = session.issue(1)
         >>> print(issue)
 
@@ -310,6 +337,9 @@ class Session:
         >>> issue = session.issue(1)
         >>> print(session.last_cache_status)  # "HIT" or "MISS"
 
+    Warns:
+        DeprecationWarning: If ``username`` or ``passwd`` is passed.
+
     Raises:
         AuthenticationError: If neither an api_token nor a complete username/passwd
             pair is provided.
@@ -352,8 +382,10 @@ class Session:
         the library version and system information.
 
         Args:
-            username: Username for Metron API authentication.
-            passwd: Password for Metron API authentication.
+            username: Username for Metron API authentication. Deprecated: Basic auth
+                will be removed in mokkari 5.0, so use ``api_token`` instead.
+            passwd: Password for Metron API authentication. Deprecated along with
+                ``username``.
             cache: Optional SqliteCache instance for response caching.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
@@ -362,6 +394,9 @@ class Session:
             rate_limiter: Optional pacing gate dispatched on every HTTP send,
                 in place of the default fail-fast check. Defaults to ``None``.
 
+        Warns:
+            DeprecationWarning: If ``username`` or ``passwd`` is passed.
+
         Raises:
             AuthenticationError: If neither api_token nor a complete username/passwd
                 pair is provided.
@@ -369,6 +404,10 @@ class Session:
         has_basic_auth = username is not None and passwd is not None
         if api_token is None and not has_basic_auth:
             raise exceptions.AuthenticationError
+        if username is not None or passwd is not None:
+            warnings.warn(
+                BASIC_AUTH_DEPRECATION, DeprecationWarning, stacklevel=_external_stacklevel()
+            )
 
         self.username = username
         self.passwd = passwd
