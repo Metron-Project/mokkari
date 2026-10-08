@@ -20,7 +20,7 @@ from pydantic import HttpUrl, ValidationError
 from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
 
 import mokkari.session as session_module
-from mokkari import exceptions, rate_limit, utils
+from mokkari import exceptions, rate_limit
 from mokkari.rate_limit import HeaderPacedRateLimiter
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
@@ -2541,16 +2541,11 @@ def test__prepare_request_payload_image_model_no_image_file(session: Session) ->
 # X-RateLimit-* response headers instead of a fixed local quota.
 
 
-def test_format_time_reexported_from_session() -> None:
-    """format_time stays importable from mokkari.session for backwards compatibility."""
-    assert session_module.format_time is utils.format_time
-
-
 def test_rate_limit_status_defaults_to_unknown(session: Session) -> None:
     """A fresh session has no observed rate-limit state until a request completes."""
     status = session.rate_limit_status
-    assert status.burst == session_module.RateLimitWindow()
-    assert status.sustained == session_module.RateLimitWindow()
+    assert status.burst == rate_limit.RateLimitWindow()
+    assert status.sustained == rate_limit.RateLimitWindow()
 
 
 def test_update_rate_limit_status_parses_headers(session: Session) -> None:
@@ -2618,8 +2613,8 @@ def test_check_rate_limit_allows_request_when_no_state_observed(session: Session
 def test_check_rate_limit_allows_request_when_remaining_positive(session: Session) -> None:
     """Test that a window with remaining quota does not block."""
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=30)
-    session._rate_limit_status = session_module.RateLimitStatus(
-        burst=session_module.RateLimitWindow(limit=20, remaining=5, reset=reset)
+    session._rate_limit_status = rate_limit.RateLimitStatus(
+        burst=rate_limit.RateLimitWindow(limit=20, remaining=5, reset=reset)
     )
 
     session._check_rate_limit()  # should not raise
@@ -2628,8 +2623,8 @@ def test_check_rate_limit_allows_request_when_remaining_positive(session: Sessio
 def test_check_rate_limit_raises_when_burst_exhausted(session: Session) -> None:
     """Test that an exhausted burst (minute) window raises RateLimitError."""
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
-    session._rate_limit_status = session_module.RateLimitStatus(
-        burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
+    session._rate_limit_status = rate_limit.RateLimitStatus(
+        burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
 
     with pytest.raises(exceptions.RateLimitError) as excinfo:
@@ -2650,8 +2645,8 @@ def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> N
     whatever the server last reported.
     """
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
-    session._rate_limit_status = session_module.RateLimitStatus(
-        sustained=session_module.RateLimitWindow(limit=10_000, remaining=0, reset=reset)
+    session._rate_limit_status = rate_limit.RateLimitStatus(
+        sustained=rate_limit.RateLimitWindow(limit=10_000, remaining=0, reset=reset)
     )
 
     with pytest.raises(exceptions.RateLimitError) as excinfo:
@@ -2667,8 +2662,8 @@ def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> N
 def test_check_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
     """Test that an exhausted window prevents the HTTP request from being made."""
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
-    session._rate_limit_status = session_module.RateLimitStatus(
-        burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
+    session._rate_limit_status = rate_limit.RateLimitStatus(
+        burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
 
     mock_request_called = {"called": False}
@@ -2811,8 +2806,8 @@ def test_execute_http_request_falls_back_to_check_rate_limit_when_no_limiter(
 ) -> None:
     """With no rate_limiter set (the default), behavior is unchanged: fail fast."""
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
-    session._rate_limit_status = session_module.RateLimitStatus(
-        burst=session_module.RateLimitWindow(limit=20, remaining=0, reset=reset)
+    session._rate_limit_status = rate_limit.RateLimitStatus(
+        burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
 
     mock_request_called = {"called": False}
@@ -2853,7 +2848,7 @@ def test_rate_limiter_release_called_with_none_on_connection_error(
     with pytest.raises(exceptions.ApiError):
         session._request_data("GET", "https://test.com/api/issue/1")
 
-    assert calls == [("acquire", session_module.RateLimitStatus()), ("release", None)]
+    assert calls == [("acquire", rate_limit.RateLimitStatus()), ("release", None)]
 
 
 def test_rate_limiter_release_called_on_unhandled_request_exception(
@@ -2880,7 +2875,7 @@ def test_rate_limiter_release_called_on_unhandled_request_exception(
     with pytest.raises(TooManyRedirects):
         session._request_data("GET", "https://test.com/api/issue/1")
 
-    assert calls == [("acquire", session_module.RateLimitStatus()), ("release", None)]
+    assert calls == [("acquire", rate_limit.RateLimitStatus()), ("release", None)]
 
 
 def test_rate_limiter_release_called_when_status_update_raises(
@@ -3008,7 +3003,7 @@ def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
     # nothing observed yet it would let every caller straight through, since
     # a gate with no prior information can't restrict anything (the same
     # "gate opens" behavior a real client sees on its very first request).
-    limiter.acquire(session_module.RateLimitStatus(burst=session_module.RateLimitWindow(limit=3)))
+    limiter.acquire(rate_limit.RateLimitStatus(burst=rate_limit.RateLimitWindow(limit=3)))
     limiter.release(None)
 
     def worker(_):
@@ -3033,8 +3028,8 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
     limiter = HeaderPacedRateLimiter()
     paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
-    paced_session._rate_limit_status = session_module.RateLimitStatus(
-        sustained=session_module.RateLimitWindow(limit=5000, remaining=0, reset=reset)
+    paced_session._rate_limit_status = rate_limit.RateLimitStatus(
+        sustained=rate_limit.RateLimitWindow(limit=5000, remaining=0, reset=reset)
     )
     sent = []
     monkeypatch.setattr(paced_session._http, "request", lambda *a, **k: sent.append(1))
