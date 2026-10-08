@@ -5,14 +5,14 @@ This module provides the following classes:
 - Session: Main API client for interacting with the Metron Comics Database
 
 ``RateLimitStatus`` and ``RateLimitWindow`` are defined in
-:mod:`mokkari.rate_limit`, and ``format_time`` in :mod:`mokkari.utils`; they are
-re-exported here for backwards compatibility.
+:mod:`mokkari.rate_limit`, and ``format_time`` in :mod:`mokkari.utils`. Importing them
+from this module still works for backwards compatibility, but is deprecated and raises
+a ``DeprecationWarning``; mokkari 5.0 removes them from this module.
 """
 
-# TODO: Drop the backwards-compatibility re-exports (``RateLimitStatus``, ``RateLimitWindow``
-# and ``format_time``) from ``__all__`` and the docstring above with the next breaking release.
-# This module still uses them itself, so their imports stay.
-__all__ = ["RateLimitStatus", "RateLimitWindow", "Session", "format_time"]
+# The deprecated re-exports stay listed so ``from mokkari.session import *`` still provides
+# them in 4.x; they're served, with a warning, by the module ``__getattr__``.
+__all__ = ["RateLimitStatus", "RateLimitWindow", "Session", "format_time"]  # noqa: F822  # pyright: ignore[reportUnsupportedDunderAll]
 
 import http.cookiejar
 import inspect
@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Final, Self, TypeVar
 from urllib.parse import urlencode
 
@@ -35,8 +36,7 @@ import requests
 from pydantic import TypeAdapter, ValidationError
 from requests.auth import AuthBase
 
-from mokkari import __version__, exceptions, rate_limit, sqlite_cache
-from mokkari.rate_limit import RateLimitStatus, RateLimitWindow
+from mokkari import __version__, exceptions, rate_limit, sqlite_cache, utils
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -77,7 +77,6 @@ from mokkari.schemas.wish_list import (
     WishListItemList,
     WishListItemRead,
 )
-from mokkari.utils import format_time
 
 LOGGER = logging.getLogger(__name__)
 
@@ -136,6 +135,30 @@ def _external_stacklevel() -> int:
         frame = frame.f_back
         level += 1
     return level
+
+
+# Names this module re-exported before they moved to their own modules. They're no longer
+# imported here, so ``__getattr__`` below can warn when they're imported from this module.
+_DEPRECATED_REEXPORTS: Final[dict[str, ModuleType]] = {
+    "RateLimitStatus": rate_limit,
+    "RateLimitWindow": rate_limit,
+    "format_time": utils,
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Return a deprecated re-export, warning that it moves in mokkari 5.0 (PEP 562)."""
+    module = _DEPRECATED_REEXPORTS.get(name)
+    if module is None:
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg)
+    warnings.warn(
+        f"Importing {name} from mokkari.session is deprecated and will stop working in "
+        f"mokkari 5.0. Import it from {module.__name__} instead.",
+        DeprecationWarning,
+        stacklevel=_external_stacklevel(),
+    )
+    return getattr(module, name)
 
 
 class _BearerAuth(AuthBase):
@@ -281,6 +304,7 @@ class Session:
         Handling rate limits - simple retry:
         >>> import time
         >>> from mokkari.exceptions import RateLimitError
+        >>> from mokkari.utils import format_time
         >>> session = Session("username", "password")
         >>> try:
         ...     issue = session.issue(1)
@@ -297,6 +321,7 @@ class Session:
         Handling minute vs daily rate limits:
         >>> import time
         >>> from mokkari.exceptions import RateLimitError
+        >>> from mokkari.utils import format_time
         >>> session = Session("username", "password")
         >>> def fetch_with_rate_limit_handling(issue_id):
         ...     while True:
@@ -426,7 +451,7 @@ class Session:
         self.rate_limiter = rate_limiter
         self._http = self._build_http_session()
         self._rate_limit_lock = threading.Lock()
-        self._rate_limit_status = RateLimitStatus()
+        self._rate_limit_status = rate_limit.RateLimitStatus()
         self._cache_status_lock = threading.Lock()
         self._last_cache_status: str | None = None
 
@@ -474,7 +499,7 @@ class Session:
         self.close()
 
     @property
-    def rate_limit_status(self) -> RateLimitStatus:
+    def rate_limit_status(self) -> rate_limit.RateLimitStatus:
         """Return the most recently observed rate-limit state.
 
         Populated from the ``X-RateLimit-*`` headers Metron sends with every
@@ -630,9 +655,7 @@ class Session:
         except requests.exceptions.HTTPError as err:
             if err.response.status_code == requests.codes.too_many:
                 retry_after = self._retry_after_seconds(response)
-                msg = (
-                    f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
-                )
+                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
                 raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
@@ -2230,7 +2253,7 @@ class Session:
         # The slot is held from here on, so it must be released on every exit path, not just
         # the connection errors we translate. ``status`` stays ``None`` unless headers were
         # received and folded into the session's rate-limit state.
-        status: RateLimitStatus | None = None
+        status: rate_limit.RateLimitStatus | None = None
         try:
             response = self._http.request(
                 method,
@@ -2275,9 +2298,7 @@ class Session:
         except requests.exceptions.HTTPError as err:
             if err.response.status_code == requests.codes.too_many:
                 retry_after = self._retry_after_seconds(response)
-                msg = (
-                    f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
-                )
+                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
                 raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
@@ -2296,7 +2317,7 @@ class Session:
     @staticmethod
     def _parse_rate_limit_window(
         headers: Any, limit_header: str, remaining_header: str, reset_header: str
-    ) -> RateLimitWindow | None:
+    ) -> rate_limit.RateLimitWindow | None:
         """Parse one rate-limit window (burst or sustained) out of response headers.
 
         Returns ``None`` when none of the three headers for this window are present,
@@ -2308,7 +2329,7 @@ class Session:
         reset = headers.get(reset_header)
         if limit is None and remaining is None and reset is None:
             return None
-        return RateLimitWindow(
+        return rate_limit.RateLimitWindow(
             limit=int(limit) if limit is not None else None,
             remaining=int(remaining) if remaining is not None else None,
             reset=datetime.fromtimestamp(int(reset), tz=UTC) if reset is not None else None,
@@ -2325,7 +2346,7 @@ class Session:
         if burst is None and sustained is None:
             return
         with self._rate_limit_lock:
-            self._rate_limit_status = RateLimitStatus(
+            self._rate_limit_status = rate_limit.RateLimitStatus(
                 burst=burst or self._rate_limit_status.burst,
                 sustained=sustained or self._rate_limit_status.sustained,
             )
@@ -2342,7 +2363,7 @@ class Session:
             self._last_cache_status = headers.get(HEADER_CACHE)
 
     @staticmethod
-    def _seconds_until_window_resets(window: RateLimitWindow, now: datetime) -> float:
+    def _seconds_until_window_resets(window: rate_limit.RateLimitWindow, now: datetime) -> float:
         """Seconds until ``window`` allows another request, or 0 if it already does."""
         if window.remaining is None or window.remaining > 0 or window.reset is None:
             return 0.0
@@ -2405,7 +2426,7 @@ class Session:
         except Exception:
             LOGGER.exception("Rate limiter on_rate_limited() failed; ignoring")
 
-    def _release_rate_limit_slot(self, status: RateLimitStatus | None) -> None:
+    def _release_rate_limit_slot(self, status: rate_limit.RateLimitStatus | None) -> None:
         """Release the slot reserved by ``_acquire_rate_limit_slot``, if a limiter is set.
 
         Args:
@@ -2464,7 +2485,7 @@ class Session:
 
         msg = (
             f"Rate limit exceeded: You have reached the {limit_str} requests per {limit_type} limit. "
-            f"Please wait {format_time(delay)} before making another request."
+            f"Please wait {utils.format_time(delay)} before making another request."
         )
         LOGGER.warning(msg)
         raise exceptions.RateLimitError(msg, retry_after=delay)
