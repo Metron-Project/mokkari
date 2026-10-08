@@ -205,10 +205,14 @@ def test_acquire_waits_for_send_log_when_limit_drops_below_logged_sends() -> Non
     roomy = RateLimitStatus(burst=RateLimitWindow(limit=4))  # 0.1s spacing
     tight = RateLimitStatus(burst=RateLimitWindow(limit=2))  # 0.2s spacing
 
+    sends = []
     for _ in range(3):
         limiter.acquire(roomy)
+        # Read each send time as it's logged: the log drops sends once they're a full
+        # window old, so on a slow runner the first can be gone before the third is sent.
+        sends.append(limiter._burst._sent[-1])
         limiter.release(roomy)
-    _first, second, _third = limiter._burst._sent
+    _first, second, _third = sends
     limiter.acquire(tight)
     fourth = limiter._burst._sent[-1]
 
