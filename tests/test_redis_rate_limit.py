@@ -293,13 +293,11 @@ def test_release_without_status_changes_nothing(server) -> None:
     assert client.keys("*") == []
 
 
-def test_session_reports_429_to_redis(
-    server, dummy_username: str, dummy_password: str, monkeypatch
-) -> None:
+def test_session_reports_429_to_redis(server, dummy_api_token: str, monkeypatch) -> None:
     """Session drives the limiter end to end: a 429 sets the shared backoff."""
     client = fakeredis.FakeRedis(server=server)
     limiter = RedisRateLimiter(client, "user")
-    session = Session(dummy_username, dummy_password, rate_limiter=limiter)
+    session = Session(api_token=dummy_api_token, rate_limiter=limiter)
     response = MagicMock(status_code=429, headers={"Retry-After": "30"})
     monkeypatch.setattr(session._http, "request", lambda *_a, **_k: response)
 
@@ -309,12 +307,12 @@ def test_session_reports_429_to_redis(
 
 
 def test_session_reports_exhausted_burst_window_to_redis(
-    server, dummy_username: str, dummy_password: str, monkeypatch
+    server, dummy_api_token: str, monkeypatch
 ) -> None:
     """Session passes Metron's burst headers through, so a spent window blocks sends."""
     client = fakeredis.FakeRedis(server=server)
     limiter = RedisRateLimiter(client, "user")
-    session = Session(dummy_username, dummy_password, rate_limiter=limiter)
+    session = Session(api_token=dummy_api_token, rate_limiter=limiter)
     reset = int(datetime.datetime.now(datetime.UTC).timestamp()) + 30
     headers = {
         "X-RateLimit-Burst-Limit": "60",

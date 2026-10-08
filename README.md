@@ -24,9 +24,9 @@ import mokkari
 m = mokkari.api(api_token="your-api-token")
 ```
 
-Username/password (Basic Auth) is still accepted with
-`mokkari.api(username, password)`, but it will be deprecated in the near future,
-so new code should use a token.
+Username/password (Basic Auth) with `mokkari.api(username, password)` is
+deprecated and raises a `DeprecationWarning`. It will be removed in mokkari 5.0,
+so switch to a token.
 
 ## Example Usage
 

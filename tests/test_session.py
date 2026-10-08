@@ -80,7 +80,7 @@ from mokkari.session import Session
 def session() -> Session:
     # Arrange
     # Provide a Session with dummy credentials and no cache
-    return Session(username="user", passwd="pass", cache=None, user_agent="pytest", dev_mode=False)
+    return Session(api_token="abc123", cache=None, user_agent="pytest", dev_mode=False)
 
 
 @pytest.fixture
@@ -117,7 +117,8 @@ def test_session_init_raises_with_partial_basic_auth_and_no_token() -> None:
 
 def test_session_init_basic_auth_sets_auth_tuple() -> None:
     """Test that username/passwd authentication sets a Basic Auth tuple."""
-    s = Session(username="user", passwd="pass")
+    with pytest.warns(DeprecationWarning, match="Basic auth"):
+        s = Session(username="user", passwd="pass")
 
     assert s._auth == ("user", "pass")
     assert "Authorization" not in s.header
@@ -132,7 +133,8 @@ def test_session_init_keeps_token_out_of_header() -> None:
 
 def test_session_init_token_takes_precedence_over_basic_auth() -> None:
     """Test that api_token takes precedence when username/passwd are also given."""
-    s = Session(username="user", passwd="pass", api_token="abc123")
+    with pytest.warns(DeprecationWarning, match="Basic auth"):
+        s = Session(username="user", passwd="pass", api_token="abc123")
 
     with requests_mock.Mocker() as r:
         r.get("https://test.com/api/issue/1", json={})
@@ -141,8 +143,25 @@ def test_session_init_token_takes_precedence_over_basic_auth() -> None:
     assert r.last_request.headers["Authorization"] == "Bearer abc123"
 
 
-def test_execute_http_request_uses_basic_auth(session: Session, monkeypatch) -> None:
+def test_session_basic_auth_warning_points_at_caller() -> None:
+    """The Basic auth DeprecationWarning is attributed to the code that built the Session."""
+    with pytest.warns(DeprecationWarning, match="mokkari 5.0") as record:
+        Session(username="user", passwd="pass")
+
+    assert record[0].filename == __file__
+
+
+def test_session_token_does_not_warn(recwarn) -> None:
+    """A token-only Session doesn't raise the Basic auth DeprecationWarning."""
+    Session(api_token="abc123")
+
+    assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
+
+
+def test_execute_http_request_uses_basic_auth(monkeypatch) -> None:
     """Test that _execute_http_request sends a Basic Auth tuple for username/passwd sessions."""
+    with pytest.warns(DeprecationWarning, match="Basic auth"):
+        session = Session(username="user", passwd="pass")
     mock_request = MagicMock(return_value=MagicMock(headers={}))
     monkeypatch.setattr(session._http, "request", mock_request)
 
@@ -2800,7 +2819,7 @@ def test_request_data_updates_cache_status_from_response(session: Session, monke
 
 def test_session_rate_limiter_defaults_to_none() -> None:
     """A Session with no rate_limiter argument has one set to None."""
-    session = Session(username="user", passwd="pass")
+    session = Session(api_token="abc123")
 
     assert session.rate_limiter is None
 
@@ -3018,9 +3037,7 @@ def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
     """A real HeaderPacedRateLimiter shared across threads never exceeds its window."""
     period = 0.3
     limiter = HeaderPacedRateLimiter(burst_period=period)
-    paced_session = Session(
-        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
-    )
+    paced_session = Session(api_token="abc123", user_agent="pytest", rate_limiter=limiter)
     sent: list[float] = []
 
     class DummyResp:
@@ -3068,9 +3085,7 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
 ) -> None:
     """An exhausted daily window surfaces as RateLimitError and no HTTP request is sent."""
     limiter = HeaderPacedRateLimiter()
-    paced_session = Session(
-        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
-    )
+    paced_session = Session(api_token="abc123", user_agent="pytest", rate_limiter=limiter)
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     paced_session._rate_limit_status = session_module.RateLimitStatus(
         sustained=session_module.RateLimitWindow(limit=5000, remaining=0, reset=reset)
@@ -3089,9 +3104,7 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
 def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatch) -> None:
     """A 429 carrying an exhausted daily window stops the next request before it is sent."""
     limiter = HeaderPacedRateLimiter()
-    paced_session = Session(
-        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
-    )
+    paced_session = Session(api_token="abc123", user_agent="pytest", rate_limiter=limiter)
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     sent = []
 

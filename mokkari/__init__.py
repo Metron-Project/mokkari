@@ -22,8 +22,9 @@ def api(  # noqa: PLR0913, PLR0917
     """Entry function the sets login credentials for metron.cloud.
 
     Args:
-        username: The username used for metron.cloud.
-        passwd: The password used for metron.cloud.
+        username: The username used for metron.cloud. Deprecated: Basic auth will be
+            removed in mokkari 5.0, so use ``api_token`` instead.
+        passwd: The password used for metron.cloud. Deprecated along with ``username``.
         cache: SqliteCache to use.
         user_agent: The user agent string for the application using Mokkari.
             For example 'Foo Bar/1.0'.
@@ -36,12 +37,14 @@ def api(  # noqa: PLR0913, PLR0917
     Returns:
         A Session object.
 
+    Warns:
+        DeprecationWarning: If ``username`` or ``passwd`` is passed.
+
     Raises:
         AuthenticationError: If neither an api_token nor a complete username/passwd
             pair is provided.
 
     Examples:
-        >>> m = api("username", "password")
         >>> m = api(api_token="your-token-here")
 
     """
