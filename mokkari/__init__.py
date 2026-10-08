@@ -10,26 +10,23 @@ __version__ = version("mokkari")
 from mokkari import rate_limit, session, sqlite_cache
 
 
-def api(  # noqa: PLR0913, PLR0917
-    username: str | None = None,
-    passwd: str | None = None,
+def api(
+    api_token: str,
+    *,
     cache: sqlite_cache.SqliteCache | None = None,
     user_agent: str | None = None,
     dev_mode: bool = False,
-    api_token: str | None = None,
     rate_limiter: rate_limit.RateLimiter | None = None,
 ) -> session.Session:
     """Entry function the sets login credentials for metron.cloud.
 
     Args:
-        username: The username used for metron.cloud.
-        passwd: The password used for metron.cloud.
+        api_token: An API token used for Bearer-token authentication, generated
+            from your metron.cloud account page.
         cache: SqliteCache to use.
         user_agent: The user agent string for the application using Mokkari.
             For example 'Foo Bar/1.0'.
         dev_mode: Whether the library should be run against a local Metron instance.
-        api_token: An API token used for Bearer-token authentication. Takes
-            precedence over username/passwd when both are provided.
         rate_limiter: Optional pacing gate dispatched on every HTTP send, in
             place of the default fail-fast rate-limit check. Defaults to ``None``.
 
@@ -37,20 +34,16 @@ def api(  # noqa: PLR0913, PLR0917
         A Session object.
 
     Raises:
-        AuthenticationError: If neither an api_token nor a complete username/passwd
-            pair is provided.
+        AuthenticationError: If the api_token is missing or empty.
 
     Examples:
-        >>> m = api("username", "password")
-        >>> m = api(api_token="your-token-here")
+        >>> m = api("your-api-token")
 
     """
     return session.Session(
-        username=username,
-        passwd=passwd,
+        api_token,
         cache=cache,
         user_agent=user_agent,
         dev_mode=dev_mode,
-        api_token=api_token,
         rate_limiter=rate_limiter,
     )

@@ -80,7 +80,7 @@ from mokkari.session import Session
 def session() -> Session:
     # Arrange
     # Provide a Session with dummy credentials and no cache
-    return Session(username="user", passwd="pass", cache=None, user_agent="pytest", dev_mode=False)
+    return Session("abc123", cache=None, user_agent="pytest", dev_mode=False)
 
 
 @pytest.fixture
@@ -100,27 +100,13 @@ def dummy_cache():
     return DummyCache()
 
 
-def test_session_init_raises_without_any_credentials() -> None:
-    """Test that Session() raises AuthenticationError with no credentials."""
+def test_session_init_raises_without_a_token() -> None:
+    """Test that Session raises AuthenticationError for a missing or empty token."""
     with pytest.raises(exceptions.AuthenticationError):
-        Session()
-
-
-def test_session_init_raises_with_partial_basic_auth_and_no_token() -> None:
-    """Test that partial username/passwd without a token raises AuthenticationError."""
-    with pytest.raises(exceptions.AuthenticationError):
-        Session(username="user")
+        Session(None)  # type: ignore
 
     with pytest.raises(exceptions.AuthenticationError):
-        Session(passwd="pass")
-
-
-def test_session_init_basic_auth_sets_auth_tuple() -> None:
-    """Test that username/passwd authentication sets a Basic Auth tuple."""
-    s = Session(username="user", passwd="pass")
-
-    assert s._auth == ("user", "pass")
-    assert "Authorization" not in s.header
+        Session("")
 
 
 def test_session_init_token_sets_bearer_header() -> None:
@@ -128,29 +114,10 @@ def test_session_init_token_sets_bearer_header() -> None:
     s = Session(api_token="abc123")
 
     assert s.header["Authorization"] == "Bearer abc123"
-    assert s._auth is None
-
-
-def test_session_init_token_takes_precedence_over_basic_auth() -> None:
-    """Test that api_token takes precedence when username/passwd are also given."""
-    s = Session(username="user", passwd="pass", api_token="abc123")
-
-    assert s.header["Authorization"] == "Bearer abc123"
-    assert s._auth is None
-
-
-def test_execute_http_request_uses_basic_auth(session: Session, monkeypatch) -> None:
-    """Test that _execute_http_request sends a Basic Auth tuple for username/passwd sessions."""
-    mock_request = MagicMock(return_value=MagicMock(headers={}))
-    monkeypatch.setattr(session._http, "request", mock_request)
-
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-
-    assert mock_request.call_args.kwargs["auth"] == ("user", "pass")
 
 
 def test_execute_http_request_uses_bearer_header(monkeypatch) -> None:
-    """Test that _execute_http_request sends no auth tuple for token sessions."""
+    """Test that _execute_http_request sends the Bearer header and no auth tuple."""
     token_session = Session(api_token="abc123")
     mock_request = MagicMock(return_value=MagicMock(headers={}))
     monkeypatch.setattr(token_session._http, "request", mock_request)
@@ -159,7 +126,7 @@ def test_execute_http_request_uses_bearer_header(monkeypatch) -> None:
         "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
     )
 
-    assert mock_request.call_args.kwargs["auth"] is None
+    assert "auth" not in mock_request.call_args.kwargs
     assert mock_request.call_args.kwargs["headers"]["Authorization"] == "Bearer abc123"
 
 
@@ -2782,7 +2749,7 @@ def test_request_data_updates_cache_status_from_response(session: Session, monke
 
 def test_session_rate_limiter_defaults_to_none() -> None:
     """A Session with no rate_limiter argument has one set to None."""
-    session = Session(username="user", passwd="pass")
+    session = Session("abc123")
 
     assert session.rate_limiter is None
 
@@ -3000,9 +2967,7 @@ def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
     """A real HeaderPacedRateLimiter shared across threads never exceeds its window."""
     period = 0.3
     limiter = HeaderPacedRateLimiter(burst_period=period)
-    paced_session = Session(
-        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
-    )
+    paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
     sent: list[float] = []
 
     class DummyResp:
@@ -3050,9 +3015,7 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
 ) -> None:
     """An exhausted daily window surfaces as RateLimitError and no HTTP request is sent."""
     limiter = HeaderPacedRateLimiter()
-    paced_session = Session(
-        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
-    )
+    paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     paced_session._rate_limit_status = session_module.RateLimitStatus(
         sustained=session_module.RateLimitWindow(limit=5000, remaining=0, reset=reset)
@@ -3071,9 +3034,7 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
 def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatch) -> None:
     """A 429 carrying an exhausted daily window stops the next request before it is sent."""
     limiter = HeaderPacedRateLimiter()
-    paced_session = Session(
-        username="user", passwd="pass", user_agent="pytest", rate_limiter=limiter
-    )
+    paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
     reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
     sent = []
 

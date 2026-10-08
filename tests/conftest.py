@@ -12,21 +12,12 @@ from mokkari.session import Session
 
 
 @pytest.fixture(scope="session")
-def dummy_username() -> str:
-    """Username fixture."""
-    return os.getenv("METRON_USERNAME", "username")
+def dummy_api_token() -> str:
+    """API token fixture."""
+    return os.getenv("METRON_API_TOKEN", "token")
 
 
 @pytest.fixture(scope="session")
-def dummy_password() -> str:
-    """Password fixture."""
-    return os.getenv("METRON_PASSWD", "passwd")
-
-
-@pytest.fixture(scope="session")
-def talker(dummy_username: str, dummy_password: str) -> Session:
+def talker(dummy_api_token: str) -> Session:
     """Mokkari api fixture."""
-    return api(
-        username=dummy_username,
-        passwd=dummy_password,
-    )
+    return api(dummy_api_token)

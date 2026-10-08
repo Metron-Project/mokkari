@@ -181,7 +181,7 @@ class Session:
 
     Features:
 
-    - Automatic authentication with username/password or a Bearer API token
+    - Automatic authentication with a Bearer API token
     - Rate limiting driven by Metron's response headers, with clear error messages
     - Optional SQLite caching for improved performance
     - Comprehensive error handling and validation
@@ -191,22 +191,17 @@ class Session:
     - Development mode for testing against a local instances of Metron.
 
     Args:
-        username: Username for Metron API authentication.
-        passwd: Password for Metron API authentication.
+        api_token: API token for Bearer-token authentication.
         cache: Optional SqliteCache instance for caching responses to improve performance.
         user_agent: Optional custom user agent string to append to the default user agent.
         dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
-        api_token: API token for Bearer-token authentication. Takes precedence
-            over username/passwd when both are provided.
         rate_limiter: Optional pacing gate to dispatch every HTTP send
             through, in place of the default fail-fast check. See
             :class:`mokkari.rate_limit.RateLimiter`. Defaults to ``None``,
             which preserves the default raise-immediately behavior exactly.
 
     Attributes:
-        username (str | None): The username used for API authentication.
-        passwd (str | None): The password used for API authentication.
-        api_token (str | None): The API token used for Bearer-token authentication, if provided.
+        api_token (str): The API token used for Bearer-token authentication.
         header (dict): HTTP headers sent with each request, including User-Agent.
         api_url (str): The base URL for API requests (production or development).
         cache (SqliteCache | None): The cache instance if provided.
@@ -219,25 +214,22 @@ class Session:
 
     Examples:
         Basic usage:
-        >>> session = Session("username", "password")
+        >>> session = Session("your-api-token")
         >>> issue = session.issue(1)
         >>> print(issue)
-
-        Token authentication:
-        >>> session = Session(api_token="your-api-token")
 
         With caching:
         >>> from mokkari.sqlite_cache import SqliteCache
         >>> cache = SqliteCache("cache.db")
-        >>> session = Session("username", "password", cache=cache)
+        >>> session = Session("your-api-token", cache=cache)
 
         Development mode:
-        >>> session = Session("username", "password", dev_mode=True)
+        >>> session = Session("your-api-token", dev_mode=True)
 
         Handling rate limits - simple retry:
         >>> import time
         >>> from mokkari.exceptions import RateLimitError
-        >>> session = Session("username", "password")
+        >>> session = Session("your-api-token")
         >>> try:
         ...     issue = session.issue(1)
         ... except RateLimitError as e:
@@ -253,7 +245,7 @@ class Session:
         Handling minute vs daily rate limits:
         >>> import time
         >>> from mokkari.exceptions import RateLimitError
-        >>> session = Session("username", "password")
+        >>> session = Session("your-api-token")
         >>> def fetch_with_rate_limit_handling(issue_id):
         ...     while True:
         ...         try:
@@ -278,24 +270,23 @@ class Session:
         >>> issue = fetch_with_rate_limit_handling(1)
 
         Inspecting the current rate-limit state:
-        >>> session = Session("username", "password")
+        >>> session = Session("your-api-token")
         >>> issue = session.issue(1)
         >>> status = session.rate_limit_status
         >>> print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
 
         Pacing requests instead of raising, under concurrent use:
         >>> from mokkari.rate_limit import HeaderPacedRateLimiter
-        >>> session = Session("username", "password", rate_limiter=HeaderPacedRateLimiter())
+        >>> session = Session("your-api-token", rate_limiter=HeaderPacedRateLimiter())
         >>> issue = session.issue(1)  # blocks instead of raising if a window is exhausted
 
         Checking whether the last response was served from Metron's cache:
-        >>> session = Session("username", "password")
+        >>> session = Session("your-api-token")
         >>> issue = session.issue(1)
         >>> print(session.last_cache_status)  # "HIT" or "MISS"
 
     Raises:
-        AuthenticationError: If neither an api_token nor a complete username/passwd
-            pair is provided.
+        AuthenticationError: If the api_token is missing or empty.
         ApiError: For general API errors, authentication failures, or network issues.
         RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
         CacheError: For cache-related errors.
@@ -318,14 +309,13 @@ class Session:
         UniversePost,
     )
 
-    def __init__(  # noqa: PLR0913, PLR0917
+    def __init__(
         self,
-        username: str | None = None,
-        passwd: str | None = None,
+        api_token: str,
+        *,
         cache: sqlite_cache.SqliteCache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
-        api_token: str | None = None,
         rate_limiter: rate_limit.RateLimiter | None = None,
     ) -> None:
         """Initialize a Session object with authentication and configuration.
@@ -335,36 +325,27 @@ class Session:
         the library version and system information.
 
         Args:
-            username: Username for Metron API authentication.
-            passwd: Password for Metron API authentication.
+            api_token: API token for Bearer-token authentication.
             cache: Optional SqliteCache instance for response caching.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
-            api_token: API token for Bearer-token authentication. Takes precedence
-                over username/passwd when both are provided.
             rate_limiter: Optional pacing gate dispatched on every HTTP send,
                 in place of the default fail-fast check. Defaults to ``None``.
 
         Raises:
-            AuthenticationError: If neither api_token nor a complete username/passwd
-                pair is provided.
+            AuthenticationError: If the api_token is missing or empty.
         """
-        has_basic_auth = username is not None and passwd is not None
-        if api_token is None and not has_basic_auth:
+        # Guards against a token read from an unset environment variable, which the
+        # type hint alone won't catch at runtime.
+        if not api_token:
             raise exceptions.AuthenticationError
 
-        self.username = username
-        self.passwd = passwd
         self.api_token = api_token
         self.header = {
             "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
             f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
         }
-        if api_token is not None:
-            self.header["Authorization"] = f"Bearer {api_token}"
-            self._auth = None
-        else:
-            self._auth = (username, passwd)
+        self.header["Authorization"] = f"Bearer {api_token}"
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         self.cache = cache
         self.rate_limiter = rate_limiter
@@ -747,7 +728,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> creator = session.creator(1)
             >>> print(creator.name)
             >>> # Later, check if updated:
@@ -773,7 +754,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
             >>> new_creator = session.creator_post(creator_data)
         """
@@ -796,7 +777,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
             >>> updated_creator = session.creator_patch(1, creator_data)
         """
@@ -813,7 +794,7 @@ class Session:
             list[BaseResource]: A list of BaseResource objects representing creators.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> creators = session.creators_list({"name": "Stan Lee"})
             >>> all_creators = session.creators_list()
         """
@@ -836,7 +817,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> character = session.character(1)
             >>> print(character.name)
         """
@@ -897,7 +878,7 @@ class Session:
             list[BaseIssue]: A list of BaseIssue objects.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> issues = session.character_issues_list(1)
             >>> print(f"Character appears in {len(issues)} issues")
         """
@@ -1223,7 +1204,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> issue = session.issue(1)
             >>> print(f"Issue #{issue.number} of {issue.series.name}")
             >>> # Later, check if updated:
@@ -1279,7 +1260,7 @@ class Session:
             list[BaseIssue]: A list of BaseIssue objects representing issues.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> issues = session.issues_list({"series": 1})
             >>> recent_issues = session.issues_list({"modified_gt": "2023-01-01"})
         """
@@ -1301,7 +1282,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> credits_ = [CreditPost(issue=1, creator=1, role=[1])]
             >>> new_credits = session.credits_post(credits_)
         """
@@ -1526,7 +1507,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> collection_item = session.collection(1)
             >>> print(f"Issue: {collection_item.issue.series.name} #{collection_item.issue.number}")
         """
@@ -1559,7 +1540,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> collection = session.collections_list({"is_read": False})
             >>> unread = [item for item in collection if not item.is_read]
         """
@@ -1584,7 +1565,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> missing = session.collection_missing_issues(1)
             >>> print(f"Missing {len(missing)} issues from this series")
         """
@@ -1608,7 +1589,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> incomplete_series = session.collection_missing_series()
             >>> for series in incomplete_series:
             ...     print(f"Series: {series.name} ({series.year_began})")
@@ -1632,7 +1613,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> stats = session.collection_stats()
             >>> print(f"Total items: {stats.total_items}")
             >>> print(f"Total value: {stats.total_value}")
@@ -1665,7 +1646,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> from datetime import datetime
             >>> scrobble_data = ScrobbleRequest(
             ...     issue_id=1,
@@ -1703,7 +1684,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> update_data = CollectionUpdate(rating=4)
             >>> result = session.collection_patch(1, update_data)
             >>> print(f"Rating updated to: {result.rating}")
@@ -1730,7 +1711,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> from mokkari.schemas.collection import CollectionAddItem
             >>> item = session.collection_add(CollectionAddItem(issue_id=1, quantity=2))
             >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
@@ -1752,7 +1733,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> session.collection_delete(1)
         """
         self._send_void("DELETE", [ResourceEndpoint.COLLECTION, _id])
@@ -1771,7 +1752,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> pl = session.pull_list()
             >>> print(f"Series: {pl.series_count}")
         """
@@ -1798,7 +1779,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> issues = session.pull_list_issues({"store_date_after": "2024-01-01"})
             >>> for issue in issues:
             ...     print(f"{issue.series.name} #{issue.number}")
@@ -1822,7 +1803,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> series_list = session.pull_list_series()
             >>> for entry in series_list:
             ...     print(entry.series.display_name)
@@ -1846,7 +1827,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> entry = session.pull_list_add_series(42)
             >>> print(entry.series.display_name)
         """
@@ -1870,7 +1851,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> session.pull_list_remove_series(1)
         """
         self._send_void("DELETE", [ResourceEndpoint.PULL_LIST, "series", series_pk, "remove"])
@@ -1889,7 +1870,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> wl = session.wish_list()
             >>> print(f"Items: {wl.item_count}")
         """
@@ -1912,7 +1893,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> items = session.wish_list_items()
             >>> for item in items:
             ...     print(f"{item.issue.series.name} #{item.issue.number} - {item.status}")
@@ -1936,7 +1917,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> from mokkari.schemas.wish_list import WishListAddItem
             >>> item = session.wish_list_add_item(WishListAddItem(issue_id=1, priority=2))
             >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
@@ -1959,7 +1940,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> from mokkari.schemas.wish_list import AcquireWishListItem
             >>> session.wish_list_acquire_item(1, AcquireWishListItem(purchase_price="9.99"))
         """
@@ -1978,7 +1959,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
-            >>> session = Session("username", "password")
+            >>> session = Session("your-api-token")
             >>> session.wish_list_remove_item(1)
         """
         self._send_void("DELETE", [ResourceEndpoint.WISH_LIST, "items", item_pk, "remove"])
@@ -2181,7 +2162,6 @@ class Session:
                 url,
                 params=params,
                 timeout=REQUEST_TIMEOUT,
-                auth=self._auth,
                 headers=header,
                 data=data_dict,
                 files=files,
