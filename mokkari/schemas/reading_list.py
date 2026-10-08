@@ -21,7 +21,7 @@ __all__ = [
 ]
 
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import Field, HttpUrl, field_validator
 
@@ -30,7 +30,7 @@ from mokkari.schemas.issue import BasicSeries
 from mokkari.schemas.user import User
 
 
-class AttributionSource(str, Enum):
+class AttributionSource(StrEnum):
     """Enumeration of attribution sources for reading lists.
 
     Values:
@@ -55,7 +55,7 @@ class AttributionSource(str, Enum):
     OTHER = "OTHER"
 
 
-class ListType(str, Enum):
+class ListType(StrEnum):
     """Enumeration of reading list types.
 
     Values:

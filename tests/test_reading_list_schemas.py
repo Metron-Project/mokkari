@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from mokkari.schemas.reading_list import (
     AttributionSource,
+    ListType,
     ReadingListIssue,
     ReadingListItem,
     ReadingListList,
@@ -119,6 +120,19 @@ def test_attribution_source_enum():
     assert AttributionSource.HTLC == "HTLC"
     assert AttributionSource.LOCG == "LOCG"
     assert AttributionSource.OTHER == "OTHER"
+    assert str(AttributionSource.CBRO) == "CBRO"
+    assert f"{AttributionSource.CBRO}" == "CBRO"
+
+
+def test_list_type_enum():
+    """Test ListType enum values."""
+    assert ListType.EVENT == "EVENT"
+    assert ListType.STORY == "STORY"
+    assert ListType.CHARACTERS == "CHARACTERS"
+    assert ListType.TEAMS == "TEAMS"
+    assert ListType.MASTER == "MASTER"
+    assert str(ListType.EVENT) == "EVENT"
+    assert f"{ListType.EVENT}" == "EVENT"
 
 
 # ReadingListIssue model tests
