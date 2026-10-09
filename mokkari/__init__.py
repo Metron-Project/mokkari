@@ -13,7 +13,7 @@ from mokkari import rate_limit, session, sqlite_cache
 def api(
     api_token: str,
     *,
-    cache: sqlite_cache.SqliteCache | None = None,
+    cache: sqlite_cache.Cache | None = None,
     user_agent: str | None = None,
     dev_mode: bool = False,
     rate_limiter: rate_limit.RateLimiter | None = None,
@@ -23,7 +23,7 @@ def api(
     Args:
         api_token: An API token used for Bearer-token authentication, generated
             from your metron.cloud account page.
-        cache: SqliteCache to use.
+        cache: Response cache to use, such as a ``SqliteCache``.
         user_agent: The user agent string for the application using Mokkari.
             For example 'Foo Bar/1.0'.
         dev_mode: Whether the library should be run against a local Metron instance.

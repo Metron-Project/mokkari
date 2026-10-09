@@ -200,7 +200,7 @@ class Session:
 
     Args:
         api_token: API token for Bearer-token authentication.
-        cache: Optional SqliteCache instance for caching responses to improve performance.
+        cache: Optional response cache (e.g. ``SqliteCache``) to avoid repeat requests.
         user_agent: Optional custom user agent string to append to the default user agent.
         dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
         rate_limiter: Optional pacing gate to dispatch every HTTP send
@@ -323,7 +323,7 @@ class Session:
         self,
         api_token: str,
         *,
-        cache: sqlite_cache.SqliteCache | None = None,
+        cache: sqlite_cache.Cache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
         rate_limiter: rate_limit.RateLimiter | None = None,
@@ -336,7 +336,7 @@ class Session:
 
         Args:
             api_token: API token for Bearer-token authentication.
-            cache: Optional SqliteCache instance for response caching.
+            cache: Optional response cache, such as a ``SqliteCache``.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
             rate_limiter: Optional pacing gate dispatched on every HTTP send,
@@ -439,6 +439,8 @@ class Session:
         self,
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
+        *,
+        kind: sqlite_cache.CacheKind = "detail",
     ) -> dict[str, Any]:
         """Send a GET request to the specified endpoint with optional parameters.
 
@@ -449,6 +451,8 @@ class Session:
         Args:
             endpoint: List of path segments to build the API endpoint URL.
             params: Optional query parameters to include in the request.
+            kind: Whether the endpoint returns a single object (``"detail"``) or a
+                list (``"list"``), passed to the cache along with the resource name.
 
         Returns:
             dict[str, Any]: The response data from the API.
@@ -476,7 +480,7 @@ class Session:
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
 
-        self._save_results_to_cache(cache_key, data)
+        self._save_results_to_cache(cache_key, data, str(endpoint[0]), kind)
 
         return data
 
@@ -1993,12 +1997,14 @@ class Session:
         if params is None:
             params = {}
 
-        result = self._get(endpoint, params=params)
+        result = self._get(endpoint, params=params, kind="list")
         if result["next"]:
-            result = self._retrieve_all_results(result)
+            result = self._retrieve_all_results(result, str(endpoint[0]), "list")
         return result
 
-    def _retrieve_all_results(self, data: dict[str, Any]) -> dict[str, Any]:
+    def _retrieve_all_results(
+        self, data: dict[str, Any], resource: str, kind: sqlite_cache.CacheKind
+    ) -> dict[str, Any]:
         """Retrieve all results from paginated data by following 'next' links.
 
         This internal method handles the pagination logic by making additional requests
@@ -2006,6 +2012,9 @@ class Session:
 
         Args:
             data: Dictionary containing the initial response data with pagination information.
+            resource: The resource name the first page was cached under; every
+                following page is cached under the same one.
+            kind: The cache kind of the first page.
 
         Returns:
             dict[str, Any]: Dictionary containing all results retrieved by following pagination links.
@@ -2063,7 +2072,7 @@ class Session:
             limited_retries = 0
             data["results"].extend(response["results"])
 
-            self._save_results_to_cache(next_page, response)
+            self._save_results_to_cache(next_page, response, resource, kind)
 
             if response["next"]:
                 next_page = response["next"]
@@ -2499,7 +2508,7 @@ class Session:
         Raises:
             CacheError: If the cache object is missing required methods.
         """
-        if not self.cache:
+        if self.cache is None:
             return None
 
         try:
@@ -2508,7 +2517,9 @@ class Session:
             msg = f"Cache object passed in is missing attribute: {e!r}"
             raise exceptions.CacheError(msg) from e
 
-    def _save_results_to_cache(self, key: str, data: Any) -> None:
+    def _save_results_to_cache(
+        self, key: str, data: Any, resource: str, kind: sqlite_cache.CacheKind
+    ) -> None:
         """Store the provided data in the cache using the specified key.
 
         This internal method provides a safe interface to the cache system with
@@ -2517,15 +2528,17 @@ class Session:
         Args:
             key: The cache key to store the data under.
             data: The data to be stored in the cache.
+            resource: The resource name, the first segment of the endpoint.
+            kind: ``"detail"`` or ``"list"``.
 
         Raises:
             CacheError: If the cache object is missing required methods.
         """
-        if not self.cache:
+        if self.cache is None:
             return
 
         try:
-            self.cache.store(key, data)
+            self.cache.store(key, data, resource=resource, kind=kind)
         except AttributeError as e:
             msg = f"Cache object passed in is missing attribute: {e!r}"
             raise exceptions.CacheError(msg) from e
