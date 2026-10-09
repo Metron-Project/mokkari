@@ -5,29 +5,85 @@ This module contains tests for SqliteCache objects.
 
 from __future__ import annotations
 
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import requests_mock
 
 from mokkari import api, exceptions, sqlite_cache
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+    from pathlib import Path
+
 
 class NoGet:
     """The NoGet object fakes storing data from the sqlite cache."""
 
-    def store(self: NoGet, key: any, value: any) -> None:  # noqa: ARG002
+    def store(self: NoGet, key: Any, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
         """Save no data."""
-        # This method should store key value pair
         return
 
 
 class NoStore:
     """The NoStore object fakes getting data from the sqlite cache."""
 
-    def get(self: NoStore, key: any) -> None:  # noqa: ARG002
+    def get(self: NoStore, key: Any) -> None:  # noqa: ARG002
         """Retrieve no data."""
         return
+
+
+class FakeClock:
+    """Stands in for the ``time`` module so tests can move time forward."""
+
+    def __init__(self) -> None:
+        """Start the clock at an arbitrary fixed time."""
+        self.now = 1_000_000.0
+
+    def time(self) -> float:
+        """Return the fake current time."""
+        return self.now
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> FakeClock:
+    """Replace the clock SqliteCache reads with one the test controls."""
+    fake = FakeClock()
+    monkeypatch.setattr(sqlite_cache, "time", fake)
+    return fake
+
+
+@pytest.fixture
+def make_cache() -> Iterator[Callable[..., sqlite_cache.SqliteCache]]:
+    """Build in-memory caches (by default), closing them all after the test."""
+    caches: list[sqlite_cache.SqliteCache] = []
+
+    def factory(db_name: str | Path = ":memory:", **kwargs: Any) -> sqlite_cache.SqliteCache:
+        caches.append(sqlite_cache.SqliteCache(db_name, **kwargs))
+        return caches[-1]
+
+    yield factory
+    for c in caches:
+        c.close()
+
+
+@pytest.fixture
+def cache(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> sqlite_cache.SqliteCache:
+    """An in-memory cache with a one-hour default TTL."""
+    return make_cache(default_ttl=timedelta(hours=1))
+
+
+def count_rows(cache: sqlite_cache.SqliteCache) -> int:
+    """Return the number of rows in the cache table, expired or not."""
+    return cache.con.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+
+
+# ============================================================================
+# Custom cache objects
+# ============================================================================
 
 
 def test_no_get(dummy_api_token: str) -> None:
@@ -52,38 +108,369 @@ def test_no_store(dummy_api_token: str) -> None:
             m.series(5)
 
 
-def test_thread_safety() -> None:
+# ============================================================================
+# Storing and reading
+# ============================================================================
+
+
+def test_get_missing_key(cache: sqlite_cache.SqliteCache) -> None:
+    """An unknown key returns None."""
+    assert cache.get("missing") is None
+
+
+def test_store_and_get(cache: sqlite_cache.SqliteCache) -> None:
+    """Stored data comes back unchanged."""
+    cache.store("key", {"id": 1, "names": ["a", "b"]}, resource="series", kind="detail")
+    assert cache.get("key") == {"id": 1, "names": ["a", "b"]}
+
+
+def test_store_upserts(cache: sqlite_cache.SqliteCache) -> None:
+    """Storing a key twice replaces the first value instead of adding a second row."""
+    cache.store("key", {"v": 1}, resource="series", kind="detail")
+    cache.store("key", {"v": 2}, resource="series", kind="detail")
+
+    assert cache.get("key") == {"v": 2}
+    assert count_rows(cache) == 1
+
+
+def test_upsert_refreshes_expiry(clock: FakeClock, cache: sqlite_cache.SqliteCache) -> None:
+    """Storing a key again restarts its lifetime."""
+    cache.store("key", {"v": 1}, resource="series", kind="detail")
+    clock.now += 3000
+    cache.store("key", {"v": 2}, resource="series", kind="detail")
+    clock.now += 3000
+
+    assert cache.get("key") == {"v": 2}
+
+
+def test_thread_safety(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
     """Concurrent get/store calls from multiple threads should not raise."""
-    cache = sqlite_cache.SqliteCache(":memory:")
+    cache = make_cache()
 
     def worker(i: int) -> None:
         key = f"key-{i}"
-        cache.store(key, {"id": i})
+        cache.store(key, {"id": i}, resource="series", kind="detail")
         assert cache.get(key) == {"id": i}
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         list(executor.map(worker, range(100)))
 
 
-# def test_sql_store(dummy_api_token: str) -> None:
-#     """Test for saving data to the sqlite cache."""
-#     fresh_cache = sqlite_cache.SqliteCache(":memory:")
-#     test_cache = sqlite_cache.SqliteCache("tests/testing_mock.sqlite")
+# ============================================================================
+# Expiry and TTL resolution
+# ============================================================================
 
-#     m = api(dummy_api_token, cache=fresh_cache)
-#     url = "https://metron.cloud/api/series/1/"
 
-#     assert fresh_cache.get(url) is None
+def test_get_skips_expired(clock: FakeClock, cache: sqlite_cache.SqliteCache) -> None:
+    """An entry is served until its TTL passes, then treated as missing."""
+    cache.store("key", {"id": 1}, resource="series", kind="detail")
 
-#     try:
-#         with requests_mock.Mocker() as r:
-#             r.get(url, text=json.dumps(test_cache.get(url)))
-#             m.series(1)
+    clock.now += 3599
+    assert cache.get("key") == {"id": 1}
+    clock.now += 1
+    assert cache.get("key") is None
 
-#         assert fresh_cache.get(url) is not None
-#     except TypeError:
-#         print(
-#             "This test will fail after cache db deleted.\n"
-#             "It should pass if you now re-run the test suite without deleting the database."
-#         )
-#         assert False
+
+def test_none_ttl_never_expires(
+    clock: FakeClock, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A TTL of None keeps the entry forever."""
+    cache = make_cache(ttl={"role": None})
+    cache.store("key", {"id": 1}, resource="role", kind="list")
+
+    clock.now += 10 * 365 * 86400
+    assert cache.get("key") == {"id": 1}
+    assert cache.con.execute("SELECT expires_at FROM cache").fetchone()[0] is None
+
+
+def test_none_default_ttl_never_expires(
+    clock: FakeClock, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A default_ttl of None keeps resources without their own TTL forever."""
+    cache = make_cache(default_ttl=None)
+    cache.store("key", {"id": 1}, resource="series", kind="detail")
+
+    clock.now += 10 * 365 * 86400
+    assert cache.get("key") == {"id": 1}
+
+
+def test_zero_ttl_is_not_stored(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """A TTL of timedelta(0) means the resource isn't cached at all."""
+    cache = make_cache(ttl={"issue": timedelta(0)})
+    cache.store("key", {"id": 1}, resource="issue", kind="detail")
+
+    assert cache.get("key") is None
+    assert count_rows(cache) == 0
+
+
+@pytest.mark.parametrize(
+    ("resource", "kind", "expected"),
+    [
+        ("issue", "list", timedelta(hours=6)),
+        ("issue", "detail", timedelta(days=2)),
+        ("series", "list", timedelta(days=3)),
+        ("series", "detail", timedelta(days=7)),
+        ("role", "list", None),
+    ],
+)
+def test_ttl_resolution_order(
+    resource: str,
+    kind: str,
+    expected: timedelta | None,
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
+) -> None:
+    """A TTL is looked up by resource:kind, then resource, then default_ttl."""
+    cache = make_cache(
+        default_ttl=timedelta(days=7),
+        ttl={
+            "issue:list": timedelta(hours=6),
+            "issue": timedelta(days=2),
+            "series:list": timedelta(days=3),
+            "role": None,
+        },
+    )
+    assert cache.ttl_for(resource, kind) == expected
+
+
+@pytest.mark.parametrize("resource", ["collection", "pull_list", "wish_list"])
+def test_user_data_not_cached_by_default(cache: sqlite_cache.SqliteCache, resource: str) -> None:
+    """Per-user resources aren't cached unless the caller opts in."""
+    cache.store("key", {"id": 1}, resource=resource, kind="list")
+    assert cache.get("key") is None
+
+
+def test_user_data_opt_in(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """A user-supplied TTL overrides the built-in exclusion."""
+    cache = make_cache(ttl={"collection": timedelta(minutes=10)})
+    cache.store("key", {"id": 1}, resource="collection", kind="list")
+
+    assert cache.get("key") == {"id": 1}
+    # The other defaults still apply.
+    assert cache.ttl_for("pull_list", "list") == timedelta(0)
+
+
+def test_user_data_opt_in_by_kind(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """A resource:kind entry overrides a built-in resource-level exclusion."""
+    cache = make_cache(ttl={"wish_list:list": timedelta(minutes=5)})
+
+    assert cache.ttl_for("wish_list", "list") == timedelta(minutes=5)
+    assert cache.ttl_for("wish_list", "detail") == timedelta(0)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"default_ttl": timedelta(seconds=-1)},
+        {"ttl": {"issue": timedelta(seconds=-1)}},
+    ],
+)
+def test_negative_ttl_rejected(kwargs: dict[str, Any]) -> None:
+    """A negative TTL is almost certainly a mistake, so it's rejected up front."""
+    with pytest.raises(ValueError, match="must not be negative"):
+        sqlite_cache.SqliteCache(":memory:", **kwargs)
+
+
+# ============================================================================
+# Management
+# ============================================================================
+
+
+def test_delete(cache: sqlite_cache.SqliteCache) -> None:
+    """delete() removes one key and reports whether it existed."""
+    cache.store("a", 1, resource="series", kind="detail")
+    cache.store("b", 2, resource="series", kind="detail")
+
+    assert cache.delete("a") is True
+    assert cache.delete("a") is False
+    assert cache.get("a") is None
+    assert cache.get("b") == 2
+
+
+def test_invalidate_resource(cache: sqlite_cache.SqliteCache) -> None:
+    """invalidate(resource) removes every kind of entry for that resource only."""
+    cache.store("s1", 1, resource="series", kind="detail")
+    cache.store("s2", 2, resource="series", kind="list")
+    cache.store("i1", 3, resource="issue", kind="detail")
+
+    assert cache.invalidate("series") == 2
+    assert cache.get("s1") is None
+    assert cache.get("s2") is None
+    assert cache.get("i1") == 3
+
+
+def test_invalidate_resource_kind(cache: sqlite_cache.SqliteCache) -> None:
+    """invalidate(resource, kind) leaves the resource's other kind alone."""
+    cache.store("s1", 1, resource="series", kind="detail")
+    cache.store("s2", 2, resource="series", kind="list")
+
+    assert cache.invalidate("series", "list") == 1
+    assert cache.get("s1") == 1
+    assert cache.get("s2") is None
+
+
+def test_clear(cache: sqlite_cache.SqliteCache) -> None:
+    """clear() removes everything."""
+    cache.store("a", 1, resource="series", kind="detail")
+    cache.store("b", 2, resource="issue", kind="list")
+
+    assert cache.clear() == 2
+    assert count_rows(cache) == 0
+
+
+def test_cleanup(clock: FakeClock, make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """cleanup() deletes only expired rows."""
+    cache = make_cache(default_ttl=timedelta(hours=1), ttl={"role": None})
+    cache.store("short", 1, resource="series", kind="detail")
+    cache.store("forever", 2, resource="role", kind="list")
+    clock.now += 3600
+
+    assert cache.cleanup() == 1
+    assert count_rows(cache) == 1
+    assert cache.get("forever") == 2
+
+
+def test_open_purges_expired(clock: FakeClock, tmp_path: Path) -> None:
+    """Opening a cache cleans up rows that expired since it was last used."""
+    db = tmp_path / "cache.db"
+    with sqlite_cache.SqliteCache(db, default_ttl=timedelta(hours=1)) as cache:
+        cache.store("key", 1, resource="series", kind="detail")
+    clock.now += 3600
+
+    with sqlite_cache.SqliteCache(db) as cache:
+        assert count_rows(cache) == 0
+
+
+def test_close_and_context_manager() -> None:
+    """The context manager closes the connection, and closing twice is harmless."""
+    with sqlite_cache.SqliteCache(":memory:") as cache:
+        cache.store("key", 1, resource="series", kind="detail")
+
+    cache.close()
+    with pytest.raises(sqlite3.ProgrammingError):
+        cache.get("key")
+
+
+# ============================================================================
+# Schema
+# ============================================================================
+
+
+def test_persists_across_connections(tmp_path: Path) -> None:
+    """Entries in a file-backed cache survive reopening it."""
+    db = tmp_path / "cache.db"
+    with sqlite_cache.SqliteCache(db) as cache:
+        cache.store("key", {"id": 1}, resource="series", kind="detail")
+
+    with sqlite_cache.SqliteCache(db) as cache:
+        assert cache.get("key") == {"id": 1}
+
+
+def test_file_backed_uses_wal(tmp_path: Path) -> None:
+    """A file-backed cache uses WAL mode and records its schema version."""
+    with sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
+        assert cache.con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert cache.con.execute("PRAGMA user_version").fetchone()[0] == sqlite_cache.SCHEMA_VERSION
+
+
+def test_legacy_database_is_reset(tmp_path: Path) -> None:
+    """A 4.x database's responses table is dropped and replaced on open."""
+    db = tmp_path / "cache.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE responses (key, json, expire)")
+    con.execute("INSERT INTO responses VALUES ('key', '{\"id\": 1}', '2999-01-01')")
+    con.commit()
+    con.close()
+
+    with sqlite_cache.SqliteCache(db) as cache:
+        tables = {
+            row[0]
+            for row in cache.con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        assert tables == {"cache"}
+        assert cache.get("key") is None
+        cache.store("key", {"id": 2}, resource="series", kind="detail")
+        assert cache.get("key") == {"id": 2}
+
+
+# ============================================================================
+# Session integration
+# ============================================================================
+
+
+def test_session_caches_detail(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A detail response is stored with its resource and kind, and served from the cache."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/universe/1/"
+    body = {
+        "id": 1,
+        "name": "Earth 2",
+        "modified": "2024-01-01T12:00:00Z",
+        "publisher": {"id": 1, "name": "DC Comics"},
+        "designation": "Earth 2",
+        "desc": "",
+        "resource_url": "https://metron.cloud/universe/earth-2/",
+    }
+
+    with requests_mock.Mocker() as r:
+        r.get(url, json=body)
+        assert m.universe(1).name == "Earth 2"
+        assert m.universe(1).name == "Earth 2"
+        assert r.call_count == 1
+
+    row = cache.con.execute("SELECT resource, kind FROM cache WHERE key = ?", (url,)).fetchone()
+    assert row == ("universe", "detail")
+
+
+def test_session_caches_paginated_list(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """Every page of a list is stored under the first page's scope, and served from the cache."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+    page1 = "https://metron.cloud/api/role/?name=writer"
+    page2 = "https://metron.cloud/api/role/?name=writer&page=2"
+
+    with requests_mock.Mocker() as r:
+        # requests_mock tries the most recently registered matcher first.
+        r.get(page1, json={"count": 2, "next": page2, "results": [{"id": 1, "name": "Writer"}]})
+        r.get(page2, json={"count": 2, "next": None, "results": [{"id": 2, "name": "Co-Writer"}]})
+
+        first = m.role_list({"name": "writer"})
+        second = m.role_list({"name": "writer"})
+        assert r.call_count == 2
+
+    assert [role.name for role in first] == ["Writer", "Co-Writer"]
+    assert second == first
+    rows = cache.con.execute("SELECT key, resource, kind FROM cache ORDER BY key").fetchall()
+    assert rows == [(page1, "role", "list"), (page2, "role", "list")]
+
+
+def test_session_does_not_cache_pull_list(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """The pull list is fetched every time, since user data isn't cached by default."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+    body = {
+        "count": 1,
+        "next": None,
+        "results": [
+            {
+                "id": 1,
+                "series_count": 3,
+                "series_url": "https://metron.cloud/api/pull_list/series/",
+                "modified": "2024-01-01T12:00:00Z",
+            }
+        ],
+    }
+
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/pull_list/", json=body)
+        m.pull_list()
+        m.pull_list()
+        assert r.call_count == 2
+
+    assert count_rows(cache) == 0
