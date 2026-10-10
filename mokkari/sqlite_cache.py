@@ -108,15 +108,31 @@ class Cache(Protocol):
         ...
 
 
+def _shorter(a: Ttl, b: Ttl) -> Ttl:
+    """Return whichever of two TTLs keeps an entry for less time."""
+    if a is NO_CACHE or b is NO_CACHE:
+        return NO_CACHE
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
+
+
 class SqliteCache:
     """A response cache backed by SQLite, with a configurable lifetime per resource.
 
     How long an entry lives is looked up by ``"{resource}:{kind}"``, then by
-    ``"{resource}"``, then falls back to ``default_ttl``. A TTL is a positive
+    ``"{resource}"``, then by ``"*:{kind}"`` (e.g. ``"*:list"`` for every list
+    endpoint), then falls back to ``default_ttl``. A TTL is a positive
     ``timedelta``, ``None`` (or ``SqliteCache.NEVER``) for an entry that never
     expires, or ``NO_CACHE`` (or ``SqliteCache.NO_CACHE``) for one that isn't
     cached at all. ``collection``, ``pull_list`` and ``wish_list`` default to
     ``NO_CACHE`` (see ``DEFAULT_TTLS``); add them to ``ttl`` to cache them anyway.
+
+    A list response with no results is kept for at most ``empty_list_ttl``, so a
+    search that found nothing doesn't outlive the data arriving on Metron. By
+    default empty lists aren't cached at all.
 
     Safe to share across threads: all database access goes through a single
     connection guarded by an internal lock, since sqlite3 connections aren't
@@ -144,7 +160,9 @@ class SqliteCache:
         ...         "role": SqliteCache.NEVER,
         ...         "collection": timedelta(minutes=10),
         ...         "series:list": SqliteCache.NO_CACHE,
+        ...         "*:list": timedelta(days=1),
         ...     },
+        ...     empty_list_ttl=timedelta(minutes=30),
         ... )
     """
 
@@ -157,6 +175,7 @@ class SqliteCache:
         *,
         default_ttl: Ttl = timedelta(days=7),
         ttl: Mapping[str, Ttl] | None = None,
+        empty_list_ttl: Ttl = NO_CACHE,
     ) -> None:
         """Open (or create) the cache database and purge any expired entries.
 
@@ -164,8 +183,11 @@ class SqliteCache:
             db_name: Path to the SQLite database, or ``":memory:"``.
             default_ttl: Lifetime for resources without an entry in ``ttl``.
                 ``None`` never expires them, and ``NO_CACHE`` caches nothing by default.
-            ttl: Lifetimes keyed by ``"{resource}:{kind}"`` or ``"{resource}"``,
-                merged over ``DEFAULT_TTLS``.
+            ttl: Lifetimes keyed by ``"{resource}:{kind}"``, ``"{resource}"`` or
+                ``"*:{kind}"``, merged over ``DEFAULT_TTLS``.
+            empty_list_ttl: The longest a list response with no results is kept.
+                It only ever shortens the usual TTL: ``NO_CACHE`` doesn't cache
+                empty lists, and ``None`` gives them the usual TTL.
 
         Raises:
             TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
@@ -173,7 +195,12 @@ class SqliteCache:
         """
         self._ttl = {**DEFAULT_TTLS, **(ttl or {})}
         self.default_ttl = default_ttl
-        for name, value in [("default_ttl", default_ttl), *self._ttl.items()]:
+        self.empty_list_ttl = empty_list_ttl
+        for name, value in [
+            ("default_ttl", default_ttl),
+            ("empty_list_ttl", empty_list_ttl),
+            *self._ttl.items(),
+        ]:
             if value is None or value is NO_CACHE:
                 continue
             if not isinstance(value, timedelta):
@@ -260,7 +287,7 @@ class SqliteCache:
         Returns:
             The lifetime, ``None`` if it never expires, or ``NO_CACHE`` if it isn't cached.
         """
-        for name in (f"{resource}:{kind}", resource):
+        for name in (f"{resource}:{kind}", resource, f"*:{kind}"):
             if name in self._ttl:
                 return self._ttl[name]
         return self.default_ttl
@@ -275,20 +302,18 @@ class SqliteCache:
             The stored data, or ``None`` if it's missing or expired.
         """
         with self._lock:
-            row = (
-                self._connection()
-                .execute(
-                    "SELECT value FROM cache WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
-                    (key, time.time()),
-                )
-                .fetchone()
-            )
+            con = self._connection()
+            row = con.execute(
+                "SELECT value FROM cache WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
+                (key, time.time()),
+            ).fetchone()
         return json.loads(row[0]) if row else None
 
     def store(self, key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
         """Save data to the cache database, replacing any existing entry for ``key``.
 
         Nothing is stored when the TTL for ``resource`` and ``kind`` is ``NO_CACHE``.
+        A list response with no results is kept for no longer than ``empty_list_ttl``.
 
         Args:
             key: The cache key, normally the request URL.
@@ -297,6 +322,8 @@ class SqliteCache:
             kind: ``"detail"`` or ``"list"``.
         """
         ttl = self.ttl_for(resource, kind)
+        if kind == "list" and isinstance(value, dict) and value.get("count") == 0:
+            ttl = _shorter(ttl, self.empty_list_ttl)
         if ttl is NO_CACHE:
             return
         now = time.time()

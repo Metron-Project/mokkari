@@ -233,6 +233,91 @@ def test_ttl_resolution_order(
     assert cache.ttl_for(resource, kind) == expected
 
 
+@pytest.mark.parametrize(
+    ("resource", "kind", "expected"),
+    [
+        ("series", "list", timedelta(hours=6)),
+        ("series", "detail", timedelta(days=7)),
+        ("issue", "list", timedelta(days=2)),
+        ("role", "detail", timedelta(days=30)),
+        ("collection", "list", sqlite_cache.NO_CACHE),
+    ],
+)
+def test_kind_wildcard(
+    resource: str,
+    kind: sqlite_cache.CacheKind,
+    expected: sqlite_cache.Ttl,
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
+) -> None:
+    """A "*:kind" entry covers every resource without a TTL of its own."""
+    cache = make_cache(
+        default_ttl=timedelta(days=7),
+        ttl={
+            "*:list": timedelta(hours=6),
+            "*:detail": timedelta(days=7),
+            "issue": timedelta(days=2),
+            "role:detail": timedelta(days=30),
+        },
+    )
+    assert cache.ttl_for(resource, kind) == expected
+
+
+EMPTY_LIST: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
+
+
+def test_empty_list_not_cached_by_default(cache: sqlite_cache.SqliteCache) -> None:
+    """A list response with no results isn't cached unless empty_list_ttl allows it."""
+    cache.store("empty", EMPTY_LIST, resource="issue", kind="list")
+    cache.store("full", {"count": 1, "results": [{"id": 1}]}, resource="issue", kind="list")
+
+    assert cache.get("empty") is None
+    assert cache.get("full") is not None
+
+
+def test_empty_list_ttl_shortens(
+    clock: FakeClock, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """An empty list expires after empty_list_ttl when that's shorter than its TTL."""
+    cache = make_cache(default_ttl=timedelta(hours=1), empty_list_ttl=timedelta(minutes=30))
+    cache.store("key", EMPTY_LIST, resource="issue", kind="list")
+
+    clock.now += 1799
+    assert cache.get("key") == EMPTY_LIST
+    clock.now += 1
+    assert cache.get("key") is None
+
+
+@pytest.mark.parametrize("empty_list_ttl", [timedelta(days=1), None])
+def test_empty_list_ttl_never_lengthens(
+    empty_list_ttl: sqlite_cache.Ttl,
+    clock: FakeClock,
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
+) -> None:
+    """An empty_list_ttl longer than the usual TTL, or None, leaves the usual TTL in place."""
+    cache = make_cache(default_ttl=timedelta(hours=1), empty_list_ttl=empty_list_ttl)
+    cache.store("key", EMPTY_LIST, resource="issue", kind="list")
+
+    clock.now += 3599
+    assert cache.get("key") == EMPTY_LIST
+    clock.now += 1
+    assert cache.get("key") is None
+
+
+def test_empty_list_ttl_keeps_no_cache(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """empty_list_ttl can't opt an excluded resource back into the cache."""
+    cache = make_cache(empty_list_ttl=None)
+    cache.store("key", EMPTY_LIST, resource="collection", kind="list")
+
+    assert cache.get("key") is None
+
+
+def test_empty_list_ttl_only_for_lists(cache: sqlite_cache.SqliteCache) -> None:
+    """A detail response that happens to have a zero count is cached as usual."""
+    cache.store("key", {"id": 1, "count": 0}, resource="series", kind="detail")
+
+    assert cache.get("key") == {"id": 1, "count": 0}
+
+
 @pytest.mark.parametrize("resource", ["collection", "pull_list", "wish_list"])
 def test_user_data_not_cached_by_default(cache: sqlite_cache.SqliteCache, resource: str) -> None:
     """Per-user resources aren't cached unless the caller opts in."""
@@ -276,6 +361,7 @@ def test_class_sentinels(make_cache: Callable[..., sqlite_cache.SqliteCache]) ->
         # 4.x used expire=0 for "never expire", so zero is rejected rather than read as anything.
         {"default_ttl": timedelta(0)},
         {"ttl": {"issue": timedelta(0)}},
+        {"empty_list_ttl": timedelta(0)},
     ],
 )
 def test_non_positive_ttl_rejected(kwargs: dict[str, Any]) -> None:
