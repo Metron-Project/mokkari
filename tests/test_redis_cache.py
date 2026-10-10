@@ -46,9 +46,9 @@ def test_entry_key_layout(client: fakeredis.FakeRedis, cache: RedisCache) -> Non
     cache.store("https://metron.cloud/api/series/1/", {"id": 1}, resource="series", kind="detail")
 
     assert client.get("mokkari:cache:v1:https://metron.cloud/api/series/1/") == b'{"id": 1}'
-    assert client.smembers("mokkari:cache:v1:idx:series:detail") == {
+    assert client.zrange("mokkari:cache:v1:idx:series:detail", 0, -1) == [
         b"mokkari:cache:v1:https://metron.cloud/api/series/1/"
-    }
+    ]
 
 
 def test_entry_expires_with_its_ttl(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
@@ -105,6 +105,28 @@ def test_index_set_outlives_its_entries(client: fakeredis.FakeRedis) -> None:
     assert_pttl(client, index, HOUR_MS)
     cache.store("empty2", EMPTY_LIST, resource="issue", kind="list")
     assert_pttl(client, index, HOUR_MS)
+
+
+def test_index_set_follows_replaced_entry(client: fakeredis.FakeRedis) -> None:
+    """Re-storing an entry with a shorter TTL shortens the index set's expiry to match."""
+    cache = RedisCache(client, default_ttl=timedelta(hours=1), empty_list_ttl=timedelta(minutes=30))
+    index = "mokkari:cache:v1:idx:issue:list"
+
+    cache.store("key", FULL_LIST, resource="issue", kind="list")
+    cache.store("key", EMPTY_LIST, resource="issue", kind="list")
+    assert_pttl(client, index, HOUR_MS // 2)
+
+
+def test_store_prunes_expired_members(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
+    """Keys whose entries have expired are dropped from the index set on the next store."""
+    index = "mokkari:cache:v1:idx:series:detail"
+    cache.store("old", 1, resource="series", kind="detail")
+    # Backdate the member's expiry, as if its entry had expired an hour ago.
+    client.zadd(index, {"mokkari:cache:v1:old": 0})
+    client.delete("mokkari:cache:v1:old")
+
+    cache.store("new", 2, resource="series", kind="detail")
+    assert client.zrange(index, 0, -1) == [b"mokkari:cache:v1:new"]
 
 
 def test_never_expiring_entry_keeps_index_set(client: fakeredis.FakeRedis) -> None:

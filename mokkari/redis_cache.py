@@ -40,22 +40,25 @@ _KINDS: Final[tuple[CacheKind, ...]] = get_args(CacheKind)
 
 # KEYS: entry, index set
 # ARGV: JSON value, TTL in ms ('' to never expire)
-# The index set lives as long as its longest-lived entry. A new set has no expiry yet, which
-# PEXPIRE GT treats as infinite, so it's given the entry's TTL outright instead.
+# The index is a sorted set scored by each entry's expiry time in ms ('+inf' for never). Members
+# whose entries have expired are dropped on every store, so the set holds only live entries, and
+# it lives exactly as long as its longest-lived entry.
 _STORE: Final[str] = """
+local time = redis.call('TIME')
+local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
 if ARGV[2] == '' then
   redis.call('SET', KEYS[1], ARGV[1])
-  redis.call('SADD', KEYS[2], KEYS[1])
-  redis.call('PERSIST', KEYS[2])
-  return 0
-end
-local new = redis.call('EXISTS', KEYS[2]) == 0
-redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
-redis.call('SADD', KEYS[2], KEYS[1])
-if new then
-  redis.call('PEXPIRE', KEYS[2], ARGV[2])
+  redis.call('ZADD', KEYS[2], '+inf', KEYS[1])
 else
-  redis.call('PEXPIRE', KEYS[2], ARGV[2], 'GT')
+  redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+  redis.call('ZADD', KEYS[2], string.format('%.0f', now + tonumber(ARGV[2])), KEYS[1])
+end
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', '(' .. string.format('%.0f', now))
+if redis.call('ZCOUNT', KEYS[2], '+inf', '+inf') > 0 then
+  redis.call('PERSIST', KEYS[2])
+else
+  local last = redis.call('ZRANGE', KEYS[2], -1, -1, 'WITHSCORES')
+  redis.call('PEXPIREAT', KEYS[2], last[2])
 end
 return 0
 """
@@ -139,7 +142,7 @@ class RedisCache:
         return f"{self._base}{key}"
 
     def _index_key(self, resource: str, kind: CacheKind) -> str:
-        """Return the key of the set holding the keys of ``resource``'s ``kind`` entries.
+        """Return the key of the sorted set holding the keys of ``resource``'s ``kind`` entries.
 
         Redis can't delete by resource, so ``invalidate`` reads the keys to delete from here.
         """
@@ -202,7 +205,7 @@ class RedisCache:
         # The index sets are read and removed together, so an entry stored meanwhile goes into
         # a new set rather than one already read, and a later invalidate still finds it.
         pipe = self._client.pipeline(transaction=True)
-        pipe.sunion(indexes)
+        pipe.zunion(indexes)
         pipe.unlink(*indexes)
         members, _ = pipe.execute()
         return self._unlink(members)
