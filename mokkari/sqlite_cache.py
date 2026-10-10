@@ -107,7 +107,7 @@ DEFAULT_TTLS: Final[Mapping[str, Ttl]] = MappingProxyType(
 )
 
 # Bumped whenever the table layout changes. An older database is dropped and recreated rather
-# than migrated, since everything in it can be fetched again.
+# than migrated, since everything in it can be fetched again; a newer one is refused.
 SCHEMA_VERSION: Final[int] = 1
 
 _SCHEMA: Final[str] = """
@@ -222,7 +222,8 @@ class SqliteCache:
     ``requests.Session``. A closed ``":memory:"`` cache reopens empty.
 
     Opening a database written by an older version of Mokkari discards its contents.
-    A database holding anything else is refused with ``CacheError`` rather than replaced.
+    One written by a newer version, or holding anything else, is refused with ``CacheError``
+    rather than replaced.
 
     Examples:
         >>> from datetime import timedelta
@@ -269,7 +270,8 @@ class SqliteCache:
             TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
             ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
                 resource or kind.
-            CacheError: If ``db_name`` is a database with tables other than a Mokkari cache's.
+            CacheError: If ``db_name`` is a database with tables other than a Mokkari cache's,
+                or a cache written by a newer version of Mokkari.
         """
         for name in ttl or {}:
             _check_ttl_key(name)
@@ -358,7 +360,7 @@ class SqliteCache:
 
     @staticmethod
     def _init_schema(con: sqlite3.Connection) -> None:
-        """Create the table, discarding any older layout."""
+        """Create the table, discarding any older layout and refusing a newer one."""
         (version,) = con.execute("PRAGMA user_version").fetchone()
         if version == SCHEMA_VERSION:
             return
@@ -369,6 +371,15 @@ class SqliteCache:
             (version,) = con.execute("PRAGMA user_version").fetchone()
             if version == SCHEMA_VERSION:
                 return
+            # Rebuilding a newer layout would wipe the cache of the newer Mokkari sharing this
+            # file, which would then wipe ours, on every open.
+            if version > SCHEMA_VERSION:
+                msg = (
+                    f"The cache database was written by a newer version of Mokkari (schema "
+                    f"{version}; this version reads {SCHEMA_VERSION}). Upgrade Mokkari, or give "
+                    "this cache a file of its own."
+                )
+                raise exceptions.CacheError(msg)
             if foreign := SqliteCache._foreign_objects(con):
                 msg = (
                     f"Not a Mokkari cache database, refusing to replace it: it has {foreign}. "

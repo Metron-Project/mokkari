@@ -800,6 +800,36 @@ def test_foreign_database_refused(tmp_path: Path, setup: list[str], match: str) 
     con.close()
 
 
+def test_newer_schema_refused(tmp_path: Path) -> None:
+    """A cache written by a newer Mokkari is refused rather than rebuilt, so its entries survive."""
+    db = tmp_path / "cache.db"
+    with sqlite_cache.SqliteCache(db) as cache:
+        cache.store("key", {"id": 1}, resource="series", kind="detail")
+        cache.con.execute(f"PRAGMA user_version = {sqlite_cache.SCHEMA_VERSION + 1}")
+
+    current = sqlite_cache.SCHEMA_VERSION
+    match = rf"newer version of Mokkari \(schema {current + 1}; this version reads {current}\)"
+    with pytest.raises(exceptions.CacheError, match=match):
+        sqlite_cache.SqliteCache(db)
+
+    con = sqlite3.connect(db)
+    assert con.execute("PRAGMA user_version").fetchone()[0] == sqlite_cache.SCHEMA_VERSION + 1
+    assert con.execute("SELECT key FROM cache").fetchall() == [("key",)]
+    con.close()
+
+
+def test_older_schema_rebuilt(tmp_path: Path) -> None:
+    """A cache written by an older Mokkari 5 is dropped and rebuilt at the current version."""
+    db = tmp_path / "cache.db"
+    with sqlite_cache.SqliteCache(db) as cache:
+        cache.store("key", {"id": 1}, resource="series", kind="detail")
+        cache.con.execute("PRAGMA user_version = 0")
+
+    with sqlite_cache.SqliteCache(db) as cache:
+        assert cache.get("key") is None
+        assert cache.con.execute("PRAGMA user_version").fetchone()[0] == sqlite_cache.SCHEMA_VERSION
+
+
 def test_concurrent_open_creates_schema_once(tmp_path: Path) -> None:
     """Caches opening the same new database at once don't collide creating the table."""
     for i in range(10):
