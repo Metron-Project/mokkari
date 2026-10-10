@@ -44,6 +44,7 @@ nav:
       - Sqlite_Cache: mokkari/sqlitecache.md
       - Rate Limiter: mokkari/rate_limit.md
       - Redis Rate Limiter: mokkari/redis_rate_limit.md
+      - Redis Cache: mokkari/redis_cache.md
       - Exceptions: mokkari/exceptions.md
       - Utilities: mokkari/utils.md
   - Schemas:

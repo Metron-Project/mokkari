@@ -233,6 +233,29 @@ m = mokkari.api(api_token="your-token", cache=SqliteCache("mokkari_cache.db"))
 upgrading from 4.x and refer to `mokkari.sqlite_cache.SqliteCache` after only
 `import mokkari`, import the module explicitly as shown above.
 
+### Sharing a cache with Redis
+
+`SqliteCache` keeps its cache on one machine. `mokkari.redis_cache.RedisCache`
+keeps it in Redis instead, so several processes or hosts can share it. It takes
+the same `default_ttl`, `ttl` and `empty_list_ttl` options. Install the `redis`
+extra and pass it a client:
+
+```python
+import redis
+
+import mokkari
+from mokkari.redis_cache import RedisCache
+
+client = redis.Redis(host="localhost", port=6379)
+m = mokkari.api(api_token="your-token", cache=RedisCache(client))
+```
+
+Entries expire through Redis's own TTLs, and every key starts with `key_prefix`
+(`"mokkari:cache"` by default), so `clear()` leaves other data in the database
+alone. It needs Redis 7.0 or later on a single server, not a Redis Cluster. If
+Redis is unreachable, the request goes to Metron instead and the error is
+logged.
+
 ## Connection Reuse
 
 A `Session` keeps its connections to Metron open between requests, so repeated

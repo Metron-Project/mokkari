@@ -69,7 +69,7 @@ class ResourceEndpoint:
 RESOURCES: Final[frozenset[str]] = frozenset(
     value for name, value in vars(ResourceEndpoint).items() if name.isupper()
 )
-"""The resources ``Session`` caches responses under, for use in ``SqliteCache``'s ``ttl``."""
+"""The resources ``Session`` caches responses under, for use in a cache's ``ttl``."""
 
 
 class NoCache(Enum):
@@ -111,7 +111,8 @@ class Cache(Protocol):
     """Protocol for a response cache passed to ``Session``.
 
     Pass an object implementing this protocol as ``Session(cache=...)`` (or
-    ``api(..., cache=...)``). ``SqliteCache`` is the bundled implementation.
+    ``api(..., cache=...)``). ``SqliteCache`` and ``RedisCache`` are the bundled
+    implementations.
     Implementations must be safe to call concurrently from multiple threads
     sharing one ``Session``.
 
