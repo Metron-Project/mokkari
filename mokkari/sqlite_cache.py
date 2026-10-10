@@ -11,6 +11,7 @@ from __future__ import annotations
 __all__ = ["DEFAULT_TTLS", "NO_CACHE", "Cache", "CacheKind", "NoCache", "SqliteCache", "Ttl"]
 
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -23,7 +24,13 @@ if TYPE_CHECKING:
     import os
     from collections.abc import Mapping
 
+LOGGER = logging.getLogger(__name__)
+
 CacheKind = Literal["detail", "list"]
+
+# How long, in seconds, to wait for another connection (possibly in another process) to
+# release its lock before giving up with "database is locked".
+_BUSY_TIMEOUT: Final[float] = 5.0
 
 
 class NoCache(Enum):
@@ -113,6 +120,11 @@ class SqliteCache:
     connection guarded by an internal lock, since sqlite3 connections aren't
     safe for concurrent use from multiple threads on their own.
 
+    Uses SQLite's WAL journal mode where it can, so readers in other processes
+    aren't blocked while one writes. Where WAL isn't available, such as on some
+    network filesystems, the cache logs a warning and carries on in SQLite's
+    default journal mode; ``journal_mode`` says which one is in use.
+
     Opening a database written by an older version of Mokkari discards its contents.
 
     Examples:
@@ -169,16 +181,31 @@ class SqliteCache:
                 raise ValueError(msg)
 
         self._lock = threading.Lock()
-        self.con = sqlite3.connect(db_name, check_same_thread=False)
+        self.con = sqlite3.connect(db_name, timeout=_BUSY_TIMEOUT, check_same_thread=False)
         with self._lock:
+            self.journal_mode = self._enable_wal()
             self._init_schema()
         self.cleanup()
 
+    def _enable_wal(self) -> str:
+        """Switch to WAL if possible and return the journal mode now in use.
+
+        It's a cache, so falling back to another mode is better than refusing to open.
+        The caller must hold the lock.
+        """
+        try:
+            (mode,) = self.con.execute("PRAGMA journal_mode=WAL").fetchone()
+        except sqlite3.OperationalError as e:
+            (mode,) = self.con.execute("PRAGMA journal_mode").fetchone()
+            LOGGER.warning("Couldn't enable WAL for the cache, using %r mode: %s", mode, e)
+            return mode
+        # An in-memory database ignores the request and stays in "memory" mode.
+        if mode not in ("wal", "memory"):
+            LOGGER.warning("Couldn't enable WAL for the cache, using %r mode", mode)
+        return mode
+
     def _init_schema(self) -> None:
         """Create the table, discarding any older layout. The caller must hold the lock."""
-        # WAL lets readers in other processes keep going while one writes. An in-memory
-        # database ignores it and stays in "memory" mode.
-        self.con.execute("PRAGMA journal_mode=WAL")
         (version,) = self.con.execute("PRAGMA user_version").fetchone()
         if version == SCHEMA_VERSION:
             return

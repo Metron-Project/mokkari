@@ -5,6 +5,7 @@ This module contains tests for SqliteCache objects.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -395,8 +396,61 @@ def test_persists_across_connections(tmp_path: Path) -> None:
 def test_file_backed_uses_wal(tmp_path: Path) -> None:
     """A file-backed cache uses WAL mode and records its schema version."""
     with sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
+        assert cache.journal_mode == "wal"
         assert cache.con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert cache.con.execute("PRAGMA user_version").fetchone()[0] == sqlite_cache.SCHEMA_VERSION
+
+
+def test_in_memory_stays_in_memory_mode(caplog: pytest.LogCaptureFixture) -> None:
+    """An in-memory cache can't use WAL, which is expected and not worth a warning."""
+    with caplog.at_level(logging.WARNING), sqlite_cache.SqliteCache(":memory:") as cache:
+        assert cache.journal_mode == "memory"
+    assert not caplog.records
+
+
+def test_busy_timeout_is_set(tmp_path: Path) -> None:
+    """The connection waits for other processes' locks instead of failing right away."""
+    with sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
+        assert cache.con.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+
+
+class WalRefusedConnection(sqlite3.Connection):
+    """A connection where WAL can't be enabled, as on a network filesystem."""
+
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
+        """Leave the journal mode unchanged when asked for WAL, as SQLite does."""
+        if sql == "PRAGMA journal_mode=WAL":
+            sql = "PRAGMA journal_mode"
+        return super().execute(sql, *args)
+
+
+class WalErrorConnection(sqlite3.Connection):
+    """A connection where asking for WAL raises, e.g. while another process holds a lock."""
+
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
+        """Raise when asked for WAL."""
+        if sql == "PRAGMA journal_mode=WAL":
+            msg = "database is locked"
+            raise sqlite3.OperationalError(msg)
+        return super().execute(sql, *args)
+
+
+@pytest.mark.parametrize("factory", [WalRefusedConnection, WalErrorConnection])
+def test_falls_back_without_wal(
+    factory: type[sqlite3.Connection],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When WAL isn't available the cache warns and keeps working in the default mode."""
+    connect = sqlite3.connect
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **kw: connect(*a, factory=factory, **kw))
+
+    with caplog.at_level(logging.WARNING), sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
+        assert cache.journal_mode == "delete"
+        cache.store("key", {"id": 1}, resource="series", kind="detail")
+        assert cache.get("key") == {"id": 1}
+    assert "Couldn't enable WAL" in caplog.text
 
 
 def test_legacy_database_is_reset(tmp_path: Path) -> None:
