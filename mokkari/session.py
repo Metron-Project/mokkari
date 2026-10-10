@@ -442,6 +442,9 @@ class Session:
         self._rate_limit_status = rate_limit.RateLimitStatus()
         self._cache_status_lock = threading.Lock()
         self._last_cache_status: str | None = None
+        # Counts invalidations, so a response fetched before one isn't stored after it.
+        self._invalidation_lock = threading.Lock()
+        self._invalidations = 0
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -577,12 +580,15 @@ class Session:
             if cached_response is not None:
                 return cached_response, True
 
+        invalidations = self._invalidations
         data = self._request_data("GET", url, params)
 
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
 
-        self._save_results_to_cache(cache_key, data, _cached_resource(endpoint), kind)
+        self._save_results_to_cache(
+            cache_key, data, _cached_resource(endpoint), kind, invalidations=invalidations
+        )
 
         return data, False
 
@@ -2199,6 +2205,7 @@ class Session:
         limited_retries = 0
 
         while has_next_page:
+            invalidations = self._invalidations
             try:
                 response = self._request_data("GET", next_page)
             except exceptions.RateLimitError as e:
@@ -2231,7 +2238,9 @@ class Session:
             limited_retries = 0
             results.extend(response["results"])
 
-            self._save_results_to_cache(next_page, response, resource, "list")
+            self._save_results_to_cache(
+                next_page, response, resource, "list", invalidations=invalidations
+            )
 
             if response["next"]:
                 next_page = response["next"]
@@ -2678,7 +2687,9 @@ class Session:
             LOGGER.exception("Cache get() failed; fetching from Metron")
             return None
 
-    def _save_results_to_cache(self, key: str, data: Any, resource: str, kind: CacheKind) -> None:
+    def _save_results_to_cache(
+        self, key: str, data: Any, resource: str, kind: CacheKind, *, invalidations: int
+    ) -> None:
         """Store the provided data in the cache using the specified key.
 
         Args:
@@ -2686,15 +2697,22 @@ class Session:
             data: The data to be stored in the cache.
             resource: The resource the entry is cached under (see ``_cached_resource``).
             kind: ``"detail"`` or ``"list"``.
+            invalidations: ``self._invalidations`` from just before the request was sent.
         """
         if self.cache is None:
             return
-        # The data has already been fetched, so a cache that fails to store it (e.g. its
-        # database is locked or the disk is full) is logged rather than failing the request.
-        try:
-            self.cache.store(self._cache_key(key, resource), data, resource=resource, kind=kind)
-        except Exception:
-            LOGGER.exception("Cache store() failed; not caching %s", key)
+        with self._invalidation_lock:
+            # A write invalidated the cache while this was being fetched, so the data may be
+            # from before it, and storing it would undo the invalidation.
+            if invalidations != self._invalidations:
+                LOGGER.debug("Cache invalidated during the request; not caching %s", key)
+                return
+            # The data has already been fetched, so a cache that fails to store it (e.g. its
+            # database is locked or the disk is full) is logged rather than failing the request.
+            try:
+                self.cache.store(self._cache_key(key, resource), data, resource=resource, kind=kind)
+            except Exception:
+                LOGGER.exception("Cache store() failed; not caching %s", key)
 
     def _invalidate_cache(self, endpoint: list[str | int]) -> None:
         """Drop cached entries a write to ``endpoint`` may have made stale.
@@ -2708,10 +2726,13 @@ class Session:
         invalidate = getattr(self.cache, "invalidate", None)
         if invalidate is None:
             return
-        for resource in _written_resources(endpoint):
-            # The write may already have been applied, so raising here would invite a retry
-            # that repeats it, or hide the write's own error; log a failing cache instead.
-            try:
-                invalidate(resource)
-            except Exception:
-                LOGGER.exception("Cache invalidate(%r) failed; ignoring", resource)
+        with self._invalidation_lock:
+            self._invalidations += 1
+            for resource in _written_resources(endpoint):
+                # The write may already have been applied, so raising here would invite a
+                # retry that repeats it, or hide the write's own error; log a failing cache
+                # instead.
+                try:
+                    invalidate(resource)
+                except Exception:
+                    LOGGER.exception("Cache invalidate(%r) failed; ignoring", resource)

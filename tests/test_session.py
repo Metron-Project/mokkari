@@ -2116,7 +2116,7 @@ def test__retrieve_all_results_skips_cache_reads(session: Session) -> None:
         # Assert
         assert out["results"] == [1, 2]
         cache_get.assert_not_called()
-        cache_store.assert_called_once_with("url2", resp2, "foo", "list")
+        cache_store.assert_called_once_with("url2", resp2, "foo", "list", invalidations=0)
 
 
 def test__retrieve_all_results_without_cache(session: Session) -> None:

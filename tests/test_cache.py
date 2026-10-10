@@ -1139,6 +1139,59 @@ def test_session_write_invalidates_cache(
         assert r.call_count == 3
 
 
+def test_read_during_write_not_stored(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A response fetched before a write lands isn't stored after the write invalidates."""
+    m = api(dummy_api_token, cache=make_cache())
+    url = "https://metron.cloud/api/universe/1/"
+    body = {
+        "id": 1,
+        "name": "Earth 2",
+        "modified": "2024-01-01T12:00:00Z",
+        "publisher": {"id": 1, "name": "DC Comics"},
+        "designation": "Earth 2",
+        "desc": "",
+        "resource_url": "https://metron.cloud/universe/earth-2/",
+    }
+
+    def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
+        # The write lands while this read is in flight, so the read returns the old data.
+        m.universe_patch(1, UniversePost(name="Earth Two"))
+        return body
+
+    with requests_mock.Mocker() as r:
+        r.patch(url, json={**body, "name": "Earth Two", "publisher": 1})
+        r.get(url, json=write_then_answer)
+        assert m.universe(1).name == "Earth 2"
+        r.get(url, json={**body, "name": "Earth Two"})
+        assert m.universe(1).name == "Earth Two"
+
+
+def test_page_read_during_write_not_stored(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A following page fetched while a write invalidates isn't stored either."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/series_type/"
+    page2 = f"{url}?page=2"
+
+    def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
+        m._invalidate_cache(["series_type"])
+        return {"count": 2, "next": None, "previous": url, "results": [{"id": 2, "name": "B"}]}
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            url,
+            json={"count": 2, "next": page2, "previous": None, "results": [{"id": 1, "name": "A"}]},
+        )
+        r.get(page2, json=write_then_answer)
+        m.series_type_list()
+
+    assert cache.get(page2) is None
+
+
 @pytest.mark.parametrize(
     ("endpoint", "expected"),
     [
