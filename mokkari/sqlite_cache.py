@@ -130,7 +130,8 @@ class SqliteCache:
                 empty lists, and ``None`` gives them the usual TTL.
 
         Raises:
-            TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
+            TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``, or a
+                ``ttl`` key isn't a string.
             ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
                 resource or kind.
             CacheError: If ``db_name`` is a database with tables other than a Mokkari cache's,

@@ -499,6 +499,13 @@ def test_unknown_ttl_key_rejected(key: str, match: str) -> None:
         sqlite_cache.SqliteCache(":memory:", ttl={key: timedelta(hours=1)})
 
 
+@pytest.mark.parametrize("key", [1, session.ResourceEndpoint, None])
+def test_non_string_ttl_key_rejected(key: object) -> None:
+    """A ttl key that isn't a string is a TypeError, like a TTL of the wrong type."""
+    with pytest.raises(TypeError, match=r"TTL key must be a string"):
+        sqlite_cache.SqliteCache(":memory:", ttl={key: timedelta(hours=1)})  # type: ignore[dict-item]
+
+
 def test_every_ttl_key_form_accepted() -> None:
     """Each resource can be given alone or with either kind, and either kind with '*'."""
     keys = [

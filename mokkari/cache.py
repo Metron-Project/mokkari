@@ -122,8 +122,16 @@ class Cache(Protocol):
         ...
 
 
-def _check_ttl_key(name: str) -> None:
-    """Raise ``ValueError`` unless ``name`` is a ``ttl`` key that ``ttl_for`` can match."""
+def _check_ttl_key(name: object) -> None:
+    """Raise unless ``name`` is a ``ttl`` key that ``ttl_for`` can match.
+
+    Raises:
+        TypeError: If ``name`` isn't a string.
+        ValueError: If ``name`` has an unknown resource or kind.
+    """
+    if not isinstance(name, str):
+        msg = f"TTL key must be a string, not {name!r}"
+        raise TypeError(msg)
     resource, sep, kind = name.partition(":")
     if sep and kind not in _KINDS:
         msg = f"TTL key {name!r} has an unknown kind {kind!r}: use one of {sorted(_KINDS)}"
@@ -187,7 +195,8 @@ class TtlPolicy:
                 empty lists, and ``None`` gives them the usual TTL.
 
         Raises:
-            TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
+            TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``, or a
+                ``ttl`` key isn't a string.
             ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
                 resource or kind.
         """
