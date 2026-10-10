@@ -457,6 +457,46 @@ def test_non_timedelta_ttl_rejected(kwargs: dict[str, Any]) -> None:
         sqlite_cache.SqliteCache(":memory:", **kwargs)
 
 
+@pytest.mark.parametrize(
+    ("key", "match"),
+    [
+        ("issues", r"unknown resource 'issues'"),
+        ("issues:list", r"unknown resource 'issues'"),
+        ("collection:lists", r"unknown kind 'lists'"),
+        ("issue:", r"unknown kind ''"),
+        ("*:details", r"unknown kind 'details'"),
+        ("*", r"needs a kind.*default_ttl"),
+        ("issue:list:extra", r"unknown kind 'list:extra'"),
+    ],
+)
+def test_unknown_ttl_key_rejected(key: str, match: str) -> None:
+    """A ttl key that could never match, such as a typo, is rejected rather than ignored."""
+    with pytest.raises(ValueError, match=match):
+        sqlite_cache.SqliteCache(":memory:", ttl={key: timedelta(hours=1)})
+
+
+def test_every_ttl_key_form_accepted() -> None:
+    """Each resource can be given alone or with either kind, and either kind with '*'."""
+    keys = [
+        *sqlite_cache.RESOURCES,
+        *(
+            f"{resource}:{kind}"
+            for resource in sqlite_cache.RESOURCES
+            for kind in ("detail", "list")
+        ),
+        "*:detail",
+        "*:list",
+    ]
+    with sqlite_cache.SqliteCache(":memory:", ttl=dict.fromkeys(keys, timedelta(hours=1))) as cache:
+        assert cache.ttl_for("role", "list") == timedelta(hours=1)
+
+
+def test_resources_match_session_endpoints() -> None:
+    """Every resource Session caches under can be given a TTL."""
+    endpoints = {value for name, value in vars(session.ResourceEndpoint).items() if name.isupper()}
+    assert endpoints | {"role", "series_type"} == sqlite_cache.RESOURCES
+
+
 # ============================================================================
 # Management
 # ============================================================================

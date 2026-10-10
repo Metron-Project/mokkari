@@ -8,7 +8,16 @@ This module provides the following classes:
 
 from __future__ import annotations
 
-__all__ = ["DEFAULT_TTLS", "NO_CACHE", "Cache", "CacheKind", "NoCache", "SqliteCache", "Ttl"]
+__all__ = [
+    "DEFAULT_TTLS",
+    "NO_CACHE",
+    "RESOURCES",
+    "Cache",
+    "CacheKind",
+    "NoCache",
+    "SqliteCache",
+    "Ttl",
+]
 
 import json
 import logging
@@ -18,7 +27,16 @@ import time
 from datetime import timedelta
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Final,
+    Literal,
+    Protocol,
+    Self,
+    get_args,
+    runtime_checkable,
+)
 
 if TYPE_CHECKING:
     import os
@@ -27,6 +45,28 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 CacheKind = Literal["detail", "list"]
+_KINDS: Final[frozenset[str]] = frozenset(get_args(CacheKind))
+
+RESOURCES: Final[frozenset[str]] = frozenset(
+    {
+        "arc",
+        "character",
+        "collection",
+        "creator",
+        "imprint",
+        "issue",
+        "publisher",
+        "pull_list",
+        "reading_list",
+        "role",
+        "series",
+        "series_type",
+        "team",
+        "universe",
+        "wish_list",
+    }
+)
+"""The resources ``Session`` caches responses under, for use in ``SqliteCache``'s ``ttl``."""
 
 # How long, in seconds, to wait for another connection (possibly in another process) to
 # release its lock before giving up with "database is locked".
@@ -113,6 +153,24 @@ class Cache(Protocol):
         ...
 
 
+def _check_ttl_key(name: str) -> None:
+    """Raise ``ValueError`` unless ``name`` is a ``ttl`` key that ``ttl_for`` can match."""
+    resource, sep, kind = name.partition(":")
+    if sep and kind not in _KINDS:
+        msg = f"TTL key {name!r} has an unknown kind {kind!r}: use one of {sorted(_KINDS)}"
+        raise ValueError(msg)
+    if resource == "*":
+        if not sep:
+            msg = "TTL key '*' needs a kind, e.g. '*:list'. Use default_ttl for everything else."
+            raise ValueError(msg)
+        return
+    if resource not in RESOURCES:
+        msg = (
+            f"TTL key {name!r} has an unknown resource {resource!r}: use one of {sorted(RESOURCES)}"
+        )
+        raise ValueError(msg)
+
+
 def _shorter(a: Ttl, b: Ttl) -> Ttl:
     """Return whichever of two TTLs keeps an entry for less time."""
     if a is NO_CACHE or b is NO_CACHE:
@@ -189,15 +247,19 @@ class SqliteCache:
             default_ttl: Lifetime for resources without an entry in ``ttl``.
                 ``None`` never expires them, and ``NO_CACHE`` caches nothing by default.
             ttl: Lifetimes keyed by ``"{resource}:{kind}"``, ``"{resource}"`` or
-                ``"*:{kind}"``, merged over ``DEFAULT_TTLS``.
+                ``"*:{kind}"``, merged over ``DEFAULT_TTLS``. ``resource`` is one of
+                ``RESOURCES`` and ``kind`` is ``"detail"`` or ``"list"``.
             empty_list_ttl: The longest a list response with no results is kept.
                 It only ever shortens the usual TTL: ``NO_CACHE`` doesn't cache
                 empty lists, and ``None`` gives them the usual TTL.
 
         Raises:
             TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
-            ValueError: If any TTL is zero or negative.
+            ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
+                resource or kind.
         """
+        for name in ttl or {}:
+            _check_ttl_key(name)
         self._ttl = {**DEFAULT_TTLS, **(ttl or {})}
         self.default_ttl = default_ttl
         self.empty_list_ttl = empty_list_ttl
