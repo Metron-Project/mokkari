@@ -199,6 +199,15 @@ _PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
 )
 
 
+def _cached_resource(endpoint: list[str | int]) -> str:
+    """Return the resource a GET from ``endpoint`` is cached under."""
+    # A resource's issue list (e.g. series/5/issue_list) is a list of issues, so it's
+    # cached as issues: its TTL is the issue TTL, and an issue write invalidates it.
+    if endpoint[-1] == "issue_list":
+        return ResourceEndpoint.ISSUE
+    return str(endpoint[0])
+
+
 def _written_resources(endpoint: list[str | int]) -> tuple[str, ...]:
     """Return the cached resources a successful write to ``endpoint`` may have changed."""
     resource = str(endpoint[0])
@@ -564,7 +573,7 @@ class Session:
         cache_key = f"{url}{cache_params}"
 
         if use_cache:
-            cached_response = self._get_results_from_cache(cache_key, str(endpoint[0]))
+            cached_response = self._get_results_from_cache(cache_key, _cached_resource(endpoint))
             if cached_response is not None:
                 return cached_response, True
 
@@ -573,7 +582,7 @@ class Session:
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
 
-        self._save_results_to_cache(cache_key, data, str(endpoint[0]), kind)
+        self._save_results_to_cache(cache_key, data, _cached_resource(endpoint), kind)
 
         return data, False
 
@@ -2098,7 +2107,7 @@ class Session:
         if params is None:
             params = {}
 
-        resource = str(endpoint[0])
+        resource = _cached_resource(endpoint)
         result, from_cache = self._fetch(endpoint, params, kind="list")
         if not result["next"]:
             return result

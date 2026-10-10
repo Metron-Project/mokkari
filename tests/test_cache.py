@@ -1104,6 +1104,40 @@ def test_written_resources(endpoint: list[str | int], expected: tuple[str, ...])
     assert session._written_resources(endpoint) == expected
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        (["series"], "series"),
+        (["series", 5], "series"),
+        (["series", 5, "issue_list"], "issue"),
+        (["character", 5, "issue_list"], "issue"),
+        (["reading_list", 5, "items"], "reading_list"),
+    ],
+)
+def test_cached_resource(endpoint: list[str | int], expected: str) -> None:
+    """A resource's issue list is cached as issues, everything else as its own resource."""
+    assert session._cached_resource(endpoint) == expected
+
+
+def test_issue_write_invalidates_issue_lists(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """Invalidating issues drops a series' cached issue list."""
+    cache = make_cache(empty_list_ttl=timedelta(hours=1))
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/series/5/issue_list/"
+    body = {"count": 0, "next": None, "previous": None, "results": []}
+
+    with requests_mock.Mocker() as r:
+        r.get(url, json=body)
+        m.series_issues_list(5)
+        m.series_issues_list(5)
+        assert r.call_count == 1
+        cache.invalidate("issue")
+        m.series_issues_list(5)
+        assert r.call_count == 2
+
+
 def test_void_write_invalidates_cache(dummy_api_token: str) -> None:
     """A write with no response body invalidates the cache too."""
     cache = RecordingCache()
