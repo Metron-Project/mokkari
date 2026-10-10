@@ -400,7 +400,7 @@ def test_user_data_not_cached_by_default(cache: sqlite_cache.SqliteCache, resour
 
 def test_user_data_opt_in(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
     """A user-supplied TTL overrides the built-in exclusion."""
-    cache = make_cache(ttl={"collection": timedelta(minutes=10)})
+    cache = make_cache(ttl={"collection": timedelta(minutes=10)}, empty_list_ttl=None)
     cache.store("key", {"id": 1}, resource="collection", kind="list")
 
     assert cache.get("key") == {"id": 1}
@@ -1058,3 +1058,83 @@ def test_failing_cache_store_keeps_fetched_pages(
 
     assert [role.name for role in roles] == ["Writer", "Co-Writer"]
     assert f"Cache store() failed; not caching {ROLE_PAGE2}" in caplog.text
+
+
+# ============================================================================
+# Per-user data
+# ============================================================================
+
+READING_LIST_URL = "https://metron.cloud/api/reading_list/3/"
+READING_LIST_BODY = {
+    "id": 3,
+    "name": "Private List",
+    "slug": "private-list",
+    "user": {"id": 1, "username": "alice"},
+    "desc": "",
+    "list_type": "Custom",
+    "is_private": True,
+    "attribution_source": "",
+    "attribution_url": "",
+    "average_rating": None,
+    "rating_count": 0,
+    "items_url": "https://metron.cloud/api/reading_list/3/items/",
+    "resource_url": "https://metron.cloud/reading-lists/private-list/",
+    "modified": "2024-01-01T12:00:00Z",
+}
+
+
+def test_per_user_data_not_shared_between_tokens(
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
+) -> None:
+    """A reading list cached for one token isn't served to another token sharing the cache."""
+    cache = make_cache()
+    alice = api("alice-token", cache=cache)
+    bob = api("bob-token", cache=cache)
+
+    with requests_mock.Mocker() as r:
+        r.get(READING_LIST_URL, json=READING_LIST_BODY)
+        alice.reading_list(3)
+        alice.reading_list(3)
+        assert r.call_count == 1
+        r.get(READING_LIST_URL, status_code=404, json={"detail": "Not found."})
+        with pytest.raises(exceptions.ApiError):
+            bob.reading_list(3)
+        assert r.call_count == 2
+
+    keys = [row[0] for row in cache.con.execute("SELECT key FROM cache")]
+    assert len(keys) == 1
+    assert keys[0].startswith(f"{READING_LIST_URL}#user=")
+    assert "alice-token" not in keys[0]
+
+
+def test_shared_data_shared_between_tokens(
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
+) -> None:
+    """Reference data isn't per-user, so one token's cached copy is served to another."""
+    cache = make_cache()
+    alice = api("alice-token", cache=cache)
+    bob = api("bob-token", cache=cache)
+
+    with requests_mock.Mocker() as r:
+        r.get(ROLE_PAGE1, json=role_page(None, "Writer"))
+        alice.role_list({"name": "writer"})
+        bob.role_list({"name": "writer"})
+        assert r.call_count == 1
+
+
+def test_per_user_pages_scoped(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """Every page of a per-user list is scoped to the token, not only the first."""
+    cache = make_cache(ttl={"collection": timedelta(minutes=10)}, empty_list_ttl=None)
+    m = api("alice-token", cache=cache)
+    page1 = "https://metron.cloud/api/collection/"
+    page2 = "https://metron.cloud/api/collection/?page=2"
+
+    with requests_mock.Mocker() as r:
+        r.get(page1, json={"count": 0, "next": page2, "results": []})
+        r.get(page2, json={"count": 0, "next": None, "results": []})
+        m.collections_list()
+        m.collections_list()
+        assert r.call_count == 2
+
+    keys = sorted(row[0] for row in cache.con.execute("SELECT key FROM cache"))
+    assert [key.partition("#user=")[:2] for key in keys] == [(page1, "#user="), (page2, "#user=")]

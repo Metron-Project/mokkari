@@ -7,6 +7,7 @@ This module provides the following classes:
 
 __all__ = ["Session"]
 
+import hashlib
 import http.cookiejar
 import inspect
 import json
@@ -183,6 +184,18 @@ def _check_cache(cache: object) -> None:
         except TypeError as e:
             msg = f"Cache must have a {expected} method, not {name}{signature}: {cache!r}"
             raise exceptions.CacheError(msg) from e
+
+
+# Responses from these depend on whose token made the request (e.g. a private reading list),
+# so their cache keys are scoped to the token and other tokens sharing the cache can't see them.
+_PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
+    {
+        ResourceEndpoint.COLLECTION,
+        ResourceEndpoint.PULL_LIST,
+        ResourceEndpoint.READING_LIST,
+        ResourceEndpoint.WISH_LIST,
+    }
+)
 
 
 def _written_resources(endpoint: list[str | int]) -> tuple[str, ...]:
@@ -406,6 +419,8 @@ class Session:
         }
         # Kept out of ``header`` so the token isn't logged with the request headers.
         self._auth = _BearerAuth(api_token)
+        # Identifies the token in per-user cache keys without storing the token itself.
+        self._cache_user = hashlib.sha256(api_token.encode()).hexdigest()[:16]
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
         # Checked here so a mis-wired cache fails now rather than on the first request.
         if cache is not None:
@@ -548,7 +563,7 @@ class Session:
         cache_key = f"{url}{cache_params}"
 
         if use_cache:
-            cached_response = self._get_results_from_cache(cache_key)
+            cached_response = self._get_results_from_cache(cache_key, str(endpoint[0]))
             if cached_response is not None:
                 return cached_response, True
 
@@ -2087,19 +2102,20 @@ class Session:
         if not result["next"]:
             return result
         if from_cache:
-            if (cached := self._cached_pages(result)) is not None:
+            if (cached := self._cached_pages(result, resource)) is not None:
                 return cached
             result, _ = self._fetch(endpoint, params, kind="list", use_cache=False)
             if not result["next"]:
                 return result
         return self._retrieve_all_results(result, resource, "list")
 
-    def _cached_pages(self, data: dict[str, Any]) -> dict[str, Any] | None:
+    def _cached_pages(self, data: dict[str, Any], resource: str) -> dict[str, Any] | None:
         """Add every following page of ``data`` from the cache, without making any requests.
 
         Args:
             data: The first page, from the cache. It isn't modified, since the cache may
                 have returned the very object it stores.
+            resource: The resource name the first page was cached under.
 
         Returns:
             A copy of ``data`` with every page's results, or ``None`` if any page isn't in
@@ -2108,7 +2124,7 @@ class Session:
         results = list(data["results"])
         next_page = data["next"]
         while next_page:
-            page = self._get_results_from_cache(next_page)
+            page = self._get_results_from_cache(next_page, resource)
             if page is None:
                 return None
             results.extend(page["results"])
@@ -2601,11 +2617,18 @@ class Session:
 
         return self._handle_http_response(response)
 
-    def _get_results_from_cache(self, key: str) -> Any | None:
+    def _cache_key(self, key: str, resource: str) -> str:
+        """Return ``key``, scoped to this session's token if ``resource`` is per-user data."""
+        if resource in _PER_USER_RESOURCES:
+            return f"{key}#user={self._cache_user}"
+        return key
+
+    def _get_results_from_cache(self, key: str, resource: str) -> Any | None:
         """Retrieve cached response data using the specified key.
 
         Args:
             key: The cache key to retrieve data for.
+            resource: The resource name, the first segment of the endpoint.
 
         Returns:
             Any | None: The cached response data if available and cache is configured,
@@ -2616,7 +2639,7 @@ class Session:
         # A failing cache (e.g. its database is locked or unreadable) is treated as a miss,
         # so the data is fetched from Metron instead of the request failing.
         try:
-            return self.cache.get(key)
+            return self.cache.get(self._cache_key(key, resource))
         except Exception:
             LOGGER.exception("Cache get() failed; fetching from Metron")
             return None
@@ -2637,7 +2660,7 @@ class Session:
         # The data has already been fetched, so a cache that fails to store it (e.g. its
         # database is locked or the disk is full) is logged rather than failing the request.
         try:
-            self.cache.store(key, data, resource=resource, kind=kind)
+            self.cache.store(self._cache_key(key, resource), data, resource=resource, kind=kind)
         except Exception:
             LOGGER.exception("Cache store() failed; not caching %s", key)
 

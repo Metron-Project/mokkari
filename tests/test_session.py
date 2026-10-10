@@ -2456,7 +2456,7 @@ def test__request_data_detail(monkeypatch, session):
 
 def test__get_results_from_cache_none(session: Session) -> None:
     # Act
-    out = session._get_results_from_cache("key")
+    out = session._get_results_from_cache("key", "series")
     # Assert
     assert out is None
 
