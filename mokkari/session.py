@@ -7,14 +7,16 @@ This module provides the following classes:
 
 __all__ = ["Session"]
 
+import hashlib
 import http.cookiejar
+import inspect
 import json
 import logging
 import platform
 import threading
 import time
-from collections import OrderedDict
-from collections.abc import Callable
+from collections import Counter, OrderedDict
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
@@ -26,7 +28,8 @@ import requests
 from pydantic import TypeAdapter, ValidationError
 from requests.auth import AuthBase
 
-from mokkari import __version__, exceptions, rate_limit, sqlite_cache, utils
+from mokkari import __version__, exceptions, rate_limit, utils
+from mokkari.cache import Cache, CacheKind, ResourceEndpoint
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -128,26 +131,50 @@ class _ServerRateLimitError(exceptions.RateLimitError):
     """
 
 
-class ResourceEndpoint:
-    """Constants for API resource endpoint names.
+def _check_cache(cache: object) -> None:
+    """Raise ``CacheError`` unless ``cache`` can be called the way ``Session`` calls it.
 
-    These constants define the valid endpoint names used throughout the Session class
-    for accessing different resource types in the Metron API.
+    The ``Cache`` protocol check only sees that ``get`` and ``store`` exist, so this also
+    checks they accept Session's arguments, catching e.g. a 4.x ``store(key, value)``.
     """
+    if not isinstance(cache, Cache):
+        msg = f"Cache must have get() and store() methods: {cache!r}"
+        raise exceptions.CacheError(msg)
+    for name, expected, args, kwargs in [
+        ("get", "get(key)", ("key",), {}),
+        (
+            "store",
+            "store(key, value, *, resource, kind)",
+            ("key", None),
+            {"resource": "series", "kind": "detail"},
+        ),
+    ]:
+        method = getattr(cache, name)
+        try:
+            signature = inspect.signature(method)
+        except ValueError:
+            # Some C-implemented callables can't be inspected; trust them.
+            continue
+        except TypeError as e:
+            msg = f"Cache {name} must be a method: {cache!r}"
+            raise exceptions.CacheError(msg) from e
+        try:
+            signature.bind(*args, **kwargs)
+        except TypeError as e:
+            msg = f"Cache must have a {expected} method, not {name}{signature}: {cache!r}"
+            raise exceptions.CacheError(msg) from e
 
-    ARC: Final[str] = "arc"
-    CHARACTER: Final[str] = "character"
-    COLLECTION: Final[str] = "collection"
-    CREATOR: Final[str] = "creator"
-    IMPRINT: Final[str] = "imprint"
-    ISSUE: Final[str] = "issue"
-    PUBLISHER: Final[str] = "publisher"
-    READING_LIST: Final[str] = "reading_list"
-    SERIES: Final[str] = "series"
-    TEAM: Final[str] = "team"
-    UNIVERSE: Final[str] = "universe"
-    PULL_LIST: Final[str] = "pull_list"
-    WISH_LIST: Final[str] = "wish_list"
+
+# Responses from these depend on whose token made the request (e.g. a private reading list),
+# so their cache keys are scoped to the token and other tokens sharing the cache can't see them.
+_PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
+    {
+        ResourceEndpoint.COLLECTION,
+        ResourceEndpoint.PULL_LIST,
+        ResourceEndpoint.READING_LIST,
+        ResourceEndpoint.WISH_LIST,
+    }
+)
 
 
 class Session:
@@ -200,7 +227,7 @@ class Session:
 
     Args:
         api_token: API token for Bearer-token authentication.
-        cache: Optional SqliteCache instance for caching responses to improve performance.
+        cache: Optional response cache (e.g. ``SqliteCache``) to avoid repeat requests.
         user_agent: Optional custom user agent string to append to the default user agent.
         dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
         rate_limiter: Optional pacing gate to dispatch every HTTP send
@@ -299,7 +326,8 @@ class Session:
         AuthenticationError: If the api_token is missing or empty.
         ApiError: For general API errors, authentication failures, or network issues.
         RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
-        CacheError: For cache-related errors.
+        CacheError: If an injected ``cache`` object lacks a ``get`` or ``store`` method
+            taking Session's arguments.
         RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
@@ -323,7 +351,7 @@ class Session:
         self,
         api_token: str,
         *,
-        cache: sqlite_cache.SqliteCache | None = None,
+        cache: Cache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
         rate_limiter: rate_limit.RateLimiter | None = None,
@@ -336,7 +364,7 @@ class Session:
 
         Args:
             api_token: API token for Bearer-token authentication.
-            cache: Optional SqliteCache instance for response caching.
+            cache: Optional response cache, such as a ``SqliteCache``.
             user_agent: Optional custom user agent string to prepend to the default.
             dev_mode: If True, use local development server instead of production.
             rate_limiter: Optional pacing gate dispatched on every HTTP send,
@@ -344,6 +372,7 @@ class Session:
 
         Raises:
             AuthenticationError: If the api_token is missing or empty.
+            CacheError: If ``cache`` lacks a ``get`` or ``store`` method taking Session's arguments.
         """
         # Guards against a token read from an unset environment variable, which the
         # type hint alone won't catch at runtime.
@@ -357,7 +386,12 @@ class Session:
         }
         # Kept out of ``header`` so the token isn't logged with the request headers.
         self._auth = _BearerAuth(api_token)
+        # Identifies the token in per-user cache keys without storing the token itself.
+        self._cache_user = hashlib.sha256(api_token.encode()).hexdigest()[:16]
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
+        # Checked here so a mis-wired cache fails now rather than on the first request.
+        if cache is not None:
+            _check_cache(cache)
         self.cache = cache
         self.rate_limiter = rate_limiter
         self._http = self._build_http_session()
@@ -365,6 +399,10 @@ class Session:
         self._rate_limit_status = rate_limit.RateLimitStatus()
         self._cache_status_lock = threading.Lock()
         self._last_cache_status: str | None = None
+        # Counts invalidations by resource, so a response fetched before one isn't stored
+        # after it, while reads of other resources are stored as usual.
+        self._invalidation_lock = threading.Lock()
+        self._invalidations: Counter[str] = Counter()
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -439,6 +477,8 @@ class Session:
         self,
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
+        *,
+        kind: CacheKind = "detail",
     ) -> dict[str, Any]:
         """Send a GET request to the specified endpoint with optional parameters.
 
@@ -449,9 +489,38 @@ class Session:
         Args:
             endpoint: List of path segments to build the API endpoint URL.
             params: Optional query parameters to include in the request.
+            kind: Whether the endpoint returns a single object (``"detail"``) or a
+                list (``"list"``), passed to the cache along with the resource name.
 
         Returns:
             dict[str, Any]: The response data from the API.
+
+        Raises:
+            ApiError: If the API returns an error response or if there are network issues.
+        """
+        return self._fetch(endpoint, params, kind=kind)[0]
+
+    def _fetch(
+        self,
+        endpoint: list[str | int],
+        params: dict[str, str | int] | None = None,
+        *,
+        kind: CacheKind = "detail",
+        use_cache: bool = True,
+        resource: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Do the work of ``_get``, also reporting whether the response came from the cache.
+
+        Args:
+            endpoint: List of path segments to build the API endpoint URL.
+            params: Optional query parameters to include in the request.
+            kind: ``"detail"`` or ``"list"``, passed to the cache with the resource name.
+            use_cache: Whether to look in the cache first. The response is stored either way.
+            resource: The resource the response is cached under. Defaults to the endpoint's
+                first segment.
+
+        Returns:
+            The response data, and ``True`` if it was served from the cache.
 
         Raises:
             ApiError: If the API returns an error response or if there are network issues.
@@ -464,23 +533,37 @@ class Session:
             ordered_params = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
             cache_params = f"?{urlencode(ordered_params)}"
 
-        url = self.api_url.format("/".join(str(e) for e in endpoint))
+        url = self._url(endpoint)
         cache_key = f"{url}{cache_params}"
+        resource = resource or str(endpoint[0])
 
-        cached_response = self._get_results_from_cache(cache_key)
-        if cached_response is not None:
-            return cached_response
+        if use_cache:
+            cached_response = self._get_results_from_cache(cache_key, resource)
+            if cached_response is not None:
+                return cached_response, True
 
+        invalidations = self._invalidations[resource]
         data = self._request_data("GET", url, params)
 
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
 
-        self._save_results_to_cache(cache_key, data)
+        self._save_results_to_cache(cache_key, data, resource, kind, invalidations=invalidations)
 
-        return data
+        return data, False
 
-    def _send(self, method: str, endpoint: list[str | int], data: T) -> Any:
+    def _url(self, endpoint: list[str | int]) -> str:
+        """Return the API URL for ``endpoint``'s path segments."""
+        return self.api_url.format("/".join(str(e) for e in endpoint))
+
+    def _send(
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: T,
+        *,
+        also_invalidates: tuple[str, ...] = (),
+    ) -> Any:
         """Send a request with data to the specified endpoint.
 
         This internal method handles POST and PATCH requests with data payloads.
@@ -490,6 +573,7 @@ class Session:
             method: HTTP method to use ("POST" or "PATCH").
             endpoint: List of path segments to build the API endpoint URL.
             data: The data object to send in the request body.
+            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
 
         Returns:
             Any: The response data from the API.
@@ -497,8 +581,54 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call.
         """
-        url = self.api_url.format("/".join(str(e) for e in endpoint))
-        return self._request_data(method=method, url=url, data=data)
+        return self._handle_http_response(
+            self._execute_write(method, endpoint, data, also_invalidates=also_invalidates)
+        )
+
+    def _execute_write(
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: Any,
+        *,
+        also_invalidates: tuple[str, ...] = (),
+    ) -> requests.Response:
+        """Send a write request, then drop cached entries it may have made stale.
+
+        Args:
+            method: HTTP method to use ("POST", "PATCH" or "DELETE").
+            endpoint: List of path segments to build the API endpoint URL.
+            data: The data to send in the request body, or ``None``.
+            also_invalidates: Cached resources the write changes besides the one it's sent
+                to (the endpoint's first segment), such as ``issue`` for a credit.
+
+        Returns:
+            The HTTP response, not yet checked for errors.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+            RateLimitError: When the API rate limit is exceeded.
+        """
+        url = self._url(endpoint)
+        LOGGER.debug("Request Method: %s | URL: %s", method, url)
+        header, files, data_dict = self._prepare_request_payload(data)
+        response = None
+        unsent = False
+        try:
+            response = self._execute_http_request(method, url, {}, header, data_dict, files)
+        except exceptions.RateLimitError:
+            # Raised only before the request is sent (a 429 is returned, not raised).
+            unsent = True
+            raise
+        finally:
+            # A 4xx means Metron rejected the write. Anything else, even a timeout or a 5xx,
+            # may have been applied, and dropping the entries only costs a refetch.
+            rejected = response is not None and (
+                HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+            if not (rejected or unsent):
+                self._invalidate_cache((str(endpoint[0]), *also_invalidates))
+        return response
 
     @staticmethod
     def _validate_response(resp: dict[str, Any], adapter_class: type) -> Any:
@@ -546,21 +676,27 @@ class Session:
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
 
-    def _send_void(self, method: str, endpoint: list[str | int], data: Any = None) -> None:
+    def _send_void(
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: Any = None,
+        *,
+        also_invalidates: tuple[str, ...] = (),
+    ) -> None:
         """Send a request that returns no response body (204 No Content or 200 with no body).
 
         Args:
             method: HTTP method to use ("POST" or "DELETE").
             endpoint: List of path segments to build the API endpoint URL.
             data: Optional data to send in the request body.
+            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
 
         Raises:
             ApiError: If the request fails.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        url = self.api_url.format("/".join(str(e) for e in endpoint))
-        header, files, data_dict = self._prepare_request_payload(data)
-        response = self._execute_http_request(method, url, {}, header, data_dict, files)
+        response = self._execute_write(method, endpoint, data, also_invalidates=also_invalidates)
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
@@ -572,7 +708,13 @@ class Session:
             raise exceptions.ApiError(msg) from err
 
     def _handle_write_request(
-        self, method: str, endpoint: list[str | int], data: Any, response_class: type
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: Any,
+        response_class: type,
+        *,
+        also_invalidates: tuple[str, ...] = (),
     ) -> Any:
         """Handle POST or PATCH request with consistent error handling and validation.
 
@@ -584,6 +726,7 @@ class Session:
             endpoint: The API endpoint path segments.
             data: The data to send in the request.
             response_class: The expected response class for validation.
+            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
 
         Returns:
             Any: The validated response object.
@@ -591,7 +734,7 @@ class Session:
         Raises:
             ApiError: If the request fails or validation fails.
         """
-        resp = self._send(method, endpoint, data)
+        resp = self._send(method, endpoint, data, also_invalidates=also_invalidates)
         return self._validate_response(resp, response_class)
 
     # Generic resource methods
@@ -623,7 +766,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
         if if_modified_since is not None:
-            url = self.api_url.format("/".join(str(e) for e in [resource_name, _id]))
+            url = self._url([resource_name, _id])
             if if_modified_since.tzinfo is None:
                 if_modified_since = if_modified_since.replace(tzinfo=UTC)
             else:
@@ -716,7 +859,11 @@ class Session:
             ApiError: If there's an API error.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        resp = self._get_results([resource_name, _id, "issue_list"])
+        # A list of issues, so it's cached as issues: its TTL is the issue TTL, and an issue
+        # write invalidates it.
+        resp = self._get_results(
+            [resource_name, _id, "issue_list"], resource=ResourceEndpoint.ISSUE
+        )
         return self._validate_list_response(resp, BaseIssue)
 
     # Creator methods
@@ -1193,7 +1340,7 @@ class Session:
         Returns:
             list[GenericItem]: A list of GenericItem objects representing series types.
         """
-        resp = self._get_results(["series_type"], params)
+        resp = self._get_results([ResourceEndpoint.SERIES_TYPE], params)
         return self._validate_list_response(resp, GenericItem)
 
     # Issue methods
@@ -1295,7 +1442,14 @@ class Session:
             >>> credits_ = [CreditPost(issue=1, creator=1, role=[1])]
             >>> new_credits = session.credits_post(credits_)
         """
-        return self._handle_write_request("POST", ["credit"], data, list[CreditPostResponse])
+        # Credits are read back as part of their issue.
+        return self._handle_write_request(
+            "POST",
+            ["credit"],
+            data,
+            list[CreditPostResponse],
+            also_invalidates=(ResourceEndpoint.ISSUE,),
+        )
 
     def variant_post(self, data: VariantPost) -> VariantPostResponse:
         """Create a new variant cover for an issue.
@@ -1312,7 +1466,14 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_write_request("POST", ["variant"], data, VariantPostResponse)
+        # Variants are read back as part of their issue.
+        return self._handle_write_request(
+            "POST",
+            ["variant"],
+            data,
+            VariantPostResponse,
+            also_invalidates=(ResourceEndpoint.ISSUE,),
+        )
 
     def role_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
         """Retrieve a list of available creator roles.
@@ -1324,7 +1485,7 @@ class Session:
             list[GenericItem]: A list of GenericItem objects representing creator roles
                               (e.g., Writer, Artist, Colorist, etc.).
         """
-        resp = self._get_results(["role"], params)
+        resp = self._get_results([ResourceEndpoint.ROLE], params)
         return self._validate_list_response(resp, GenericItem)
 
     # Universe methods
@@ -1953,7 +2114,13 @@ class Session:
             >>> from mokkari.schemas.wish_list import AcquireWishListItem
             >>> session.wish_list_acquire_item(1, AcquireWishListItem(purchase_price="9.99"))
         """
-        self._send_void("POST", [ResourceEndpoint.WISH_LIST, "items", item_pk, "acquire"], data)
+        # Acquiring the item adds it to the collection.
+        self._send_void(
+            "POST",
+            [ResourceEndpoint.WISH_LIST, "items", item_pk, "acquire"],
+            data,
+            also_invalidates=(ResourceEndpoint.COLLECTION,),
+        )
 
     def wish_list_remove_item(self, item_pk: int) -> None:
         """Remove an item from the authenticated user's wish list.
@@ -1977,15 +2144,25 @@ class Session:
         self,
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
+        *,
+        resource: str | None = None,
     ) -> dict[str, Any]:
         """Retrieve results from the specified API endpoint with automatic pagination handling.
 
         This internal method handles paginated responses by automatically following 'next' links
         to retrieve all available results. It's used by list methods to ensure complete data retrieval.
 
+        A paginated list is served either entirely from the cache or entirely from Metron,
+        so it's never a mix of pages from an older listing and a newer one: a fresh first
+        page means every following page is fetched too, and a cached first page is only
+        used if every following page is cached as well. Otherwise the whole list is fetched
+        again, starting from the first page.
+
         Args:
             endpoint: List of path segments to build the API endpoint URL.
             params: Optional query parameters to include in the request.
+            resource: The resource every page is cached under. Defaults to the endpoint's
+                first segment.
 
         Returns:
             dict[str, Any]: The complete response data with all paginated results combined.
@@ -1993,22 +2170,58 @@ class Session:
         if params is None:
             params = {}
 
-        result = self._get(endpoint, params=params)
-        if result["next"]:
-            result = self._retrieve_all_results(result)
-        return result
+        resource = resource or str(endpoint[0])
+        result, from_cache = self._fetch(endpoint, params, kind="list", resource=resource)
+        if not result["next"]:
+            return result
+        if from_cache:
+            if (cached := self._cached_pages(result, resource)) is not None:
+                return cached
+            result, _ = self._fetch(
+                endpoint, params, kind="list", use_cache=False, resource=resource
+            )
+            if not result["next"]:
+                return result
+        return self._retrieve_all_results(result, resource)
 
-    def _retrieve_all_results(self, data: dict[str, Any]) -> dict[str, Any]:
+    def _cached_pages(self, data: dict[str, Any], resource: str) -> dict[str, Any] | None:
+        """Add every following page of ``data`` from the cache, without making any requests.
+
+        Args:
+            data: The first page, from the cache. It isn't modified, since the cache may
+                have returned the very object it stores.
+            resource: The resource name the first page was cached under.
+
+        Returns:
+            A copy of ``data`` with every page's results, or ``None`` if any page isn't in
+            the cache.
+        """
+        results = list(data["results"])
+        next_page = data["next"]
+        while next_page:
+            page = self._get_results_from_cache(next_page, resource)
+            if page is None:
+                return None
+            results.extend(page["results"])
+            next_page = page["next"]
+        return {**data, "results": results}
+
+    def _retrieve_all_results(self, data: dict[str, Any], resource: str) -> dict[str, Any]:
         """Retrieve all results from paginated data by following 'next' links.
 
         This internal method handles the pagination logic by making additional requests
-        to fetch all pages of results. It respects caching and rate limiting.
+        to fetch all pages of results. Every page is fetched from Metron rather than read
+        from the cache (see ``_get_results``), then stored. It respects rate limiting.
 
         Args:
             data: Dictionary containing the initial response data with pagination information.
+                It isn't modified, since the cache may have stored the very same object.
+            resource: The resource name the first page was cached under; every
+                following page is cached under the same one, as a ``"list"``.
 
         Returns:
-            dict[str, Any]: Dictionary containing all results retrieved by following pagination links.
+            dict[str, Any]: A copy of ``data`` containing all results retrieved by following
+                pagination links.
 
         Raises:
             RateLimitError: If a page is rejected with a 429 more than
@@ -2017,20 +2230,14 @@ class Session:
                 ``Retry-After``, or, when a ``rate_limiter`` is set, if the limiter itself
                 refuses a request (its daily window is exhausted).
         """
+        results = list(data["results"])
         has_next_page = True
         next_page = data["next"]
         untimed_retries = 0
         limited_retries = 0
 
         while has_next_page:
-            if cached_response := self._get_results_from_cache(next_page):
-                data["results"].extend(cached_response["results"])
-                if cached_response["next"]:
-                    next_page = cached_response["next"]
-                else:
-                    has_next_page = False
-                continue
-
+            invalidations = self._invalidations[resource]
             try:
                 response = self._request_data("GET", next_page)
             except exceptions.RateLimitError as e:
@@ -2061,16 +2268,18 @@ class Session:
 
             untimed_retries = 0
             limited_retries = 0
-            data["results"].extend(response["results"])
+            results.extend(response["results"])
 
-            self._save_results_to_cache(next_page, response)
+            self._save_results_to_cache(
+                next_page, response, resource, "list", invalidations=invalidations
+            )
 
             if response["next"]:
                 next_page = response["next"]
             else:
                 has_next_page = False
 
-        return data
+        return {**data, "results": results}
 
     def _prepare_request_payload(
         self, data: T | None
@@ -2483,49 +2692,96 @@ class Session:
 
         return self._handle_http_response(response)
 
-    def _get_results_from_cache(self, key: str) -> Any | None:
-        """Retrieve cached response data using the specified key.
+    def _cache_key(self, key: str, resource: str) -> str:
+        """Return ``key``, scoped to this session's token if ``resource`` is per-user data."""
+        if resource in _PER_USER_RESOURCES:
+            return f"{key}#user={self._cache_user}"
+        return key
 
-        This internal method provides a safe interface to the cache system with
-        proper error handling for missing cache methods.
+    def _get_results_from_cache(self, key: str, resource: str) -> Any | None:
+        """Retrieve cached response data using the specified key.
 
         Args:
             key: The cache key to retrieve data for.
+            resource: The resource the entry is cached under (see ``_fetch``).
 
         Returns:
             Any | None: The cached response data if available and cache is configured,
-                       None if not found or cache is not available.
-
-        Raises:
-            CacheError: If the cache object is missing required methods.
+                       None if not found, the cache isn't available, or reading it failed.
         """
-        if not self.cache:
+        if self.cache is None:
+            return None
+        # A failing cache (e.g. its database is locked or unreadable) is treated as a miss,
+        # so the data is fetched from Metron instead of the request failing.
+        try:
+            return self.cache.get(self._cache_key(key, resource))
+        except Exception:
+            LOGGER.exception("Cache get() failed; fetching from Metron")
             return None
 
-        try:
-            return self.cache.get(key)
-        except AttributeError as e:
-            msg = f"Cache object passed in is missing attribute: {e!r}"
-            raise exceptions.CacheError(msg) from e
-
-    def _save_results_to_cache(self, key: str, data: Any) -> None:
+    def _save_results_to_cache(
+        self, key: str, data: Any, resource: str, kind: CacheKind, *, invalidations: int
+    ) -> None:
         """Store the provided data in the cache using the specified key.
-
-        This internal method provides a safe interface to the cache system with
-        proper error handling for missing cache methods.
 
         Args:
             key: The cache key to store the data under.
             data: The data to be stored in the cache.
-
-        Raises:
-            CacheError: If the cache object is missing required methods.
+            resource: The resource the entry is cached under (see ``_fetch``).
+            kind: ``"detail"`` or ``"list"``.
+            invalidations: ``resource``'s count in ``self._invalidations`` from just before
+                the request was sent.
         """
-        if not self.cache:
+        if self.cache is None:
             return
-
+        # A write invalidated this resource while it was being fetched, so the data may be
+        # from before it, and storing it would undo the invalidation.
+        if invalidations != self._invalidations[resource]:
+            LOGGER.debug("Cache invalidated during the request; not caching %s", key)
+            return
+        # The data has already been fetched, so a cache that fails to store it (e.g. its
+        # database is locked or the disk is full) is logged rather than failing the request.
         try:
-            self.cache.store(key, data)
-        except AttributeError as e:
-            msg = f"Cache object passed in is missing attribute: {e!r}"
-            raise exceptions.CacheError(msg) from e
+            self.cache.store(self._cache_key(key, resource), data, resource=resource, kind=kind)
+        except Exception:
+            LOGGER.exception("Cache store() failed; not caching %s", key)
+            return
+        # The store isn't made under the lock, so one waiting on a locked database doesn't
+        # hold up every other thread's store and invalidation. A write that invalidated this
+        # resource meanwhile may have done so before the entry landed, so drop it again.
+        if invalidations != self._invalidations[resource]:
+            LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
+            self._invalidate_resource(resource)
+
+    def _invalidate_cache(self, resources: Iterable[str]) -> None:
+        """Drop the cached entries of ``resources``, which a write may have made stale.
+
+        Only a cache with an ``invalidate(resource)`` method, such as ``SqliteCache``, can
+        be invalidated; other caches keep their entries until they expire. Either way, a
+        read in flight is no longer stored, since it may be from before the write.
+
+        Args:
+            resources: The resources the write changed.
+        """
+        with self._invalidation_lock:
+            for resource in resources:
+                self._invalidations[resource] += 1
+                self._invalidate_resource(resource)
+
+    def _invalidate_resource(self, resource: str) -> None:
+        """Call the cache's ``invalidate(resource)``, logging rather than raising a failure.
+
+        After a write, which may already have been applied, raising would invite a retry
+        that repeats it, or hide the write's own error. After a read, the data has already
+        been fetched.
+
+        Args:
+            resource: The resource whose cached entries to drop.
+        """
+        invalidate = getattr(self.cache, "invalidate", None)
+        if invalidate is None:
+            return
+        try:
+            invalidate(resource)
+        except Exception:
+            LOGGER.exception("Cache invalidate(%r) failed; ignoring", resource)

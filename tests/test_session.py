@@ -94,7 +94,7 @@ def dummy_cache():
         def get(self, key):
             return self._store.get(key)
 
-        def store(self, key, value):
+        def store(self, key, value, *, resource, kind):  # noqa: ARG002
             self._store[key] = value
 
     return DummyCache()
@@ -294,8 +294,8 @@ def test__get_raises_api_error_on_detail(session: Session) -> None:
 @pytest.mark.parametrize(
     ("method", "endpoint", "data", "resp", "case_id"),
     [
-        ("POST", ["creator"], {"foo": "bar"}, {"id": 1}, "post_creator"),
-        ("PATCH", ["creator", "1"], {"foo": "baz"}, {"id": 1}, "patch_creator"),
+        ("POST", ["creator"], CreatorPost(name="Bar"), {"id": 1}, "post_creator"),
+        ("PATCH", ["creator", "1"], CreatorPost(name="Baz"), {"id": 1}, "patch_creator"),
     ],
     ids=lambda x: x if isinstance(x, str) else None,
 )
@@ -303,17 +303,19 @@ def test__send(  # noqa: PLR0913, PLR0917
     session: Session,
     method: str,
     endpoint: list[str],
-    data: dict[str, str],
+    data: CreatorPost,
     resp: dict[str, int],
     case_id: str,
 ) -> None:
     # Arrange
-    with patch.object(session, "_request_data", return_value=resp) as req:
+    url = session.api_url.format("/".join(endpoint))
+    with requests_mock.Mocker() as r:
+        r.register_uri(method, url, json=resp)
         # Act
         result = session._send(method, endpoint, data)
         # Assert
         assert result == resp
-        req.assert_called_once()
+        assert r.call_count == 1
 
 
 @pytest.mark.parametrize(
@@ -2084,7 +2086,7 @@ def test_collection_delete(session: Session) -> None:
 )
 def test__get_results(session, result, has_next, case_id):
     # Arrange
-    with patch.object(session, "_get", return_value=result):
+    with patch.object(session, "_fetch", return_value=(result, False)):
         if has_next:
             with patch.object(session, "_retrieve_all_results", return_value=result) as ret:
                 # Act
@@ -2099,19 +2101,22 @@ def test__get_results(session, result, has_next, case_id):
             assert out == result
 
 
-def test__retrieve_all_results_with_cache(session: Session) -> None:
+def test__retrieve_all_results_skips_cache_reads(session: Session) -> None:
+    """Following pages are always fetched, then stored, never read from the cache."""
     # Arrange
     data = {"results": [1], "next": "url2"}
-    cached = {"results": [2], "next": None}
+    resp2 = {"results": [2], "next": None}
     with (
-        patch.object(session, "_get_results_from_cache", side_effect=[None, cached]),
-        patch.object(session, "_request_data", return_value=cached),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session, "_get_results_from_cache") as cache_get,
+        patch.object(session, "_request_data", return_value=resp2),
+        patch.object(session, "_save_results_to_cache") as cache_store,
     ):
         # Act
-        out = session._retrieve_all_results(data)
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
+        cache_get.assert_not_called()
+        cache_store.assert_called_once_with("url2", resp2, "foo", "list", invalidations=0)
 
 
 def test__retrieve_all_results_without_cache(session: Session) -> None:
@@ -2124,7 +2129,7 @@ def test__retrieve_all_results_without_cache(session: Session) -> None:
         patch.object(session, "_save_results_to_cache"),
     ):
         # Act
-        out = session._retrieve_all_results(data)
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
 
@@ -2142,7 +2147,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_without_retry_after(
     ):
         # Act
         with pytest.raises(exceptions.RateLimitError):
-            session._retrieve_all_results(data)
+            session._retrieve_all_results(data, "foo")
         # Assert
         assert request.call_count == session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 1
         # No Retry-After to honour, so each retry waits a full burst window rather than
@@ -2166,7 +2171,7 @@ def test__retrieve_all_results_untimed_retry_count_resets_after_a_page(session: 
         patch("mokkari.session.time.sleep"),
     ):
         # Act
-        out = session._retrieve_all_results(data)
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2, 3]
 
@@ -2187,7 +2192,7 @@ def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
-        out = session._retrieve_all_results(data)
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
         assert sleep.call_args_list == [((5,),)] * attempts
@@ -2206,7 +2211,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_with_retry_after(
     ):
         # Act
         with pytest.raises(exceptions.RateLimitError):
-            session._retrieve_all_results(data)
+            session._retrieve_all_results(data, "foo")
         # Assert
         assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
         assert sleep.call_args_list == [((5,),)] * session_module.MAX_RATE_LIMIT_RETRIES
@@ -2227,7 +2232,7 @@ def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
-        out = session._retrieve_all_results(data)
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
         assert request.call_count == 2
@@ -2248,7 +2253,7 @@ def test__retrieve_all_results_with_rate_limiter_caps_retries_of_a_non_blocking_
     ):
         # Act
         with pytest.raises(exceptions.RateLimitError):
-            session._retrieve_all_results(data)
+            session._retrieve_all_results(data, "foo")
         # Assert
         assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
         sleep.assert_not_called()
@@ -2269,7 +2274,7 @@ def test__retrieve_all_results_with_rate_limiter_retry_cap_resets_after_a_page(
         patch.object(session, "_save_results_to_cache"),
     ):
         # Act
-        out = session._retrieve_all_results(data)
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2, 3]
 
@@ -2288,7 +2293,7 @@ def test__retrieve_all_results_with_rate_limiter_propagates_limiter_refusal(
     ):
         # Act / Assert
         with pytest.raises(exceptions.RateLimitError) as exc_info:
-            session._retrieve_all_results(data)
+            session._retrieve_all_results(data, "foo")
         assert exc_info.value.retry_after == 3600
         assert request.call_count == 1
         sleep.assert_not_called()
@@ -2318,7 +2323,7 @@ def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, mo
         patch.object(limiter, "acquire", wraps=limiter.acquire) as acquire,
         patch.object(limiter, "on_rate_limited", wraps=limiter.on_rate_limited) as backed_off,
     ):
-        out = session._retrieve_all_results(data)
+        out = session._retrieve_all_results(data, "foo")
 
     # The limiter was told about the 429 and gated the retry; the loop didn't sleep itself.
     assert out["results"] == [1, 2]
@@ -2453,7 +2458,7 @@ def test__request_data_detail(monkeypatch, session):
 
 def test__get_results_from_cache_none(session: Session) -> None:
     # Act
-    out = session._get_results_from_cache("key")
+    out = session._get_results_from_cache("key", "series")
     # Assert
     assert out is None
 
@@ -3445,7 +3450,7 @@ def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeyp
     session.cache = dummy_cache
     # Pre-populate cache
     cache_key = "https://metron.cloud/api/arc/1/"
-    dummy_cache.store(cache_key, {"id": 1, "name": "Cached"})
+    dummy_cache.store(cache_key, {"id": 1, "name": "Cached"}, resource="arc", kind="detail")
 
     class DummyResp:
         def __init__(self):
@@ -3485,7 +3490,7 @@ def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> 
     # Arrange
     session.cache = dummy_cache
     cache_key = "https://metron.cloud/api/arc/1/"
-    dummy_cache.store(cache_key, {"id": 1, "name": "Cached Arc"})
+    dummy_cache.store(cache_key, {"id": 1, "name": "Cached Arc"}, resource="arc", kind="detail")
 
     with patch(
         "mokkari.session.TypeAdapter.validate_python",
@@ -3651,7 +3656,10 @@ def test_wish_list_acquire_item(session: Session) -> None:
         # Assert
         assert result is None
         mock_send_void.assert_called_once_with(
-            "POST", ["wish_list", "items", 10, "acquire"], acquire_request
+            "POST",
+            ["wish_list", "items", 10, "acquire"],
+            acquire_request,
+            also_invalidates=("collection",),
         )
 
 
