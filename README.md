@@ -217,6 +217,22 @@ key expires on its own, so a worker that crashes mid-request can't leave the
 account blocked. If Redis is unreachable, `acquire` raises the client's
 connection error and the request isn't sent.
 
+## Caching
+
+Pass a cache to keep responses locally, so repeated requests don't count against
+your rate limit:
+
+```python
+import mokkari
+from mokkari.sqlite_cache import SqliteCache
+
+m = mokkari.api(api_token="your-token", cache=SqliteCache("mokkari_cache.db"))
+```
+
+`import mokkari` no longer loads `mokkari.sqlite_cache` in v5.0. If you're
+upgrading from 4.x and refer to `mokkari.sqlite_cache.SqliteCache` after only
+`import mokkari`, import the module explicitly as shown above.
+
 ## Connection Reuse
 
 A `Session` keeps its connections to Metron open between requests, so repeated
