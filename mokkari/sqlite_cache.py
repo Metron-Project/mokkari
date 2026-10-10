@@ -309,6 +309,8 @@ class SqliteCache:
         ttl = self.ttl_policy.ttl_for_value(value, resource=resource, kind=kind)
         if ttl is NO_CACHE:
             return
+        # Encoded before taking the lock, so a large list doesn't hold up other threads.
+        encoded = json.dumps(value)
         now = time.time()
         expires_at = None if ttl is None else now + ttl.total_seconds()
         with self._lock, self._connection() as con:
@@ -318,7 +320,7 @@ class SqliteCache:
                 "ON CONFLICT(key) DO UPDATE SET resource = excluded.resource, "
                 "kind = excluded.kind, value = excluded.value, "
                 "created_at = excluded.created_at, expires_at = excluded.expires_at",
-                (key, resource, kind, json.dumps(value), now, expires_at),
+                (key, resource, kind, encoded, now, expires_at),
             )
 
     def delete(self, key: str) -> bool:
