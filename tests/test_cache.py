@@ -305,7 +305,7 @@ def test_ttl_resolution_order(
             "role": None,
         },
     )
-    assert cache.ttl_for(resource, kind) == expected
+    assert cache.ttl_policy.ttl_for(resource, kind) == expected
 
 
 @pytest.mark.parametrize(
@@ -334,7 +334,7 @@ def test_kind_wildcard(
             "role:detail": timedelta(days=30),
         },
     )
-    assert cache.ttl_for(resource, kind) == expected
+    assert cache.ttl_policy.ttl_for(resource, kind) == expected
 
 
 EMPTY_LIST: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
@@ -430,15 +430,15 @@ def test_user_data_opt_in(make_cache: Callable[..., sqlite_cache.SqliteCache]) -
 
     assert cache.get("key") == {"id": 1}
     # The other defaults still apply.
-    assert cache.ttl_for("pull_list", "list") is NO_CACHE
+    assert cache.ttl_policy.ttl_for("pull_list", "list") is NO_CACHE
 
 
 def test_user_data_opt_in_by_kind(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
     """A resource:kind entry overrides a built-in resource-level exclusion."""
     cache = make_cache(ttl={"wish_list:list": timedelta(minutes=5)})
 
-    assert cache.ttl_for("wish_list", "list") == timedelta(minutes=5)
-    assert cache.ttl_for("wish_list", "detail") is NO_CACHE
+    assert cache.ttl_policy.ttl_for("wish_list", "list") == timedelta(minutes=5)
+    assert cache.ttl_policy.ttl_for("wish_list", "detail") is NO_CACHE
 
 
 def test_class_sentinels(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
@@ -447,8 +447,8 @@ def test_class_sentinels(make_cache: Callable[..., sqlite_cache.SqliteCache]) ->
         ttl={"role": sqlite_cache.SqliteCache.NEVER, "issue": sqlite_cache.SqliteCache.NO_CACHE}
     )
 
-    assert cache.ttl_for("role", "list") is None
-    assert cache.ttl_for("issue", "detail") is NO_CACHE
+    assert cache.ttl_policy.ttl_for("role", "list") is None
+    assert cache.ttl_policy.ttl_for("issue", "detail") is NO_CACHE
 
 
 @pytest.mark.parametrize(
@@ -516,7 +516,7 @@ def test_every_ttl_key_form_accepted() -> None:
         "*:list",
     ]
     with sqlite_cache.SqliteCache(":memory:", ttl=dict.fromkeys(keys, timedelta(hours=1))) as cache:
-        assert cache.ttl_for("role", "list") == timedelta(hours=1)
+        assert cache.ttl_policy.ttl_for("role", "list") == timedelta(hours=1)
 
 
 # ============================================================================

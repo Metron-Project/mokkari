@@ -118,22 +118,18 @@ class SqliteCache:
     ) -> None:
         """Open (or create) the cache database and purge any expired entries.
 
+        ``default_ttl``, ``ttl`` and ``empty_list_ttl`` build ``ttl_policy``; see
+        ``TtlPolicy`` for what they accept.
+
         Args:
             db_name: Path to the SQLite database, or ``":memory:"``.
             default_ttl: Lifetime for resources without an entry in ``ttl``.
-                ``None`` never expires them, and ``NO_CACHE`` caches nothing by default.
-            ttl: Lifetimes keyed by ``"{resource}:{kind}"``, ``"{resource}"`` or
-                ``"*:{kind}"``, merged over ``DEFAULT_TTLS``. ``resource`` is one of
-                ``RESOURCES`` and ``kind`` is ``"detail"`` or ``"list"``.
+            ttl: Lifetimes by resource and kind, merged over ``DEFAULT_TTLS``.
             empty_list_ttl: The longest a list response with no results is kept.
-                It only ever shortens the usual TTL: ``NO_CACHE`` doesn't cache
-                empty lists, and ``None`` gives them the usual TTL.
 
         Raises:
-            TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``, or a
-                ``ttl`` key isn't a string.
-            ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
-                resource or kind.
+            TypeError: If ``TtlPolicy`` rejects a TTL or ``ttl`` key's type.
+            ValueError: If ``TtlPolicy`` rejects a TTL or ``ttl`` key's value.
             CacheError: If ``db_name`` is a database with tables other than a Mokkari cache's,
                 a cache written by a newer version of Mokkari, or a corrupt or non-SQLite file.
         """
@@ -275,14 +271,6 @@ class SqliteCache:
                     continue
             foreign.append(f"{kind} {name!r}")
         return foreign
-
-    def ttl_for(self, resource: str, kind: CacheKind) -> Ttl:
-        """Return how long an entry for ``resource`` and ``kind`` is kept.
-
-        Returns:
-            The lifetime, ``None`` if it never expires, or ``NO_CACHE`` if it isn't cached.
-        """
-        return self.ttl_policy.ttl_for(resource, kind)
 
     def get(self, key: str) -> Any | None:
         """Retrieve unexpired data from the cache database.
