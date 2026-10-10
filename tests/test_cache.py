@@ -983,3 +983,51 @@ def test_failing_invalidate_is_logged(
         m.collection_delete(5)
 
     assert "Cache invalidate('collection') failed" in caplog.text
+
+
+# ============================================================================
+# Cache failures
+# ============================================================================
+
+
+class LockedCache(RecordingCache):
+    """A cache whose database stays locked, failing every get() and store()."""
+
+    def get(self, key: str) -> Any | None:  # noqa: ARG002
+        """Fail."""
+        msg = "database is locked"
+        raise sqlite3.OperationalError(msg)
+
+    def store(self, key: str, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+        """Fail."""
+        msg = "database is locked"
+        raise sqlite3.OperationalError(msg)
+
+
+def test_failing_cache_get_fetches_from_metron(
+    dummy_api_token: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A cache that can't be read is treated as a miss rather than failing the request."""
+    m = api(dummy_api_token, cache=LockedCache())  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.get(ROLE_PAGE1, json=role_page(None, "Writer"))
+        roles = m.role_list({"name": "writer"})
+
+    assert [role.name for role in roles] == ["Writer"]
+    assert "Cache get() failed" in caplog.text
+
+
+def test_failing_cache_store_keeps_fetched_pages(
+    dummy_api_token: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A cache that can't be written doesn't throw away the pages already fetched."""
+    m = api(dummy_api_token, cache=LockedCache())  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.get(ROLE_PAGE1, json=role_page(ROLE_PAGE2, "Writer"))
+        r.get(ROLE_PAGE2, json=role_page(None, "Co-Writer"))
+        roles = m.role_list({"name": "writer"})
+
+    assert [role.name for role in roles] == ["Writer", "Co-Writer"]
+    assert f"Cache store() failed; not caching {ROLE_PAGE2}" in caplog.text

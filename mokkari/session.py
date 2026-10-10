@@ -2603,11 +2603,17 @@ class Session:
 
         Returns:
             Any | None: The cached response data if available and cache is configured,
-                       None if not found or cache is not available.
+                       None if not found, the cache isn't available, or reading it failed.
         """
         if self.cache is None:
             return None
-        return self.cache.get(key)
+        # A failing cache (e.g. its database is locked or unreadable) is treated as a miss,
+        # so the data is fetched from Metron instead of the request failing.
+        try:
+            return self.cache.get(key)
+        except Exception:
+            LOGGER.exception("Cache get() failed; fetching from Metron")
+            return None
 
     def _save_results_to_cache(
         self, key: str, data: Any, resource: str, kind: sqlite_cache.CacheKind
@@ -2622,7 +2628,12 @@ class Session:
         """
         if self.cache is None:
             return
-        self.cache.store(key, data, resource=resource, kind=kind)
+        # The data has already been fetched, so a cache that fails to store it (e.g. its
+        # database is locked or the disk is full) is logged rather than failing the request.
+        try:
+            self.cache.store(key, data, resource=resource, kind=kind)
+        except Exception:
+            LOGGER.exception("Cache store() failed; not caching %s", key)
 
     def _invalidate_cache(self, endpoint: list[str | int]) -> None:
         """Drop cached entries a successful write to ``endpoint`` may have made stale.
