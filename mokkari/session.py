@@ -550,11 +550,12 @@ class Session:
             ordered_params = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
             cache_params = f"?{urlencode(ordered_params)}"
 
-        url = self.api_url.format("/".join(str(e) for e in endpoint))
+        url = self._url(endpoint)
         cache_key = f"{url}{cache_params}"
+        resource = _cached_resource(endpoint)
 
         if use_cache:
-            cached_response = self._get_results_from_cache(cache_key, _cached_resource(endpoint))
+            cached_response = self._get_results_from_cache(cache_key, resource)
             if cached_response is not None:
                 return cached_response, True
 
@@ -564,11 +565,13 @@ class Session:
         if "detail" in data:
             raise exceptions.ApiError(data["detail"])
 
-        self._save_results_to_cache(
-            cache_key, data, _cached_resource(endpoint), kind, invalidations=invalidations
-        )
+        self._save_results_to_cache(cache_key, data, resource, kind, invalidations=invalidations)
 
         return data, False
+
+    def _url(self, endpoint: list[str | int]) -> str:
+        """Return the API URL for ``endpoint``'s path segments."""
+        return self.api_url.format("/".join(str(e) for e in endpoint))
 
     def _send(self, method: str, endpoint: list[str | int], data: T) -> Any:
         """Send a request with data to the specified endpoint.
@@ -606,7 +609,7 @@ class Session:
             ApiError: For connection errors or timeouts.
             RateLimitError: When the API rate limit is exceeded.
         """
-        url = self.api_url.format("/".join(str(e) for e in endpoint))
+        url = self._url(endpoint)
         header, files, data_dict = self._prepare_request_payload(data)
         response = None
         unsent = False
@@ -747,7 +750,7 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
         if if_modified_since is not None:
-            url = self.api_url.format("/".join(str(e) for e in [resource_name, _id]))
+            url = self._url([resource_name, _id])
             if if_modified_since.tzinfo is None:
                 if_modified_since = if_modified_since.replace(tzinfo=UTC)
             else:
