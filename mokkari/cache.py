@@ -93,13 +93,15 @@ for anyone porting that setting. A zero ``timedelta`` is rejected instead.
 Ttl = timedelta | NoCache | None
 """A lifetime, ``None`` to never expire, or ``NO_CACHE`` to not cache at all."""
 
-# Per-user data changes whenever the user edits it on Metron, and serving a stale copy is more
-# surprising than for shared reference data, so it isn't cached unless the caller opts back in.
+# A user's collection, pull list and wish list track what they own and want, so they change
+# often, and serving a stale copy is more surprising than for shared reference data. They
+# aren't cached unless the caller opts back in. Reading lists are per-user too, but are mostly
+# public, curated lists that rarely change, so they're cached like reference data.
 DEFAULT_TTLS: Final[Mapping[str, Ttl]] = MappingProxyType(
     {
-        "collection": NO_CACHE,
-        "pull_list": NO_CACHE,
-        "wish_list": NO_CACHE,
+        ResourceEndpoint.COLLECTION: NO_CACHE,
+        ResourceEndpoint.PULL_LIST: NO_CACHE,
+        ResourceEndpoint.WISH_LIST: NO_CACHE,
     }
 )
 
