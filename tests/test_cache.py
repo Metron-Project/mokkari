@@ -1197,6 +1197,30 @@ def test_page_read_during_write_not_stored(
     assert cache.get(page2) is None
 
 
+def test_page_read_during_unrelated_write_stored(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A page fetched while a write invalidates a different resource is stored as usual."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/series_type/"
+    page2 = f"{url}?page=2"
+
+    def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
+        m._invalidate_cache(["collection"])
+        return {"count": 2, "next": None, "previous": url, "results": [{"id": 2, "name": "B"}]}
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            url,
+            json={"count": 2, "next": page2, "previous": None, "results": [{"id": 1, "name": "A"}]},
+        )
+        r.get(page2, json=write_then_answer)
+        m.series_type_list()
+
+    assert cache.get(page2) is not None
+
+
 @pytest.mark.parametrize(
     ("endpoint", "expected"),
     [

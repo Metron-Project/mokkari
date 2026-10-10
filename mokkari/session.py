@@ -15,7 +15,7 @@ import logging
 import platform
 import threading
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
@@ -420,9 +420,10 @@ class Session:
         self._rate_limit_status = rate_limit.RateLimitStatus()
         self._cache_status_lock = threading.Lock()
         self._last_cache_status: str | None = None
-        # Counts invalidations, so a response fetched before one isn't stored after it.
+        # Counts invalidations by resource, so a response fetched before one isn't stored
+        # after it, while reads of other resources are stored as usual.
         self._invalidation_lock = threading.Lock()
-        self._invalidations = 0
+        self._invalidations: Counter[str] = Counter()
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -559,7 +560,7 @@ class Session:
             if cached_response is not None:
                 return cached_response, True
 
-        invalidations = self._invalidations
+        invalidations = self._invalidations[resource]
         data = self._request_data("GET", url, params)
 
         if "detail" in data:
@@ -2191,7 +2192,7 @@ class Session:
         limited_retries = 0
 
         while has_next_page:
-            invalidations = self._invalidations
+            invalidations = self._invalidations[resource]
             try:
                 response = self._request_data("GET", next_page)
             except exceptions.RateLimitError as e:
@@ -2683,14 +2684,15 @@ class Session:
             data: The data to be stored in the cache.
             resource: The resource the entry is cached under (see ``_cached_resource``).
             kind: ``"detail"`` or ``"list"``.
-            invalidations: ``self._invalidations`` from just before the request was sent.
+            invalidations: ``resource``'s count in ``self._invalidations`` from just before
+                the request was sent.
         """
         if self.cache is None:
             return
         with self._invalidation_lock:
-            # A write invalidated the cache while this was being fetched, so the data may be
-            # from before it, and storing it would undo the invalidation.
-            if invalidations != self._invalidations:
+            # A write invalidated this resource while it was being fetched, so the data may
+            # be from before it, and storing it would undo the invalidation.
+            if invalidations != self._invalidations[resource]:
                 LOGGER.debug("Cache invalidated during the request; not caching %s", key)
                 return
             # The data has already been fetched, so a cache that fails to store it (e.g. its
@@ -2713,8 +2715,8 @@ class Session:
         if invalidate is None:
             return
         with self._invalidation_lock:
-            self._invalidations += 1
             for resource in _written_resources(endpoint):
+                self._invalidations[resource] += 1
                 # The write may already have been applied, so raising here would invite a
                 # retry that repeats it, or hide the write's own error; log a failing cache
                 # instead.
