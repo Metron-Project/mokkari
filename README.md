@@ -246,7 +246,7 @@ import redis
 import mokkari
 from mokkari.redis_cache import RedisCache
 
-client = redis.Redis(host="localhost", port=6379)
+client = redis.Redis(host="localhost", port=6379, socket_connect_timeout=1, socket_timeout=1)
 m = mokkari.api(api_token="your-token", cache=RedisCache(client))
 ```
 
@@ -254,7 +254,9 @@ Entries expire through Redis's own TTLs, and every key starts with `key_prefix`
 (`"mokkari:cache"` by default), so `clear()` leaves other data in the database
 alone. It needs Redis 7.0 or later on a single server, not a Redis Cluster. If
 Redis is unreachable, the request goes to Metron instead and the error is
-logged.
+logged. Set `socket_connect_timeout` and `socket_timeout` on the client as
+above: without them, a Redis host that stops responding, rather than refusing
+the connection, makes every request wait on it indefinitely.
 
 ## Connection Reuse
 

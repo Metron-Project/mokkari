@@ -129,7 +129,9 @@ def count_entries(cache: SqliteCache | RedisCache) -> int:
     """Return the number of entries in either backend, not counting RedisCache's index sets."""
     if isinstance(cache, SqliteCache):
         return count_rows(cache)
-    return sum(1 for key in cache._client.scan_iter() if b":idx:" not in key)
+    return sum(
+        1 for key in cache._client.scan_iter() if not key.startswith(cache._index_base.encode())
+    )
 
 
 # ============================================================================

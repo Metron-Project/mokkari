@@ -211,7 +211,10 @@ class RedisCache:
         return self._unlink(members)
 
     def clear(self) -> int:
-        """Remove every entry under ``key_prefix``, leaving other keys alone.
+        """Remove every entry this cache's format version wrote under ``key_prefix``.
+
+        Other keys are left alone, including entries an older or newer Mokkari wrote under
+        the same ``key_prefix`` with a different stored format.
 
         Returns:
             The number of entries removed.
@@ -226,10 +229,12 @@ class RedisCache:
         return removed + self._unlink_entries(batch)
 
     def _unlink_entries(self, keys: list[str]) -> int:
-        """Remove ``keys``, returning how many of them were entries rather than index sets."""
-        indexes = [key for key in keys if key.startswith(self._index_base)]
-        self._unlink(indexes)
-        return self._unlink(key for key in keys if not key.startswith(self._index_base))
+        """Remove ``keys``, returning how many of them were entries rather than index sets.
+
+        Every key comes from SCAN, so each index set counted here existed.
+        """
+        indexes = sum(1 for key in keys if key.startswith(self._index_base))
+        return self._unlink(keys) - indexes
 
     def _unlink(self, keys: Iterable[bytes | str]) -> int:
         """Remove ``keys`` in batches, returning how many existed."""
