@@ -66,7 +66,8 @@ def test_sub_millisecond_ttl_still_expires(client: fakeredis.FakeRedis) -> None:
     cache = RedisCache(client, default_ttl=timedelta(microseconds=1))
     cache.store("key", {"id": 1}, resource="series", kind="detail")
 
-    assert 0 <= client.pttl("mokkari:cache:v1:key") <= 1
+    # -2 means the entry has already expired, as it can on a slow runner; -1 would mean never.
+    assert client.pttl("mokkari:cache:v1:key") in {-2, 0, 1}
 
 
 def test_none_ttl_never_expires(client: fakeredis.FakeRedis) -> None:
