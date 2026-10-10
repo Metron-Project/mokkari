@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -47,6 +48,16 @@ class FakeClock:
     def time(self) -> float:
         """Return the fake current time."""
         return self.now
+
+    @staticmethod
+    def monotonic() -> float:
+        """Return the real monotonic clock, which only times retries."""
+        return time.monotonic()
+
+    @staticmethod
+    def sleep(seconds: float) -> None:
+        """Sleep for real."""
+        time.sleep(seconds)
 
 
 @pytest.fixture
@@ -595,12 +606,45 @@ def test_falls_back_without_wal(
     """When WAL isn't available the cache warns and keeps working in the default mode."""
     connect = sqlite3.connect
     monkeypatch.setattr(sqlite3, "connect", lambda *a, **kw: connect(*a, factory=factory, **kw))
+    # Don't spend the full busy timeout retrying a lock that never clears.
+    monkeypatch.setattr(sqlite_cache, "_BUSY_TIMEOUT", 0.05)
 
     with caplog.at_level(logging.WARNING), sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
         assert cache.journal_mode == "delete"
         cache.store("key", {"id": 1}, resource="series", kind="detail")
         assert cache.get("key") == {"id": 1}
     assert "Couldn't enable WAL" in caplog.text
+
+
+class WalBriefLockConnection(sqlite3.Connection):
+    """A connection where asking for WAL fails twice while another process holds a lock."""
+
+    attempts = 0
+
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
+        """Raise on the first two requests for WAL."""
+        if sql == "PRAGMA journal_mode=WAL":
+            WalBriefLockConnection.attempts += 1
+            if WalBriefLockConnection.attempts <= 2:
+                msg = "database is locked"
+                raise sqlite3.OperationalError(msg)
+        return super().execute(sql, *args)
+
+
+def test_wal_retried_while_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A brief lock while switching to WAL is waited out without a warning."""
+    connect = sqlite3.connect
+    monkeypatch.setattr(
+        sqlite3, "connect", lambda *a, **kw: connect(*a, factory=WalBriefLockConnection, **kw)
+    )
+    monkeypatch.setattr(WalBriefLockConnection, "attempts", 0)
+
+    with caplog.at_level(logging.WARNING), sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
+        assert cache.journal_mode == "wal"
+    assert WalBriefLockConnection.attempts == 3
+    assert "Couldn't enable WAL" not in caplog.text
 
 
 def test_legacy_database_is_reset(tmp_path: Path) -> None:
@@ -621,6 +665,16 @@ def test_legacy_database_is_reset(tmp_path: Path) -> None:
         assert cache.get("key") is None
         cache.store("key", {"id": 2}, resource="series", kind="detail")
         assert cache.get("key") == {"id": 2}
+
+
+def test_concurrent_open_creates_schema_once(tmp_path: Path) -> None:
+    """Caches opening the same new database at once don't collide creating the table."""
+    for i in range(10):
+        db = tmp_path / f"cache{i}.db"
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            caches = list(pool.map(sqlite_cache.SqliteCache, [db] * 8))
+        for cache in caches:
+            cache.close()
 
 
 # ============================================================================

@@ -256,12 +256,20 @@ class SqliteCache:
 
         It's a cache, so falling back to another mode is better than refusing to open.
         """
-        try:
-            (mode,) = con.execute("PRAGMA journal_mode=WAL").fetchone()
-        except sqlite3.OperationalError as e:
-            (mode,) = con.execute("PRAGMA journal_mode").fetchone()
-            LOGGER.warning("Couldn't enable WAL for the cache, using %r mode: %s", mode, e)
-            return mode
+        # Switching needs an exclusive lock, and SQLite reports "locked" at once rather than
+        # waiting out the busy timeout, so retry while another process opens the same file.
+        deadline = time.monotonic() + _BUSY_TIMEOUT
+        while True:
+            try:
+                (mode,) = con.execute("PRAGMA journal_mode=WAL").fetchone()
+                break
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                    continue
+                (mode,) = con.execute("PRAGMA journal_mode").fetchone()
+                LOGGER.warning("Couldn't enable WAL for the cache, using %r mode: %s", mode, e)
+                return mode
         # An in-memory database ignores the request and stays in "memory" mode.
         if mode not in ("wal", "memory"):
             LOGGER.warning("Couldn't enable WAL for the cache, using %r mode", mode)
@@ -274,6 +282,12 @@ class SqliteCache:
         if version == SCHEMA_VERSION:
             return
         with con:
+            # sqlite3 doesn't open a transaction for DDL, so take the write lock explicitly
+            # and check again, in case another process rebuilt the schema first.
+            con.execute("BEGIN IMMEDIATE")
+            (version,) = con.execute("PRAGMA user_version").fetchone()
+            if version == SCHEMA_VERSION:
+                return
             # ``responses`` is the table Mokkari 4.x used.
             con.execute("DROP TABLE IF EXISTS responses")
             con.execute("DROP TABLE IF EXISTS cache")
