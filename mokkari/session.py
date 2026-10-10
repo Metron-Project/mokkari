@@ -209,7 +209,7 @@ def _cached_resource(endpoint: list[str | int]) -> str:
 
 
 def _written_resources(endpoint: list[str | int]) -> tuple[str, ...]:
-    """Return the cached resources a successful write to ``endpoint`` may have changed."""
+    """Return the cached resources a write to ``endpoint`` may have changed."""
     resource = str(endpoint[0])
     # Credits and variants are read back as part of their issue.
     if resource in ("credit", "variant"):
@@ -603,8 +603,39 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call.
         """
+        return self._handle_http_response(self._execute_write(method, endpoint, data))
+
+    def _execute_write(
+        self, method: str, endpoint: list[str | int], data: Any
+    ) -> requests.Response:
+        """Send a write request, then drop cached entries it may have made stale.
+
+        Args:
+            method: HTTP method to use ("POST", "PATCH" or "DELETE").
+            endpoint: List of path segments to build the API endpoint URL.
+            data: The data to send in the request body, or ``None``.
+
+        Returns:
+            The HTTP response, not yet checked for errors.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+            RateLimitError: When the API rate limit is exceeded.
+        """
         url = self.api_url.format("/".join(str(e) for e in endpoint))
-        return self._request_data(method=method, url=url, data=data)
+        header, files, data_dict = self._prepare_request_payload(data)
+        response = None
+        try:
+            response = self._execute_http_request(method, url, {}, header, data_dict, files)
+        finally:
+            # A 4xx means Metron rejected the write. Anything else, even a timeout or a 5xx,
+            # may have been applied, and dropping the entries only costs a refetch.
+            rejected = response is not None and (
+                HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+            if not rejected:
+                self._invalidate_cache(endpoint)
+        return response
 
     @staticmethod
     def _validate_response(resp: dict[str, Any], adapter_class: type) -> Any:
@@ -664,9 +695,7 @@ class Session:
             ApiError: If the request fails.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        url = self.api_url.format("/".join(str(e) for e in endpoint))
-        header, files, data_dict = self._prepare_request_payload(data)
-        response = self._execute_http_request(method, url, {}, header, data_dict, files)
+        response = self._execute_write(method, endpoint, data)
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
@@ -676,7 +705,6 @@ class Session:
                 raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
-        self._invalidate_cache(endpoint)
 
     def _handle_write_request(
         self, method: str, endpoint: list[str | int], data: Any, response_class: type
@@ -699,7 +727,6 @@ class Session:
             ApiError: If the request fails or validation fails.
         """
         resp = self._send(method, endpoint, data)
-        self._invalidate_cache(endpoint)
         return self._validate_response(resp, response_class)
 
     # Generic resource methods
@@ -2670,7 +2697,7 @@ class Session:
             LOGGER.exception("Cache store() failed; not caching %s", key)
 
     def _invalidate_cache(self, endpoint: list[str | int]) -> None:
-        """Drop cached entries a successful write to ``endpoint`` may have made stale.
+        """Drop cached entries a write to ``endpoint`` may have made stale.
 
         Only a cache with an ``invalidate(resource)`` method, such as ``SqliteCache``, can
         be invalidated; other caches keep their entries until they expire.
@@ -2682,8 +2709,8 @@ class Session:
         if invalidate is None:
             return
         for resource in _written_resources(endpoint):
-            # The write has already succeeded, so raising here would invite a retry that
-            # repeats it; log a failing cache instead.
+            # The write may already have been applied, so raising here would invite a retry
+            # that repeats it, or hide the write's own error; log a failing cache instead.
             try:
                 invalidate(resource)
             except Exception:

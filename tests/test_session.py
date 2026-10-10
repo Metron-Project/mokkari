@@ -294,8 +294,8 @@ def test__get_raises_api_error_on_detail(session: Session) -> None:
 @pytest.mark.parametrize(
     ("method", "endpoint", "data", "resp", "case_id"),
     [
-        ("POST", ["creator"], {"foo": "bar"}, {"id": 1}, "post_creator"),
-        ("PATCH", ["creator", "1"], {"foo": "baz"}, {"id": 1}, "patch_creator"),
+        ("POST", ["creator"], CreatorPost(name="Bar"), {"id": 1}, "post_creator"),
+        ("PATCH", ["creator", "1"], CreatorPost(name="Baz"), {"id": 1}, "patch_creator"),
     ],
     ids=lambda x: x if isinstance(x, str) else None,
 )
@@ -303,17 +303,19 @@ def test__send(  # noqa: PLR0913, PLR0917
     session: Session,
     method: str,
     endpoint: list[str],
-    data: dict[str, str],
+    data: CreatorPost,
     resp: dict[str, int],
     case_id: str,
 ) -> None:
     # Arrange
-    with patch.object(session, "_request_data", return_value=resp) as req:
+    url = session.api_url.format("/".join(endpoint))
+    with requests_mock.Mocker() as r:
+        r.register_uri(method, url, json=resp)
         # Act
         result = session._send(method, endpoint, data)
         # Assert
         assert result == resp
-        req.assert_called_once()
+        assert r.call_count == 1
 
 
 @pytest.mark.parametrize(

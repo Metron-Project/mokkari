@@ -13,6 +13,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
+import requests
 import requests_mock
 
 from mokkari import api, exceptions, session, sqlite_cache
@@ -1200,8 +1201,8 @@ def test_void_write_invalidates_cache(dummy_api_token: str) -> None:
     assert cache.invalidated == ["wish_list", "collection"]
 
 
-def test_failed_write_does_not_invalidate(dummy_api_token: str) -> None:
-    """Nothing is invalidated when the write fails."""
+def test_rejected_write_does_not_invalidate(dummy_api_token: str) -> None:
+    """Nothing is invalidated when Metron rejects the write."""
     cache = RecordingCache()
     m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
 
@@ -1211,6 +1212,31 @@ def test_failed_write_does_not_invalidate(dummy_api_token: str) -> None:
             m.collection_delete(5)
 
     assert cache.invalidated == []
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"status_code": 500},
+        {"exc": requests.exceptions.ReadTimeout},
+        {"text": "not json"},
+        {"json": {"detail": "Something went wrong."}},
+    ],
+    ids=["server_error", "timeout", "invalid_json", "detail"],
+)
+def test_write_that_may_have_applied_invalidates(
+    dummy_api_token: str, response: dict[str, Any]
+) -> None:
+    """A write that fails without Metron rejecting it may have been applied, so it invalidates."""
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.patch("https://metron.cloud/api/universe/1/", **response)
+        with pytest.raises(exceptions.ApiError):
+            m.universe_patch(1, UniversePost(name="Earth Two"))
+
+    assert cache.invalidated == ["universe"]
 
 
 def test_failing_invalidate_is_logged(
