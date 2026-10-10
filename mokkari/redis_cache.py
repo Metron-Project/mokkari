@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Final, get_args
 from mokkari.cache import NO_CACHE, CacheKind, TtlPolicy
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Mapping
 
     from redis import Redis
 
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 # use separate keys rather than reading each other's entries.
 FORMAT_VERSION: Final[int] = 1
 
-# How many keys clear() asks SCAN for, and removes, at a time.
+# How many keys clear() asks SCAN for, and clear() and invalidate() remove, at a time.
 _BATCH_SIZE: Final[int] = 500
 
 _KINDS: Final[tuple[CacheKind, ...]] = get_args(CacheKind)
@@ -62,6 +62,21 @@ else
   redis.call('PEXPIREAT', KEYS[2], string.format('%.0f', tonumber(last[2])))
 end
 return 0
+"""
+
+# KEYS: index sets
+# ARGV: how many keys to unlink per call
+# Reads the index sets, removes their entries and then the sets, all in one step, so nothing
+# can be stored in between and a failure partway can't leave entries without an index.
+_INVALIDATE: Final[str] = """
+local members = redis.call('ZUNION', #KEYS, unpack(KEYS))
+local batch = tonumber(ARGV[1])
+local removed = 0
+for i = 1, #members, batch do
+  removed = removed + redis.call('UNLINK', unpack(members, i, math.min(i + batch - 1, #members)))
+end
+redis.call('UNLINK', unpack(KEYS))
+return removed
 """
 
 
@@ -142,6 +157,7 @@ class RedisCache:
         self._base = f"{key_prefix}:v{FORMAT_VERSION}:"
         self._index_base = f"{self._base}idx:"
         self._store_script = client.register_script(_STORE)
+        self._invalidate_script = client.register_script(_INVALIDATE)
 
     def _key(self, key: str) -> str:
         return f"{self._base}{key}"
@@ -207,13 +223,7 @@ class RedisCache:
             The number of entries removed.
         """
         indexes = [self._index_key(resource, k) for k in ((kind,) if kind else _KINDS)]
-        # The index sets are read and removed together, so an entry stored meanwhile goes into
-        # a new set rather than one already read, and a later invalidate still finds it.
-        pipe = self._client.pipeline(transaction=True)
-        pipe.zunion(indexes)
-        pipe.unlink(*indexes)
-        members, _ = pipe.execute()
-        return self._unlink(members)
+        return self._invalidate_script(keys=indexes, args=[_BATCH_SIZE])
 
     def clear(self) -> int:
         """Remove every entry this cache's format version wrote under ``key_prefix``.
@@ -246,14 +256,6 @@ class RedisCache:
             pipe.unlink(*entries)
         results = pipe.execute()
         return results[-1] if entries else 0
-
-    def _unlink(self, keys: Iterable[bytes | str]) -> int:
-        """Remove ``keys`` in batches, returning how many existed."""
-        keys = list(keys)
-        return sum(
-            self._client.unlink(*keys[i : i + _BATCH_SIZE])
-            for i in range(0, len(keys), _BATCH_SIZE)
-        )
 
 
 def _glob_escape(text: str) -> str:
