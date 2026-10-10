@@ -2098,19 +2098,22 @@ class Session:
         """Add every following page of ``data`` from the cache, without making any requests.
 
         Args:
-            data: The first page, from the cache, whose results are extended in place.
+            data: The first page, from the cache. It isn't modified, since the cache may
+                have returned the very object it stores.
 
         Returns:
-            ``data`` with every page's results, or ``None`` if any page isn't in the cache.
+            A copy of ``data`` with every page's results, or ``None`` if any page isn't in
+            the cache.
         """
+        results = list(data["results"])
         next_page = data["next"]
         while next_page:
             page = self._get_results_from_cache(next_page)
             if page is None:
                 return None
-            data["results"].extend(page["results"])
+            results.extend(page["results"])
             next_page = page["next"]
-        return data
+        return {**data, "results": results}
 
     def _retrieve_all_results(
         self, data: dict[str, Any], resource: str, kind: sqlite_cache.CacheKind
@@ -2123,12 +2126,14 @@ class Session:
 
         Args:
             data: Dictionary containing the initial response data with pagination information.
+                It isn't modified, since the cache may have stored the very same object.
             resource: The resource name the first page was cached under; every
                 following page is cached under the same one.
             kind: The cache kind of the first page.
 
         Returns:
-            dict[str, Any]: Dictionary containing all results retrieved by following pagination links.
+            dict[str, Any]: A copy of ``data`` containing all results retrieved by following
+                pagination links.
 
         Raises:
             RateLimitError: If a page is rejected with a 429 more than
@@ -2137,6 +2142,7 @@ class Session:
                 ``Retry-After``, or, when a ``rate_limiter`` is set, if the limiter itself
                 refuses a request (its daily window is exhausted).
         """
+        results = list(data["results"])
         has_next_page = True
         next_page = data["next"]
         untimed_retries = 0
@@ -2173,7 +2179,7 @@ class Session:
 
             untimed_retries = 0
             limited_retries = 0
-            data["results"].extend(response["results"])
+            results.extend(response["results"])
 
             self._save_results_to_cache(next_page, response, resource, kind)
 
@@ -2182,7 +2188,7 @@ class Session:
             else:
                 has_next_page = False
 
-        return data
+        return {**data, "results": results}
 
     def _prepare_request_payload(
         self, data: T | None

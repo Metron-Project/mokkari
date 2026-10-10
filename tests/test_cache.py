@@ -869,6 +869,33 @@ def test_session_does_not_cache_pull_list(
     assert count_rows(cache) == 0
 
 
+def test_session_does_not_modify_cached_pages(dummy_api_token: str) -> None:
+    """A cache that stores and returns objects by reference keeps each page as fetched."""
+
+    class DictCache(NoGet):
+        def __init__(self) -> None:
+            self.data: dict[str, Any] = {}
+
+        def get(self, key: str) -> Any | None:
+            return self.data.get(key)
+
+        def store(self, key: str, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+            self.data[key] = value
+
+    cache = DictCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.get(ROLE_PAGE1, json=role_page(ROLE_PAGE2, "Writer"))
+        r.get(ROLE_PAGE2, json=role_page(None, "Co-Writer"))
+        lists = [m.role_list({"name": "writer"}) for _ in range(3)]
+        assert r.call_count == 2
+
+    for roles in lists:
+        assert [role.name for role in roles] == ["Writer", "Co-Writer"]
+    assert [role["name"] for role in cache.data[ROLE_PAGE1]["results"]] == ["Writer"]
+
+
 # ============================================================================
 # Invalidation after writes
 # ============================================================================
