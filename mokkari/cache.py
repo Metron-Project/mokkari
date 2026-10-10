@@ -117,8 +117,11 @@ class Cache(Protocol):
 
     A cache may also have an ``invalidate(resource)`` method. If it does, ``Session``
     calls it after each write that Metron didn't reject, including one that failed in a way
-    that may still have applied it (e.g. a timeout or a 5xx), with the resource written to
-    and any others the write may have changed, so later reads don't return the pre-write copy.
+    that may still have applied it (e.g. a timeout or a 5xx). It's called with the resource
+    written to, plus the few that read back the write directly: ``issue`` for a credit or
+    variant write, and ``collection`` for acquiring a wish list item. Other cached data that
+    embeds the written resource, such as a series' issue count or the creator names in an
+    issue's credits, isn't invalidated and stays until it expires.
     """
 
     def get(self, key: str) -> Any | None:
