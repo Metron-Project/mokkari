@@ -38,6 +38,8 @@ from typing import (
     runtime_checkable,
 )
 
+from mokkari import exceptions
+
 if TYPE_CHECKING:
     import os
     from collections.abc import Mapping
@@ -120,6 +122,15 @@ CREATE TABLE cache (
 CREATE INDEX idx_cache_resource ON cache(resource, kind);
 CREATE INDEX idx_cache_expires ON cache(expires_at);
 """
+
+# The tables a Mokkari cache may hold, and columns they're recognised by. ``responses`` is the
+# table Mokkari 4.x used; ``cache`` keeps these columns across schema versions.
+_OWN_TABLES: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "responses": frozenset({"key", "json", "expire"}),
+        "cache": frozenset({"key", "resource", "kind", "value"}),
+    }
+)
 
 _PURGE_EXPIRED: Final[str] = "DELETE FROM cache WHERE expires_at IS NOT NULL AND expires_at <= ?"
 
@@ -211,6 +222,7 @@ class SqliteCache:
     ``requests.Session``. A closed ``":memory:"`` cache reopens empty.
 
     Opening a database written by an older version of Mokkari discards its contents.
+    A database holding anything else is refused with ``CacheError`` rather than replaced.
 
     Examples:
         >>> from datetime import timedelta
@@ -257,6 +269,7 @@ class SqliteCache:
             TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
             ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
                 resource or kind.
+            CacheError: If ``db_name`` is a database with tables other than a Mokkari cache's.
         """
         for name in ttl or {}:
             _check_ttl_key(name)
@@ -300,14 +313,16 @@ class SqliteCache:
     def _connection(self) -> sqlite3.Connection:
         """Return the connection, opening it first if needed. The caller must hold the lock.
 
-        Opening sets the journal mode, creates or resets the table, and purges expired entries.
+        Opening checks and creates or resets the table, sets the journal mode, and purges expired
+        entries.
         """
         if self._con is not None:
             return self._con
         con = sqlite3.connect(self._db_name, timeout=_BUSY_TIMEOUT, check_same_thread=False)
         try:
-            self.journal_mode = self._enable_wal(con)
+            # The schema is checked first, so a file that isn't a cache is left untouched.
             self._init_schema(con)
+            self.journal_mode = self._enable_wal(con)
             with con:
                 con.execute(_PURGE_EXPIRED, (time.time(),))
         except BaseException:
@@ -354,13 +369,34 @@ class SqliteCache:
             (version,) = con.execute("PRAGMA user_version").fetchone()
             if version == SCHEMA_VERSION:
                 return
-            # ``responses`` is the table Mokkari 4.x used.
+            if foreign := SqliteCache._foreign_objects(con):
+                msg = (
+                    f"Not a Mokkari cache database, refusing to replace it: it has {foreign}. "
+                    "Give SqliteCache a file of its own."
+                )
+                raise exceptions.CacheError(msg)
             con.execute("DROP TABLE IF EXISTS responses")
             con.execute("DROP TABLE IF EXISTS cache")
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
                     con.execute(statement)
             con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    @staticmethod
+    def _foreign_objects(con: sqlite3.Connection) -> list[str]:
+        """Return the tables, views and triggers in the database that a Mokkari cache didn't make."""
+        foreign = []
+        for kind, name in con.execute(
+            "SELECT type, name FROM sqlite_master "
+            "WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'"
+        ):
+            columns = _OWN_TABLES.get(name) if kind == "table" else None
+            if columns is not None:
+                found = {row[1] for row in con.execute(f"PRAGMA table_info({name})")}
+                if columns <= found:
+                    continue
+            foreign.append(f"{kind} {name!r}")
+        return foreign
 
     def ttl_for(self, resource: str, kind: CacheKind) -> Ttl:
         """Return how long an entry for ``resource`` and ``kind`` is kept.

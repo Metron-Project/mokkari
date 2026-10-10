@@ -760,6 +760,46 @@ def test_legacy_database_is_reset(tmp_path: Path) -> None:
         assert cache.get("key") == {"id": 2}
 
 
+@pytest.mark.parametrize(
+    ("setup", "match"),
+    [
+        (["CREATE TABLE users (id, name)"], r"table 'users'"),
+        (["CREATE TABLE cache (id, payload)"], r"table 'cache'"),
+        (
+            ["CREATE TABLE responses (key, json, expire)", "CREATE TABLE users (id, name)"],
+            r"table 'users'",
+        ),
+        (
+            [
+                "CREATE TABLE responses (key, json, expire)",
+                "CREATE VIEW names AS SELECT key FROM responses",
+            ],
+            r"view 'names'",
+        ),
+    ],
+)
+def test_foreign_database_refused(tmp_path: Path, setup: list[str], match: str) -> None:
+    """A database with anything but a Mokkari cache in it is left untouched."""
+    db = tmp_path / "app.db"
+    con = sqlite3.connect(db)
+    for statement in setup:
+        con.execute(statement)
+    con.commit()
+    before = con.execute("SELECT type, name, sql FROM sqlite_master ORDER BY name").fetchall()
+    con.close()
+
+    with pytest.raises(exceptions.CacheError, match=match):
+        sqlite_cache.SqliteCache(db)
+
+    con = sqlite3.connect(db)
+    assert (
+        con.execute("SELECT type, name, sql FROM sqlite_master ORDER BY name").fetchall() == before
+    )
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 0
+    assert con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    con.close()
+
+
 def test_concurrent_open_creates_schema_once(tmp_path: Path) -> None:
     """Caches opening the same new database at once don't collide creating the table."""
     for i in range(10):
