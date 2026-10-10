@@ -202,7 +202,7 @@ import redis
 import mokkari
 from mokkari.redis_rate_limit import RedisRateLimiter
 
-client = redis.Redis(host="localhost", port=6379)
+client = redis.Redis(host="localhost", port=6379, socket_connect_timeout=1, socket_timeout=1)
 # Any stable name for your Metron account, such as its username. Don't use the
 # token itself: it becomes part of key names anyone with Redis access can read.
 m = mokkari.api(
@@ -215,7 +215,11 @@ It raises `RateLimitError` on an exhausted daily limit just like
 `HeaderPacedRateLimiter`. Times come from the Redis server's clock, and every
 key expires on its own, so a worker that crashes mid-request can't leave the
 account blocked. If Redis is unreachable, `acquire` raises the client's
-connection error and the request isn't sent.
+connection error and the request isn't sent. Set `socket_connect_timeout` and
+`socket_timeout` on the client as above: without them, a Redis host that stops
+responding, rather than refusing the connection, makes `acquire` wait on it
+indefinitely. The limiter's own waits happen in the client, not in Redis, so a
+short timeout doesn't cut them off.
 
 ## Caching
 
