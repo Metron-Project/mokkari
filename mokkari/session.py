@@ -28,7 +28,8 @@ import requests
 from pydantic import TypeAdapter, ValidationError
 from requests.auth import AuthBase
 
-from mokkari import __version__, exceptions, rate_limit, sqlite_cache, utils
+from mokkari import __version__, exceptions, rate_limit, utils
+from mokkari.cache import Cache, CacheKind
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -158,7 +159,7 @@ def _check_cache(cache: object) -> None:
     The ``Cache`` protocol check only sees that ``get`` and ``store`` exist, so this also
     checks they accept Session's arguments, catching e.g. a 4.x ``store(key, value)``.
     """
-    if not isinstance(cache, sqlite_cache.Cache):
+    if not isinstance(cache, Cache):
         msg = f"Cache must have get() and store() methods: {cache!r}"
         raise exceptions.CacheError(msg)
     for name, expected, args, kwargs in [
@@ -384,7 +385,7 @@ class Session:
         self,
         api_token: str,
         *,
-        cache: sqlite_cache.Cache | None = None,
+        cache: Cache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
         rate_limiter: rate_limit.RateLimiter | None = None,
@@ -507,7 +508,7 @@ class Session:
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
         *,
-        kind: sqlite_cache.CacheKind = "detail",
+        kind: CacheKind = "detail",
     ) -> dict[str, Any]:
         """Send a GET request to the specified endpoint with optional parameters.
 
@@ -534,7 +535,7 @@ class Session:
         endpoint: list[str | int],
         params: dict[str, str | int] | None = None,
         *,
-        kind: sqlite_cache.CacheKind = "detail",
+        kind: CacheKind = "detail",
         use_cache: bool = True,
     ) -> tuple[dict[str, Any], bool]:
         """Do the work of ``_get``, also reporting whether the response came from the cache.
@@ -2641,9 +2642,7 @@ class Session:
             LOGGER.exception("Cache get() failed; fetching from Metron")
             return None
 
-    def _save_results_to_cache(
-        self, key: str, data: Any, resource: str, kind: sqlite_cache.CacheKind
-    ) -> None:
+    def _save_results_to_cache(self, key: str, data: Any, resource: str, kind: CacheKind) -> None:
         """Store the provided data in the cache using the specified key.
 
         Args:

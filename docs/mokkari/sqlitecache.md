@@ -1,3 +1,3 @@
-:::mokkari.sqlite_cache.Cache
+:::mokkari.cache.Cache
+:::mokkari.cache.NO_CACHE
 :::mokkari.sqlite_cache.SqliteCache
-:::mokkari.sqlite_cache.NO_CACHE

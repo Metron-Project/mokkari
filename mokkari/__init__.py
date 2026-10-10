@@ -7,13 +7,14 @@ from importlib.metadata import version
 # Keep this at beginning of file to prevent circular import with session
 __version__ = version("mokkari")
 
-from mokkari import rate_limit, session, sqlite_cache
+from mokkari import rate_limit, session
+from mokkari.cache import Cache
 
 
 def api(
     api_token: str,
     *,
-    cache: sqlite_cache.Cache | None = None,
+    cache: Cache | None = None,
     user_agent: str | None = None,
     dev_mode: bool = False,
     rate_limiter: rate_limit.RateLimiter | None = None,

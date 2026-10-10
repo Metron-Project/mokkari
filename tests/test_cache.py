@@ -16,6 +16,7 @@ import pytest
 import requests_mock
 
 from mokkari import api, exceptions, session, sqlite_cache
+from mokkari.cache import NO_CACHE, RESOURCES, CacheKind, Ttl
 from mokkari.schemas.universe import UniversePost
 from mokkari.schemas.wish_list import AcquireWishListItem
 
@@ -270,7 +271,7 @@ def test_none_default_ttl_never_expires(
 
 def test_no_cache_ttl_is_not_stored(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
     """A TTL of NO_CACHE means the resource isn't cached at all."""
-    cache = make_cache(ttl={"issue": sqlite_cache.NO_CACHE})
+    cache = make_cache(ttl={"issue": NO_CACHE})
     cache.store("key", {"id": 1}, resource="issue", kind="detail")
 
     assert cache.get("key") is None
@@ -313,13 +314,13 @@ def test_ttl_resolution_order(
         ("series", "detail", timedelta(days=7)),
         ("issue", "list", timedelta(days=2)),
         ("role", "detail", timedelta(days=30)),
-        ("collection", "list", sqlite_cache.NO_CACHE),
+        ("collection", "list", NO_CACHE),
     ],
 )
 def test_kind_wildcard(
     resource: str,
-    kind: sqlite_cache.CacheKind,
-    expected: sqlite_cache.Ttl,
+    kind: CacheKind,
+    expected: Ttl,
     make_cache: Callable[..., sqlite_cache.SqliteCache],
 ) -> None:
     """A "*:kind" entry covers every resource without a TTL of its own."""
@@ -362,7 +363,7 @@ def test_empty_list_ttl_shortens(
 
 @pytest.mark.parametrize("empty_list_ttl", [timedelta(days=1), None])
 def test_empty_list_ttl_never_lengthens(
-    empty_list_ttl: sqlite_cache.Ttl,
+    empty_list_ttl: Ttl,
     clock: FakeClock,
     make_cache: Callable[..., sqlite_cache.SqliteCache],
 ) -> None:
@@ -405,7 +406,7 @@ def test_user_data_opt_in(make_cache: Callable[..., sqlite_cache.SqliteCache]) -
 
     assert cache.get("key") == {"id": 1}
     # The other defaults still apply.
-    assert cache.ttl_for("pull_list", "list") is sqlite_cache.NO_CACHE
+    assert cache.ttl_for("pull_list", "list") is NO_CACHE
 
 
 def test_user_data_opt_in_by_kind(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
@@ -413,7 +414,7 @@ def test_user_data_opt_in_by_kind(make_cache: Callable[..., sqlite_cache.SqliteC
     cache = make_cache(ttl={"wish_list:list": timedelta(minutes=5)})
 
     assert cache.ttl_for("wish_list", "list") == timedelta(minutes=5)
-    assert cache.ttl_for("wish_list", "detail") is sqlite_cache.NO_CACHE
+    assert cache.ttl_for("wish_list", "detail") is NO_CACHE
 
 
 def test_class_sentinels(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
@@ -423,7 +424,7 @@ def test_class_sentinels(make_cache: Callable[..., sqlite_cache.SqliteCache]) ->
     )
 
     assert cache.ttl_for("role", "list") is None
-    assert cache.ttl_for("issue", "detail") is sqlite_cache.NO_CACHE
+    assert cache.ttl_for("issue", "detail") is NO_CACHE
 
 
 @pytest.mark.parametrize(
@@ -478,12 +479,8 @@ def test_unknown_ttl_key_rejected(key: str, match: str) -> None:
 def test_every_ttl_key_form_accepted() -> None:
     """Each resource can be given alone or with either kind, and either kind with '*'."""
     keys = [
-        *sqlite_cache.RESOURCES,
-        *(
-            f"{resource}:{kind}"
-            for resource in sqlite_cache.RESOURCES
-            for kind in ("detail", "list")
-        ),
+        *RESOURCES,
+        *(f"{resource}:{kind}" for resource in RESOURCES for kind in ("detail", "list")),
         "*:detail",
         "*:list",
     ]
@@ -494,7 +491,7 @@ def test_every_ttl_key_form_accepted() -> None:
 def test_resources_match_session_endpoints() -> None:
     """Every resource Session caches under can be given a TTL."""
     endpoints = {value for name, value in vars(session.ResourceEndpoint).items() if name.isupper()}
-    assert endpoints | {"role", "series_type"} == sqlite_cache.RESOURCES
+    assert endpoints | {"role", "series_type"} == RESOURCES
 
 
 # ============================================================================
