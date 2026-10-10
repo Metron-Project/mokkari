@@ -2110,7 +2110,7 @@ def test__retrieve_all_results_skips_cache_reads(session: Session) -> None:
         patch.object(session, "_save_results_to_cache") as cache_store,
     ):
         # Act
-        out = session._retrieve_all_results(data, "foo", "list")
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
         cache_get.assert_not_called()
@@ -2127,7 +2127,7 @@ def test__retrieve_all_results_without_cache(session: Session) -> None:
         patch.object(session, "_save_results_to_cache"),
     ):
         # Act
-        out = session._retrieve_all_results(data, "foo", "list")
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
 
@@ -2145,7 +2145,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_without_retry_after(
     ):
         # Act
         with pytest.raises(exceptions.RateLimitError):
-            session._retrieve_all_results(data, "foo", "list")
+            session._retrieve_all_results(data, "foo")
         # Assert
         assert request.call_count == session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 1
         # No Retry-After to honour, so each retry waits a full burst window rather than
@@ -2169,7 +2169,7 @@ def test__retrieve_all_results_untimed_retry_count_resets_after_a_page(session: 
         patch("mokkari.session.time.sleep"),
     ):
         # Act
-        out = session._retrieve_all_results(data, "foo", "list")
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2, 3]
 
@@ -2190,7 +2190,7 @@ def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
-        out = session._retrieve_all_results(data, "foo", "list")
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
         assert sleep.call_args_list == [((5,),)] * attempts
@@ -2209,7 +2209,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_with_retry_after(
     ):
         # Act
         with pytest.raises(exceptions.RateLimitError):
-            session._retrieve_all_results(data, "foo", "list")
+            session._retrieve_all_results(data, "foo")
         # Assert
         assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
         assert sleep.call_args_list == [((5,),)] * session_module.MAX_RATE_LIMIT_RETRIES
@@ -2230,7 +2230,7 @@ def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
-        out = session._retrieve_all_results(data, "foo", "list")
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2]
         assert request.call_count == 2
@@ -2251,7 +2251,7 @@ def test__retrieve_all_results_with_rate_limiter_caps_retries_of_a_non_blocking_
     ):
         # Act
         with pytest.raises(exceptions.RateLimitError):
-            session._retrieve_all_results(data, "foo", "list")
+            session._retrieve_all_results(data, "foo")
         # Assert
         assert request.call_count == session_module.MAX_RATE_LIMIT_RETRIES + 1
         sleep.assert_not_called()
@@ -2272,7 +2272,7 @@ def test__retrieve_all_results_with_rate_limiter_retry_cap_resets_after_a_page(
         patch.object(session, "_save_results_to_cache"),
     ):
         # Act
-        out = session._retrieve_all_results(data, "foo", "list")
+        out = session._retrieve_all_results(data, "foo")
         # Assert
         assert out["results"] == [1, 2, 3]
 
@@ -2291,7 +2291,7 @@ def test__retrieve_all_results_with_rate_limiter_propagates_limiter_refusal(
     ):
         # Act / Assert
         with pytest.raises(exceptions.RateLimitError) as exc_info:
-            session._retrieve_all_results(data, "foo", "list")
+            session._retrieve_all_results(data, "foo")
         assert exc_info.value.retry_after == 3600
         assert request.call_count == 1
         sleep.assert_not_called()
@@ -2321,7 +2321,7 @@ def test__retrieve_all_results_with_rate_limiter_end_to_end(session: Session, mo
         patch.object(limiter, "acquire", wraps=limiter.acquire) as acquire,
         patch.object(limiter, "on_rate_limited", wraps=limiter.on_rate_limited) as backed_off,
     ):
-        out = session._retrieve_all_results(data, "foo", "list")
+        out = session._retrieve_all_results(data, "foo")
 
     # The limiter was told about the 429 and gated the retry; the loop didn't sleep itself.
     assert out["results"] == [1, 2]

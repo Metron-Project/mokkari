@@ -2107,7 +2107,7 @@ class Session:
             result, _ = self._fetch(endpoint, params, kind="list", use_cache=False)
             if not result["next"]:
                 return result
-        return self._retrieve_all_results(result, resource, "list")
+        return self._retrieve_all_results(result, resource)
 
     def _cached_pages(self, data: dict[str, Any], resource: str) -> dict[str, Any] | None:
         """Add every following page of ``data`` from the cache, without making any requests.
@@ -2131,9 +2131,7 @@ class Session:
             next_page = page["next"]
         return {**data, "results": results}
 
-    def _retrieve_all_results(
-        self, data: dict[str, Any], resource: str, kind: sqlite_cache.CacheKind
-    ) -> dict[str, Any]:
+    def _retrieve_all_results(self, data: dict[str, Any], resource: str) -> dict[str, Any]:
         """Retrieve all results from paginated data by following 'next' links.
 
         This internal method handles the pagination logic by making additional requests
@@ -2144,8 +2142,7 @@ class Session:
             data: Dictionary containing the initial response data with pagination information.
                 It isn't modified, since the cache may have stored the very same object.
             resource: The resource name the first page was cached under; every
-                following page is cached under the same one.
-            kind: The cache kind of the first page.
+                following page is cached under the same one, as a ``"list"``.
 
         Returns:
             dict[str, Any]: A copy of ``data`` containing all results retrieved by following
@@ -2197,7 +2194,7 @@ class Session:
             limited_retries = 0
             results.extend(response["results"])
 
-            self._save_results_to_cache(next_page, response, resource, kind)
+            self._save_results_to_cache(next_page, response, resource, "list")
 
             if response["next"]:
                 next_page = response["next"]
