@@ -57,8 +57,9 @@ redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', '(' .. string.format('%.0f', now
 if redis.call('ZCOUNT', KEYS[2], '+inf', '+inf') > 0 then
   redis.call('PERSIST', KEYS[2])
 else
+  -- The score comes back as a string Redis formats, which may not be a plain integer.
   local last = redis.call('ZRANGE', KEYS[2], -1, -1, 'WITHSCORES')
-  redis.call('PEXPIREAT', KEYS[2], last[2])
+  redis.call('PEXPIREAT', KEYS[2], string.format('%.0f', tonumber(last[2])))
 end
 return 0
 """
@@ -88,6 +89,10 @@ class RedisCache:
     and ``key_prefix`` share entries.
 
     Needs Redis 7.0 or later, and a single server rather than a Redis Cluster.
+    ``invalidate`` finds entries through per-resource index sets, so if Redis is set to
+    evict keys when it runs out of memory (``maxmemory-policy`` other than
+    ``noeviction``), an evicted index set can leave its entries to be served until they
+    expire. Give the cache enough memory that eviction doesn't happen, or use short TTLs.
 
     Safe to share across threads, since redis-py clients are. Errors from the client,
     such as a ``redis.ConnectionError`` while Redis is down, are raised to the caller;
@@ -229,12 +234,18 @@ class RedisCache:
         return removed + self._unlink_entries(batch)
 
     def _unlink_entries(self, keys: list[str]) -> int:
-        """Remove ``keys``, returning how many of them were entries rather than index sets.
-
-        Every key comes from SCAN, so each index set counted here existed.
-        """
-        indexes = sum(1 for key in keys if key.startswith(self._index_base))
-        return self._unlink(keys) - indexes
+        """Remove ``keys``, returning how many of them were entries rather than index sets."""
+        indexes = [key for key in keys if key.startswith(self._index_base)]
+        entries = [key for key in keys if not key.startswith(self._index_base)]
+        # Both are unlinked in one round trip, but separately, so only entries that still
+        # existed are counted.
+        pipe = self._client.pipeline(transaction=False)
+        if indexes:
+            pipe.unlink(*indexes)
+        if entries:
+            pipe.unlink(*entries)
+        results = pipe.execute()
+        return results[-1] if entries else 0
 
     def _unlink(self, keys: Iterable[bytes | str]) -> int:
         """Remove ``keys`` in batches, returning how many existed."""

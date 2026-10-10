@@ -256,11 +256,14 @@ m = mokkari.api(api_token="your-token", cache=RedisCache(client))
 
 Entries expire through Redis's own TTLs, and every key starts with `key_prefix`
 (`"mokkari:cache"` by default), so `clear()` leaves other data in the database
-alone. It needs Redis 7.0 or later on a single server, not a Redis Cluster. If
-Redis is unreachable, the request goes to Metron instead and the error is
-logged. Set `socket_connect_timeout` and `socket_timeout` on the client as
-above: without them, a Redis host that stops responding, rather than refusing
-the connection, makes every request wait on it indefinitely.
+alone. It needs Redis 7.0 or later on a single server, not a Redis Cluster.
+Writes find the entries to drop through per-resource index keys, so if Redis
+evicts keys under memory pressure, an evicted index can leave stale entries
+until they expire; size Redis so that eviction doesn't happen. If Redis is
+unreachable, the request goes to Metron instead and the error is logged. Set
+`socket_connect_timeout` and `socket_timeout` on the client as above: without
+them, a Redis host that stops responding, rather than refusing the connection,
+makes every request wait on it indefinitely.
 
 ## Connection Reuse
 
