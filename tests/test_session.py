@@ -2084,7 +2084,7 @@ def test_collection_delete(session: Session) -> None:
 )
 def test__get_results(session, result, has_next, case_id):
     # Arrange
-    with patch.object(session, "_get", return_value=result):
+    with patch.object(session, "_fetch", return_value=(result, False)):
         if has_next:
             with patch.object(session, "_retrieve_all_results", return_value=result) as ret:
                 # Act
@@ -2099,19 +2099,22 @@ def test__get_results(session, result, has_next, case_id):
             assert out == result
 
 
-def test__retrieve_all_results_with_cache(session: Session) -> None:
+def test__retrieve_all_results_skips_cache_reads(session: Session) -> None:
+    """Following pages are always fetched, then stored, never read from the cache."""
     # Arrange
     data = {"results": [1], "next": "url2"}
-    cached = {"results": [2], "next": None}
+    resp2 = {"results": [2], "next": None}
     with (
-        patch.object(session, "_get_results_from_cache", side_effect=[None, cached]),
-        patch.object(session, "_request_data", return_value=cached),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session, "_get_results_from_cache") as cache_get,
+        patch.object(session, "_request_data", return_value=resp2),
+        patch.object(session, "_save_results_to_cache") as cache_store,
     ):
         # Act
         out = session._retrieve_all_results(data, "foo", "list")
         # Assert
         assert out["results"] == [1, 2]
+        cache_get.assert_not_called()
+        cache_store.assert_called_once_with("url2", resp2, "foo", "list")
 
 
 def test__retrieve_all_results_without_cache(session: Session) -> None:

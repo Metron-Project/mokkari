@@ -670,6 +670,61 @@ def test_session_caches_paginated_list(
     assert rows == [(page1, "role", "list"), (page2, "role", "list")]
 
 
+ROLE_PAGE1 = "https://metron.cloud/api/role/?name=writer"
+ROLE_PAGE2 = "https://metron.cloud/api/role/?name=writer&page=2"
+
+
+def role_page(next_page: str | None, *names: str) -> dict[str, Any]:
+    """Return a page of a role list response."""
+    results = [{"id": i, "name": name} for i, name in enumerate(names, 1)]
+    return {"count": len(names), "next": next_page, "results": results}
+
+
+@pytest.mark.parametrize("missing", [ROLE_PAGE1, ROLE_PAGE2])
+def test_session_refetches_whole_paginated_list(
+    missing: str, dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """If any page of a list is missing from the cache, every page is fetched again."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+
+    with requests_mock.Mocker() as r:
+        r.get(ROLE_PAGE1, json=role_page(ROLE_PAGE2, "Writer"))
+        r.get(ROLE_PAGE2, json=role_page(None, "Co-Writer"))
+        m.role_list({"name": "writer"})
+
+        cache.delete(missing)
+        r.get(ROLE_PAGE1, json=role_page(ROLE_PAGE2, "Writer (new)"))
+        r.get(ROLE_PAGE2, json=role_page(None, "Co-Writer (new)"))
+        roles = m.role_list({"name": "writer"})
+
+        assert [role.name for role in roles] == ["Writer (new)", "Co-Writer (new)"]
+        assert r.call_count == 4
+
+    assert cache.get(ROLE_PAGE1) == role_page(ROLE_PAGE2, "Writer (new)")
+    assert cache.get(ROLE_PAGE2) == role_page(None, "Co-Writer (new)")
+
+
+def test_session_refetch_ends_at_new_single_page(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A list refetched because a page was missing may now fit on a single page."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+
+    with requests_mock.Mocker() as r:
+        r.get(ROLE_PAGE1, json=role_page(ROLE_PAGE2, "Writer"))
+        r.get(ROLE_PAGE2, json=role_page(None, "Co-Writer"))
+        m.role_list({"name": "writer"})
+
+        cache.delete(ROLE_PAGE2)
+        r.get(ROLE_PAGE1, json=role_page(None, "Writer"))
+        roles = m.role_list({"name": "writer"})
+
+        assert [role.name for role in roles] == ["Writer"]
+        assert r.call_count == 3
+
+
 def test_session_does_not_cache_pull_list(
     dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:

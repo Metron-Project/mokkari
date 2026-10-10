@@ -460,6 +460,30 @@ class Session:
         Raises:
             ApiError: If the API returns an error response or if there are network issues.
         """
+        return self._fetch(endpoint, params, kind=kind)[0]
+
+    def _fetch(
+        self,
+        endpoint: list[str | int],
+        params: dict[str, str | int] | None = None,
+        *,
+        kind: sqlite_cache.CacheKind = "detail",
+        use_cache: bool = True,
+    ) -> tuple[dict[str, Any], bool]:
+        """Do the work of ``_get``, also reporting whether the response came from the cache.
+
+        Args:
+            endpoint: List of path segments to build the API endpoint URL.
+            params: Optional query parameters to include in the request.
+            kind: ``"detail"`` or ``"list"``, passed to the cache with the resource name.
+            use_cache: Whether to look in the cache first. The response is stored either way.
+
+        Returns:
+            The response data, and ``True`` if it was served from the cache.
+
+        Raises:
+            ApiError: If the API returns an error response or if there are network issues.
+        """
         if params is None:
             params = {}
 
@@ -471,9 +495,10 @@ class Session:
         url = self.api_url.format("/".join(str(e) for e in endpoint))
         cache_key = f"{url}{cache_params}"
 
-        cached_response = self._get_results_from_cache(cache_key)
-        if cached_response is not None:
-            return cached_response
+        if use_cache:
+            cached_response = self._get_results_from_cache(cache_key)
+            if cached_response is not None:
+                return cached_response, True
 
         data = self._request_data("GET", url, params)
 
@@ -482,7 +507,7 @@ class Session:
 
         self._save_results_to_cache(cache_key, data, str(endpoint[0]), kind)
 
-        return data
+        return data, False
 
     def _send(self, method: str, endpoint: list[str | int], data: T) -> Any:
         """Send a request with data to the specified endpoint.
@@ -1987,6 +2012,12 @@ class Session:
         This internal method handles paginated responses by automatically following 'next' links
         to retrieve all available results. It's used by list methods to ensure complete data retrieval.
 
+        A paginated list is served either entirely from the cache or entirely from Metron,
+        so it's never a mix of pages from an older listing and a newer one: a fresh first
+        page means every following page is fetched too, and a cached first page is only
+        used if every following page is cached as well. Otherwise the whole list is fetched
+        again, starting from the first page.
+
         Args:
             endpoint: List of path segments to build the API endpoint URL.
             params: Optional query parameters to include in the request.
@@ -1997,10 +2028,35 @@ class Session:
         if params is None:
             params = {}
 
-        result = self._get(endpoint, params=params, kind="list")
-        if result["next"]:
-            result = self._retrieve_all_results(result, str(endpoint[0]), "list")
-        return result
+        resource = str(endpoint[0])
+        result, from_cache = self._fetch(endpoint, params, kind="list")
+        if not result["next"]:
+            return result
+        if from_cache:
+            if (cached := self._cached_pages(result)) is not None:
+                return cached
+            result, _ = self._fetch(endpoint, params, kind="list", use_cache=False)
+            if not result["next"]:
+                return result
+        return self._retrieve_all_results(result, resource, "list")
+
+    def _cached_pages(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        """Add every following page of ``data`` from the cache, without making any requests.
+
+        Args:
+            data: The first page, from the cache, whose results are extended in place.
+
+        Returns:
+            ``data`` with every page's results, or ``None`` if any page isn't in the cache.
+        """
+        next_page = data["next"]
+        while next_page:
+            page = self._get_results_from_cache(next_page)
+            if page is None:
+                return None
+            data["results"].extend(page["results"])
+            next_page = page["next"]
+        return data
 
     def _retrieve_all_results(
         self, data: dict[str, Any], resource: str, kind: sqlite_cache.CacheKind
@@ -2008,7 +2064,8 @@ class Session:
         """Retrieve all results from paginated data by following 'next' links.
 
         This internal method handles the pagination logic by making additional requests
-        to fetch all pages of results. It respects caching and rate limiting.
+        to fetch all pages of results. Every page is fetched from Metron rather than read
+        from the cache (see ``_get_results``), then stored. It respects rate limiting.
 
         Args:
             data: Dictionary containing the initial response data with pagination information.
@@ -2032,14 +2089,6 @@ class Session:
         limited_retries = 0
 
         while has_next_page:
-            if cached_response := self._get_results_from_cache(next_page):
-                data["results"].extend(cached_response["results"])
-                if cached_response["next"]:
-                    next_page = cached_response["next"]
-                else:
-                    has_next_page = False
-                continue
-
             try:
                 response = self._request_data("GET", next_page)
             except exceptions.RateLimitError as e:
