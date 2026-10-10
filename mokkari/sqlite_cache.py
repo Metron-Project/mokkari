@@ -19,7 +19,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Self
 
 from mokkari import exceptions
-from mokkari.cache import DEFAULT_TTLS, NO_CACHE, _check_ttl_key, _shorter
+from mokkari.cache import NO_CACHE, TtlPolicy
 
 if TYPE_CHECKING:
     import os
@@ -66,17 +66,10 @@ _PURGE_EXPIRED: Final[str] = "DELETE FROM cache WHERE expires_at IS NOT NULL AND
 class SqliteCache:
     """A response cache backed by SQLite, with a configurable lifetime per resource.
 
-    How long an entry lives is looked up by ``"{resource}:{kind}"``, then by
-    ``"{resource}"``, then by ``"*:{kind}"`` (e.g. ``"*:list"`` for every list
-    endpoint), then falls back to ``default_ttl``. A TTL is a positive
-    ``timedelta``, ``None`` (or ``SqliteCache.NEVER``) for an entry that never
-    expires, or ``NO_CACHE`` (or ``SqliteCache.NO_CACHE``) for one that isn't
-    cached at all. ``collection``, ``pull_list`` and ``wish_list`` default to
-    ``NO_CACHE`` (see ``DEFAULT_TTLS``); add them to ``ttl`` to cache them anyway.
-
-    A list response with no results is kept for at most ``empty_list_ttl``, so a
-    search that found nothing doesn't outlive the data arriving on Metron. By
-    default empty lists aren't cached at all.
+    How long each entry is kept follows ``TtlPolicy``: ``ttl`` sets a lifetime per
+    resource and kind, ``default_ttl`` covers the rest, and empty lists are kept
+    for at most ``empty_list_ttl``. ``SqliteCache.NEVER`` and ``SqliteCache.NO_CACHE``
+    are the same as ``None`` and ``NO_CACHE``.
 
     Safe to share across threads: all database access goes through a single
     connection guarded by an internal lock, since sqlite3 connections aren't
@@ -143,27 +136,7 @@ class SqliteCache:
             CacheError: If ``db_name`` is a database with tables other than a Mokkari cache's,
                 or a cache written by a newer version of Mokkari.
         """
-        for name in ttl or {}:
-            _check_ttl_key(name)
-        self._ttl = {**DEFAULT_TTLS, **(ttl or {})}
-        self.default_ttl = default_ttl
-        self.empty_list_ttl = empty_list_ttl
-        for name, value in [
-            ("default_ttl", default_ttl),
-            ("empty_list_ttl", empty_list_ttl),
-            *self._ttl.items(),
-        ]:
-            if value is None or value is NO_CACHE:
-                continue
-            if not isinstance(value, timedelta):
-                msg = f"TTL for {name!r} must be a timedelta, None or NO_CACHE, not {value!r}"
-                raise TypeError(msg)
-            if value <= timedelta(0):
-                msg = (
-                    f"TTL for {name!r} must be positive: {value}. "
-                    "Use NO_CACHE to keep it out of the cache, or None to never expire it."
-                )
-                raise ValueError(msg)
+        self.ttl_policy = TtlPolicy(default_ttl=default_ttl, ttl=ttl, empty_list_ttl=empty_list_ttl)
 
         self._db_name = db_name
         self._lock = threading.Lock()
@@ -285,10 +258,7 @@ class SqliteCache:
         Returns:
             The lifetime, ``None`` if it never expires, or ``NO_CACHE`` if it isn't cached.
         """
-        for name in (f"{resource}:{kind}", resource, f"*:{kind}"):
-            if name in self._ttl:
-                return self._ttl[name]
-        return self.default_ttl
+        return self.ttl_policy.ttl_for(resource, kind)
 
     def get(self, key: str) -> Any | None:
         """Retrieve unexpired data from the cache database.
@@ -319,9 +289,7 @@ class SqliteCache:
             resource: The first segment of the endpoint, e.g. ``"series"``.
             kind: ``"detail"`` or ``"list"``.
         """
-        ttl = self.ttl_for(resource, kind)
-        if kind == "list" and isinstance(value, dict) and value.get("count") == 0:
-            ttl = _shorter(ttl, self.empty_list_ttl)
+        ttl = self.ttl_policy.ttl_for_value(value, resource=resource, kind=kind)
         if ttl is NO_CACHE:
             return
         now = time.time()

@@ -3,6 +3,7 @@
 This module provides the parts of response caching that don't depend on a backend:
 
 - Cache: Protocol for a response cache passed to ``Session``
+- TtlPolicy: How long a cache keeps each resource
 - NO_CACHE: TTL for a resource that isn't cached at all
 """
 
@@ -16,6 +17,7 @@ __all__ = [
     "CacheKind",
     "NoCache",
     "Ttl",
+    "TtlPolicy",
 ]
 
 from datetime import timedelta
@@ -147,3 +149,90 @@ def _shorter(a: Ttl, b: Ttl) -> Ttl:
     if b is None:
         return a
     return min(a, b)
+
+
+class TtlPolicy:
+    """How long a cache keeps the entries for each resource, shared by every cache backend.
+
+    How long an entry lives is looked up by ``"{resource}:{kind}"``, then by
+    ``"{resource}"``, then by ``"*:{kind}"`` (e.g. ``"*:list"`` for every list
+    endpoint), then falls back to ``default_ttl``. A TTL is a positive
+    ``timedelta``, ``None`` for an entry that never expires, or ``NO_CACHE`` for
+    one that isn't cached at all. ``collection``, ``pull_list`` and ``wish_list``
+    default to ``NO_CACHE`` (see ``DEFAULT_TTLS``); add them to ``ttl`` to cache
+    them anyway.
+
+    A list response with no results is kept for at most ``empty_list_ttl``, so a
+    search that found nothing doesn't outlive the data arriving on Metron. By
+    default empty lists aren't cached at all.
+    """
+
+    def __init__(
+        self,
+        *,
+        default_ttl: Ttl = timedelta(days=7),
+        ttl: Mapping[str, Ttl] | None = None,
+        empty_list_ttl: Ttl = NO_CACHE,
+    ) -> None:
+        """Check and store the TTLs.
+
+        Args:
+            default_ttl: Lifetime for resources without an entry in ``ttl``.
+                ``None`` never expires them, and ``NO_CACHE`` caches nothing by default.
+            ttl: Lifetimes keyed by ``"{resource}:{kind}"``, ``"{resource}"`` or
+                ``"*:{kind}"``, merged over ``DEFAULT_TTLS``. ``resource`` is one of
+                ``RESOURCES`` and ``kind`` is ``"detail"`` or ``"list"``.
+            empty_list_ttl: The longest a list response with no results is kept.
+                It only ever shortens the usual TTL: ``NO_CACHE`` doesn't cache
+                empty lists, and ``None`` gives them the usual TTL.
+
+        Raises:
+            TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
+            ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
+                resource or kind.
+        """
+        for name in ttl or {}:
+            _check_ttl_key(name)
+        self._ttl = {**DEFAULT_TTLS, **(ttl or {})}
+        self._default_ttl = default_ttl
+        self._empty_list_ttl = empty_list_ttl
+        for name, value in [
+            ("default_ttl", default_ttl),
+            ("empty_list_ttl", empty_list_ttl),
+            *self._ttl.items(),
+        ]:
+            if value is None or value is NO_CACHE:
+                continue
+            if not isinstance(value, timedelta):
+                msg = f"TTL for {name!r} must be a timedelta, None or NO_CACHE, not {value!r}"
+                raise TypeError(msg)
+            if value <= timedelta(0):
+                msg = (
+                    f"TTL for {name!r} must be positive: {value}. "
+                    "Use NO_CACHE to keep it out of the cache, or None to never expire it."
+                )
+                raise ValueError(msg)
+
+    def ttl_for(self, resource: str, kind: CacheKind) -> Ttl:
+        """Return how long an entry for ``resource`` and ``kind`` is kept.
+
+        Returns:
+            The lifetime, ``None`` if it never expires, or ``NO_CACHE`` if it isn't cached.
+        """
+        for name in (f"{resource}:{kind}", resource, f"*:{kind}"):
+            if name in self._ttl:
+                return self._ttl[name]
+        return self._default_ttl
+
+    def ttl_for_value(self, value: Any, *, resource: str, kind: CacheKind) -> Ttl:
+        """Return how long ``value``, a response for ``resource`` and ``kind``, is kept.
+
+        This is ``ttl_for``, shortened to ``empty_list_ttl`` for a list with no results.
+
+        Returns:
+            The lifetime, ``None`` if it never expires, or ``NO_CACHE`` if it isn't cached.
+        """
+        ttl = self.ttl_for(resource, kind)
+        if kind == "list" and isinstance(value, dict) and value.get("count") == 0:
+            ttl = _shorter(ttl, self._empty_list_ttl)
+        return ttl

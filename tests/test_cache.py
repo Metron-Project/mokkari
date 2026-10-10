@@ -16,7 +16,7 @@ import pytest
 import requests_mock
 
 from mokkari import api, exceptions, session, sqlite_cache
-from mokkari.cache import NO_CACHE, RESOURCES, CacheKind, Ttl
+from mokkari.cache import NO_CACHE, RESOURCES, CacheKind, Ttl, TtlPolicy
 from mokkari.schemas.universe import UniversePost
 from mokkari.schemas.wish_list import AcquireWishListItem
 
@@ -390,6 +390,29 @@ def test_empty_list_ttl_only_for_lists(cache: sqlite_cache.SqliteCache) -> None:
     cache.store("key", {"id": 1, "count": 0}, resource="series", kind="detail")
 
     assert cache.get("key") == {"id": 1, "count": 0}
+
+
+@pytest.mark.parametrize(
+    ("value", "kind", "expected"),
+    [
+        (EMPTY_LIST, "list", timedelta(minutes=30)),
+        ({"count": 1, "results": [{"id": 1}]}, "list", timedelta(hours=1)),
+        ({"id": 1, "count": 0}, "detail", timedelta(hours=1)),
+    ],
+)
+def test_ttl_policy_ttl_for_value(value: Any, kind: CacheKind, expected: Ttl) -> None:
+    """TtlPolicy applies empty_list_ttl on its own, for backends other than SqliteCache."""
+    policy = TtlPolicy(default_ttl=timedelta(hours=1), empty_list_ttl=timedelta(minutes=30))
+
+    assert policy.ttl_for_value(value, resource="issue", kind=kind) == expected
+
+
+def test_ttl_policy_checks_ttls() -> None:
+    """TtlPolicy rejects bad TTLs and keys itself, not only through SqliteCache."""
+    with pytest.raises(ValueError, match="must be positive"):
+        TtlPolicy(default_ttl=timedelta(0))
+    with pytest.raises(ValueError, match="unknown resource"):
+        TtlPolicy(ttl={"issues": timedelta(hours=1)})
 
 
 @pytest.mark.parametrize("resource", ["collection", "pull_list", "wish_list"])
