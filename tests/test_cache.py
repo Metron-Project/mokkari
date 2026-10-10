@@ -194,9 +194,9 @@ def test_none_default_ttl_never_expires(
     assert cache.get("key") == {"id": 1}
 
 
-def test_zero_ttl_is_not_stored(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
-    """A TTL of timedelta(0) means the resource isn't cached at all."""
-    cache = make_cache(ttl={"issue": timedelta(0)})
+def test_no_cache_ttl_is_not_stored(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """A TTL of NO_CACHE means the resource isn't cached at all."""
+    cache = make_cache(ttl={"issue": sqlite_cache.NO_CACHE})
     cache.store("key", {"id": 1}, resource="issue", kind="detail")
 
     assert cache.get("key") is None
@@ -246,7 +246,7 @@ def test_user_data_opt_in(make_cache: Callable[..., sqlite_cache.SqliteCache]) -
 
     assert cache.get("key") == {"id": 1}
     # The other defaults still apply.
-    assert cache.ttl_for("pull_list", "list") == timedelta(0)
+    assert cache.ttl_for("pull_list", "list") is sqlite_cache.NO_CACHE
 
 
 def test_user_data_opt_in_by_kind(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
@@ -254,7 +254,17 @@ def test_user_data_opt_in_by_kind(make_cache: Callable[..., sqlite_cache.SqliteC
     cache = make_cache(ttl={"wish_list:list": timedelta(minutes=5)})
 
     assert cache.ttl_for("wish_list", "list") == timedelta(minutes=5)
-    assert cache.ttl_for("wish_list", "detail") == timedelta(0)
+    assert cache.ttl_for("wish_list", "detail") is sqlite_cache.NO_CACHE
+
+
+def test_class_sentinels(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
+    """SqliteCache.NEVER and SqliteCache.NO_CACHE mean the same as None and NO_CACHE."""
+    cache = make_cache(
+        ttl={"role": sqlite_cache.SqliteCache.NEVER, "issue": sqlite_cache.SqliteCache.NO_CACHE}
+    )
+
+    assert cache.ttl_for("role", "list") is None
+    assert cache.ttl_for("issue", "detail") is sqlite_cache.NO_CACHE
 
 
 @pytest.mark.parametrize(
@@ -262,11 +272,28 @@ def test_user_data_opt_in_by_kind(make_cache: Callable[..., sqlite_cache.SqliteC
     [
         {"default_ttl": timedelta(seconds=-1)},
         {"ttl": {"issue": timedelta(seconds=-1)}},
+        # 4.x used expire=0 for "never expire", so zero is rejected rather than read as anything.
+        {"default_ttl": timedelta(0)},
+        {"ttl": {"issue": timedelta(0)}},
     ],
 )
-def test_negative_ttl_rejected(kwargs: dict[str, Any]) -> None:
-    """A negative TTL is almost certainly a mistake, so it's rejected up front."""
-    with pytest.raises(ValueError, match="must not be negative"):
+def test_non_positive_ttl_rejected(kwargs: dict[str, Any]) -> None:
+    """A zero or negative TTL is rejected up front, pointing at NO_CACHE and None."""
+    with pytest.raises(ValueError, match=r"must be positive.*NO_CACHE"):
+        sqlite_cache.SqliteCache(":memory:", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"default_ttl": 7},
+        {"ttl": {"issue": 0}},
+        {"ttl": {"issue": 3600.0}},
+    ],
+)
+def test_non_timedelta_ttl_rejected(kwargs: dict[str, Any]) -> None:
+    """A bare number, like a 4.x expire value in days, is rejected rather than guessed at."""
+    with pytest.raises(TypeError, match="must be a timedelta, None or NO_CACHE"):
         sqlite_cache.SqliteCache(":memory:", **kwargs)
 
 

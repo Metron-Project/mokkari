@@ -8,13 +8,14 @@ This module provides the following classes:
 
 from __future__ import annotations
 
-__all__ = ["DEFAULT_TTLS", "Cache", "CacheKind", "SqliteCache"]
+__all__ = ["DEFAULT_TTLS", "NO_CACHE", "Cache", "CacheKind", "NoCache", "SqliteCache", "Ttl"]
 
 import json
 import sqlite3
 import threading
 import time
 from datetime import timedelta
+from enum import Enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self
 
@@ -24,13 +25,35 @@ if TYPE_CHECKING:
 
 CacheKind = Literal["detail", "list"]
 
+
+class NoCache(Enum):
+    """Type of ``NO_CACHE``, the TTL that keeps a resource out of the cache."""
+
+    NO_CACHE = "NO_CACHE"
+
+    def __repr__(self) -> str:
+        """Return ``"NO_CACHE"``."""
+        return "NO_CACHE"
+
+
+NO_CACHE: Final = NoCache.NO_CACHE
+"""TTL for a resource that isn't cached at all.
+
+A distinct sentinel rather than ``timedelta(0)``: in Mokkari 4.x ``expire=0`` meant
+"never expire", so a falsy value meaning "don't cache" would silently disable caching
+for anyone porting that setting. A zero ``timedelta`` is rejected instead.
+"""
+
+Ttl = timedelta | NoCache | None
+"""A lifetime, ``None`` to never expire, or ``NO_CACHE`` to not cache at all."""
+
 # Per-user data changes whenever the user edits it on Metron, and serving a stale copy is more
 # surprising than for shared reference data, so it isn't cached unless the caller opts back in.
-DEFAULT_TTLS: Final[Mapping[str, timedelta | None]] = MappingProxyType(
+DEFAULT_TTLS: Final[Mapping[str, Ttl]] = MappingProxyType(
     {
-        "collection": timedelta(0),
-        "pull_list": timedelta(0),
-        "wish_list": timedelta(0),
+        "collection": NO_CACHE,
+        "pull_list": NO_CACHE,
+        "wish_list": NO_CACHE,
     }
 )
 
@@ -80,10 +103,11 @@ class SqliteCache:
     """A response cache backed by SQLite, with a configurable lifetime per resource.
 
     How long an entry lives is looked up by ``"{resource}:{kind}"``, then by
-    ``"{resource}"``, then falls back to ``default_ttl``. A TTL of ``None`` means
-    the entry never expires, and ``timedelta(0)`` means it isn't cached at all.
-    ``collection``, ``pull_list`` and ``wish_list`` default to ``timedelta(0)``
-    (see ``DEFAULT_TTLS``); add them to ``ttl`` to cache them anyway.
+    ``"{resource}"``, then falls back to ``default_ttl``. A TTL is a positive
+    ``timedelta``, ``None`` (or ``SqliteCache.NEVER``) for an entry that never
+    expires, or ``NO_CACHE`` (or ``SqliteCache.NO_CACHE``) for one that isn't
+    cached at all. ``collection``, ``pull_list`` and ``wish_list`` default to
+    ``NO_CACHE`` (see ``DEFAULT_TTLS``); add them to ``ttl`` to cache them anyway.
 
     Safe to share across threads: all database access goes through a single
     connection guarded by an internal lock, since sqlite3 connections aren't
@@ -99,36 +123,49 @@ class SqliteCache:
         ...     ttl={
         ...         "issue:list": timedelta(hours=6),
         ...         "issue": timedelta(days=2),
-        ...         "role": None,
+        ...         "role": SqliteCache.NEVER,
         ...         "collection": timedelta(minutes=10),
+        ...         "series:list": SqliteCache.NO_CACHE,
         ...     },
         ... )
     """
+
+    NEVER: Final = None
+    NO_CACHE: Final = NO_CACHE
 
     def __init__(
         self,
         db_name: str | os.PathLike[str] = "mokkari_cache.db",
         *,
-        default_ttl: timedelta | None = timedelta(days=7),
-        ttl: Mapping[str, timedelta | None] | None = None,
+        default_ttl: Ttl = timedelta(days=7),
+        ttl: Mapping[str, Ttl] | None = None,
     ) -> None:
         """Open (or create) the cache database and purge any expired entries.
 
         Args:
             db_name: Path to the SQLite database, or ``":memory:"``.
             default_ttl: Lifetime for resources without an entry in ``ttl``.
-                ``None`` never expires them.
+                ``None`` never expires them, and ``NO_CACHE`` caches nothing by default.
             ttl: Lifetimes keyed by ``"{resource}:{kind}"`` or ``"{resource}"``,
                 merged over ``DEFAULT_TTLS``.
 
         Raises:
-            ValueError: If any TTL is negative.
+            TypeError: If any TTL isn't a ``timedelta``, ``None`` or ``NO_CACHE``.
+            ValueError: If any TTL is zero or negative.
         """
         self._ttl = {**DEFAULT_TTLS, **(ttl or {})}
         self.default_ttl = default_ttl
         for name, value in [("default_ttl", default_ttl), *self._ttl.items()]:
-            if value is not None and value < timedelta(0):
-                msg = f"TTL for {name!r} must not be negative: {value}"
+            if value is None or value is NO_CACHE:
+                continue
+            if not isinstance(value, timedelta):
+                msg = f"TTL for {name!r} must be a timedelta, None or NO_CACHE, not {value!r}"
+                raise TypeError(msg)
+            if value <= timedelta(0):
+                msg = (
+                    f"TTL for {name!r} must be positive: {value}. "
+                    "Use NO_CACHE to keep it out of the cache, or None to never expire it."
+                )
                 raise ValueError(msg)
 
         self._lock = threading.Lock()
@@ -154,11 +191,11 @@ class SqliteCache:
                     self.con.execute(statement)
             self.con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
-    def ttl_for(self, resource: str, kind: CacheKind) -> timedelta | None:
+    def ttl_for(self, resource: str, kind: CacheKind) -> Ttl:
         """Return how long an entry for ``resource`` and ``kind`` is kept.
 
         Returns:
-            The lifetime, ``None`` if it never expires, or ``timedelta(0)`` if it isn't cached.
+            The lifetime, ``None`` if it never expires, or ``NO_CACHE`` if it isn't cached.
         """
         for name in (f"{resource}:{kind}", resource):
             if name in self._ttl:
@@ -184,7 +221,7 @@ class SqliteCache:
     def store(self, key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
         """Save data to the cache database, replacing any existing entry for ``key``.
 
-        Nothing is stored when the TTL for ``resource`` and ``kind`` is ``timedelta(0)``.
+        Nothing is stored when the TTL for ``resource`` and ``kind`` is ``NO_CACHE``.
 
         Args:
             key: The cache key, normally the request URL.
@@ -193,7 +230,7 @@ class SqliteCache:
             kind: ``"detail"`` or ``"list"``.
         """
         ttl = self.ttl_for(resource, kind)
-        if ttl is not None and not ttl:
+        if ttl is NO_CACHE:
             return
         now = time.time()
         expires_at = None if ttl is None else now + ttl.total_seconds()
