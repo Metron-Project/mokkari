@@ -519,12 +519,6 @@ def test_every_ttl_key_form_accepted() -> None:
         assert cache.ttl_for("role", "list") == timedelta(hours=1)
 
 
-def test_resources_match_session_endpoints() -> None:
-    """Every resource Session caches under can be given a TTL."""
-    endpoints = {value for name, value in vars(session.ResourceEndpoint).items() if name.isupper()}
-    assert endpoints | {"role", "series_type"} == RESOURCES
-
-
 # ============================================================================
 # Management
 # ============================================================================

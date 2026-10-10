@@ -5,6 +5,7 @@ This module provides the parts of response caching that don't depend on a backen
 - Cache: Protocol for a response cache passed to ``Session``
 - TtlPolicy: How long a cache keeps each resource
 - NO_CACHE: TTL for a resource that isn't cached at all
+- RESOURCES: The resources Session caches under, from ``ResourceEndpoint``
 """
 
 from __future__ import annotations
@@ -39,24 +40,34 @@ if TYPE_CHECKING:
 CacheKind = Literal["detail", "list"]
 _KINDS: Final[frozenset[str]] = frozenset(get_args(CacheKind))
 
+
+class ResourceEndpoint:
+    """Constants for API resource endpoint names.
+
+    These constants define the valid endpoint names used throughout the Session class
+    for accessing different resource types in the Metron API. They're also the resources
+    ``Session`` caches responses under.
+    """
+
+    ARC: Final[str] = "arc"
+    CHARACTER: Final[str] = "character"
+    COLLECTION: Final[str] = "collection"
+    CREATOR: Final[str] = "creator"
+    IMPRINT: Final[str] = "imprint"
+    ISSUE: Final[str] = "issue"
+    PUBLISHER: Final[str] = "publisher"
+    READING_LIST: Final[str] = "reading_list"
+    ROLE: Final[str] = "role"
+    SERIES: Final[str] = "series"
+    SERIES_TYPE: Final[str] = "series_type"
+    TEAM: Final[str] = "team"
+    UNIVERSE: Final[str] = "universe"
+    PULL_LIST: Final[str] = "pull_list"
+    WISH_LIST: Final[str] = "wish_list"
+
+
 RESOURCES: Final[frozenset[str]] = frozenset(
-    {
-        "arc",
-        "character",
-        "collection",
-        "creator",
-        "imprint",
-        "issue",
-        "publisher",
-        "pull_list",
-        "reading_list",
-        "role",
-        "series",
-        "series_type",
-        "team",
-        "universe",
-        "wish_list",
-    }
+    value for name, value in vars(ResourceEndpoint).items() if name.isupper()
 )
 """The resources ``Session`` caches responses under, for use in ``SqliteCache``'s ``ttl``."""
 

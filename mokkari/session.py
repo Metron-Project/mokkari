@@ -29,7 +29,7 @@ from pydantic import TypeAdapter, ValidationError
 from requests.auth import AuthBase
 
 from mokkari import __version__, exceptions, rate_limit, utils
-from mokkari.cache import Cache, CacheKind
+from mokkari.cache import Cache, CacheKind, ResourceEndpoint
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -129,28 +129,6 @@ class _ServerRateLimitError(exceptions.RateLimitError):
     Unlike one raised locally before a request is sent, retrying this one after the
     rate limiter has backed off can succeed.
     """
-
-
-class ResourceEndpoint:
-    """Constants for API resource endpoint names.
-
-    These constants define the valid endpoint names used throughout the Session class
-    for accessing different resource types in the Metron API.
-    """
-
-    ARC: Final[str] = "arc"
-    CHARACTER: Final[str] = "character"
-    COLLECTION: Final[str] = "collection"
-    CREATOR: Final[str] = "creator"
-    IMPRINT: Final[str] = "imprint"
-    ISSUE: Final[str] = "issue"
-    PUBLISHER: Final[str] = "publisher"
-    READING_LIST: Final[str] = "reading_list"
-    SERIES: Final[str] = "series"
-    TEAM: Final[str] = "team"
-    UNIVERSE: Final[str] = "universe"
-    PULL_LIST: Final[str] = "pull_list"
-    WISH_LIST: Final[str] = "wish_list"
 
 
 def _check_cache(cache: object) -> None:
@@ -1334,7 +1312,7 @@ class Session:
         Returns:
             list[GenericItem]: A list of GenericItem objects representing series types.
         """
-        resp = self._get_results(["series_type"], params)
+        resp = self._get_results([ResourceEndpoint.SERIES_TYPE], params)
         return self._validate_list_response(resp, GenericItem)
 
     # Issue methods
@@ -1465,7 +1443,7 @@ class Session:
             list[GenericItem]: A list of GenericItem objects representing creator roles
                               (e.g., Writer, Artist, Colorist, etc.).
         """
-        resp = self._get_results(["role"], params)
+        resp = self._get_results([ResourceEndpoint.ROLE], params)
         return self._validate_list_response(resp, GenericItem)
 
     # Universe methods
