@@ -798,12 +798,17 @@ def test_legacy_database_is_reset(tmp_path: Path) -> None:
         ),
     ],
 )
-def test_foreign_database_refused(tmp_path: Path, setup: list[str], match: str) -> None:
+# Another application may set user_version too, so even 1 doesn't make a database a cache.
+@pytest.mark.parametrize("version", [0, sqlite_cache.SCHEMA_VERSION])
+def test_foreign_database_refused(
+    tmp_path: Path, setup: list[str], match: str, version: int
+) -> None:
     """A database with anything but a Mokkari cache in it is left untouched."""
     db = tmp_path / "app.db"
     con = sqlite3.connect(db)
     for statement in setup:
         con.execute(statement)
+    con.execute(f"PRAGMA user_version = {version}")
     con.commit()
     before = con.execute("SELECT type, name, sql FROM sqlite_master ORDER BY name").fetchall()
     con.close()
@@ -815,7 +820,7 @@ def test_foreign_database_refused(tmp_path: Path, setup: list[str], match: str) 
     assert (
         con.execute("SELECT type, name, sql FROM sqlite_master ORDER BY name").fetchall() == before
     )
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 0
+    assert con.execute("PRAGMA user_version").fetchone()[0] == version
     assert con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
     con.close()
 
@@ -848,6 +853,18 @@ def test_older_schema_rebuilt(tmp_path: Path) -> None:
     with sqlite_cache.SqliteCache(db) as cache:
         assert cache.get("key") is None
         assert cache.con.execute("PRAGMA user_version").fetchone()[0] == sqlite_cache.SCHEMA_VERSION
+
+
+def test_current_version_without_table_rebuilt(tmp_path: Path) -> None:
+    """An empty database that only has the current user_version gets the cache table."""
+    db = tmp_path / "cache.db"
+    con = sqlite3.connect(db)
+    con.execute(f"PRAGMA user_version = {sqlite_cache.SCHEMA_VERSION}")
+    con.close()
+
+    with sqlite_cache.SqliteCache(db) as cache:
+        cache.store("key", {"id": 1}, resource="series", kind="detail")
+        assert cache.get("key") == {"id": 1}
 
 
 def test_concurrent_open_creates_schema_once(tmp_path: Path) -> None:

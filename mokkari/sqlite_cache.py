@@ -204,16 +204,15 @@ class SqliteCache:
     @staticmethod
     def _init_schema(con: sqlite3.Connection) -> None:
         """Create the table, discarding any older layout and refusing a newer one."""
-        (version,) = con.execute("PRAGMA user_version").fetchone()
-        if version == SCHEMA_VERSION:
+        if SqliteCache._is_current(con):
             return
         with con:
             # sqlite3 doesn't open a transaction for DDL, so take the write lock explicitly
             # and check again, in case another process rebuilt the schema first.
             con.execute("BEGIN IMMEDIATE")
-            (version,) = con.execute("PRAGMA user_version").fetchone()
-            if version == SCHEMA_VERSION:
+            if SqliteCache._is_current(con):
                 return
+            (version,) = con.execute("PRAGMA user_version").fetchone()
             # Rebuilding a newer layout would wipe the cache of the newer Mokkari sharing this
             # file, which would then wipe ours, on every open.
             if version > SCHEMA_VERSION:
@@ -235,6 +234,20 @@ class SqliteCache:
                 if statement.strip():
                     con.execute(statement)
             con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    @staticmethod
+    def _is_current(con: sqlite3.Connection) -> bool:
+        """Return whether the database is a Mokkari cache at the current schema version.
+
+        ``user_version`` alone isn't enough, since other applications set it too.
+        """
+        (version,) = con.execute("PRAGMA user_version").fetchone()
+        if version != SCHEMA_VERSION:
+            return False
+        has_cache = con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cache'"
+        ).fetchone()
+        return has_cache is not None and not SqliteCache._foreign_objects(con)
 
     @staticmethod
     def _foreign_objects(con: sqlite3.Connection) -> list[str]:
