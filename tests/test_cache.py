@@ -1335,6 +1335,17 @@ def test_rejected_write_does_not_invalidate(dummy_api_token: str) -> None:
     assert cache.invalidated == []
 
 
+def test_write_logs_method_and_url(dummy_api_token: str, caplog: pytest.LogCaptureFixture) -> None:
+    """A write logs its method and URL at debug level, as reads do."""
+    m = api(dummy_api_token)
+
+    with requests_mock.Mocker() as r, caplog.at_level(logging.DEBUG, logger="mokkari.session"):
+        r.delete("https://metron.cloud/api/collection/5/", status_code=204)
+        m.collection_delete(5)
+
+    assert "Request Method: DELETE | URL: https://metron.cloud/api/collection/5/" in caplog.text
+
+
 def test_rate_limited_write_does_not_invalidate(dummy_api_token: str) -> None:
     """Nothing is invalidated when the rate limit stops the write before it's sent."""
     cache = RecordingCache()

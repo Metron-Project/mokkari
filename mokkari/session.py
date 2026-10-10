@@ -610,6 +610,7 @@ class Session:
             RateLimitError: When the API rate limit is exceeded.
         """
         url = self._url(endpoint)
+        LOGGER.debug("Request Method: %s | URL: %s", method, url)
         header, files, data_dict = self._prepare_request_payload(data)
         response = None
         unsent = False
