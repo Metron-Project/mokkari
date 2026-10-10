@@ -202,7 +202,7 @@ import redis
 import mokkari
 from mokkari.redis_rate_limit import RedisRateLimiter
 
-client = redis.Redis(host="localhost", port=6379)
+client = redis.Redis(host="localhost", port=6379, socket_connect_timeout=1, socket_timeout=1)
 # Any stable name for your Metron account, such as its username. Don't use the
 # token itself: it becomes part of key names anyone with Redis access can read.
 m = mokkari.api(
@@ -215,7 +215,11 @@ It raises `RateLimitError` on an exhausted daily limit just like
 `HeaderPacedRateLimiter`. Times come from the Redis server's clock, and every
 key expires on its own, so a worker that crashes mid-request can't leave the
 account blocked. If Redis is unreachable, `acquire` raises the client's
-connection error and the request isn't sent.
+connection error and the request isn't sent. Set `socket_connect_timeout` and
+`socket_timeout` on the client as above: without them, a Redis host that stops
+responding, rather than refusing the connection, makes `acquire` wait on it
+indefinitely. The limiter's own waits happen in the client, not in Redis, so a
+short timeout doesn't cut them off.
 
 ## Caching
 
@@ -232,6 +236,35 @@ m = mokkari.api(api_token="your-token", cache=SqliteCache("mokkari_cache.db"))
 `import mokkari` no longer loads `mokkari.sqlite_cache` in v5.0. If you're
 upgrading from 4.x and refer to `mokkari.sqlite_cache.SqliteCache` after only
 `import mokkari`, import the module explicitly as shown above.
+
+### Sharing a cache with Redis
+
+`SqliteCache` keeps its cache on one machine. `mokkari.redis_cache.RedisCache`
+keeps it in Redis instead, so several processes or hosts can share it. It takes
+the same `default_ttl`, `ttl` and `empty_list_ttl` options. Install the `redis`
+extra and pass it a client:
+
+```python
+import redis
+
+import mokkari
+from mokkari.redis_cache import RedisCache
+
+client = redis.Redis(host="localhost", port=6379, socket_connect_timeout=1, socket_timeout=1)
+m = mokkari.api(api_token="your-token", cache=RedisCache(client))
+```
+
+Entries expire through Redis's own TTLs, and every key starts with `key_prefix`
+(`"mokkari:cache"` by default), so `clear()` leaves other data in the database
+alone. It needs Redis 7.0 or later on a single server, not a Redis Cluster.
+Writes find the entries to drop through per-resource index keys, so if Redis
+evicts keys under memory pressure, an evicted index can leave stale entries
+until they expire; size Redis so that eviction doesn't happen. If Redis is
+unreachable, each request still goes to Metron, but only after the cache lookup
+and store have each failed, and both errors are logged. Set
+`socket_connect_timeout` and `socket_timeout` on the client as above to bound
+that delay: without them, a Redis host that stops responding, rather than
+refusing the connection, makes every request wait on it indefinitely.
 
 ## Connection Reuse
 
