@@ -19,7 +19,10 @@ import requests_mock
 
 from mokkari import api, exceptions, session, sqlite_cache
 from mokkari.cache import NO_CACHE, RESOURCES, CacheKind, Ttl, TtlPolicy
+from mokkari.schemas.issue import CreditPost
+from mokkari.schemas.series import SeriesPost
 from mokkari.schemas.universe import UniversePost
+from mokkari.schemas.variant import VariantPost
 from mokkari.schemas.wish_list import AcquireWishListItem
 
 if TYPE_CHECKING:
@@ -1249,34 +1252,43 @@ def test_page_read_during_unrelated_write_stored(
 
 
 @pytest.mark.parametrize(
-    ("endpoint", "expected"),
+    ("method", "url", "write", "expected"),
     [
-        (["series"], ("series",)),
-        (["series", 5], ("series",)),
-        (["credit"], ("credit", "issue")),
-        (["variant"], ("variant", "issue")),
-        (["wish_list", "items", 5, "acquire"], ("wish_list", "collection")),
-        (["wish_list", "items", 5, "remove"], ("wish_list",)),
+        ("patch", "series/5/", lambda m: m.series_patch(5, SeriesPost()), ["series"]),
+        (
+            "post",
+            "credit/",
+            lambda m: m.credits_post([CreditPost(issue=1, creator=1, role=[1])]),
+            ["credit", "issue"],
+        ),
+        ("post", "variant/", lambda m: m.variant_post(VariantPost(issue=1)), ["variant", "issue"]),
+        (
+            "delete",
+            "wish_list/items/5/remove/",
+            lambda m: m.wish_list_remove_item(5),
+            ["wish_list"],
+        ),
     ],
+    ids=["series", "credit", "variant", "wish_list_remove"],
 )
-def test_written_resources(endpoint: list[str | int], expected: tuple[str, ...]) -> None:
+def test_write_invalidates_changed_resources(
+    dummy_api_token: str,
+    method: str,
+    url: str,
+    write: Callable[[session.Session], Any],
+    expected: list[str],
+) -> None:
     """A write invalidates its own resource and any others it changes."""
-    assert session._written_resources(endpoint) == expected
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
 
+    with requests_mock.Mocker() as r:
+        # A 5xx may still have applied the write, so it invalidates without needing a valid body.
+        r.request(method.upper(), f"https://metron.cloud/api/{url}", status_code=500)
+        with pytest.raises(exceptions.ApiError):
+            write(m)
 
-@pytest.mark.parametrize(
-    ("endpoint", "expected"),
-    [
-        (["series"], "series"),
-        (["series", 5], "series"),
-        (["series", 5, "issue_list"], "issue"),
-        (["character", 5, "issue_list"], "issue"),
-        (["reading_list", 5, "items"], "reading_list"),
-    ],
-)
-def test_cached_resource(endpoint: list[str | int], expected: str) -> None:
-    """A resource's issue list is cached as issues, everything else as its own resource."""
-    assert session._cached_resource(endpoint) == expected
+    assert cache.invalidated == expected
 
 
 def test_issue_write_invalidates_issue_lists(

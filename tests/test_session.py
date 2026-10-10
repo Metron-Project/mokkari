@@ -3656,7 +3656,10 @@ def test_wish_list_acquire_item(session: Session) -> None:
         # Assert
         assert result is None
         mock_send_void.assert_called_once_with(
-            "POST", ["wish_list", "items", 10, "acquire"], acquire_request
+            "POST",
+            ["wish_list", "items", 10, "acquire"],
+            acquire_request,
+            also_invalidates=("collection",),
         )
 
 
