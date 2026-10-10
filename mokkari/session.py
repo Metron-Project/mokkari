@@ -185,6 +185,18 @@ def _check_cache(cache: object) -> None:
             raise exceptions.CacheError(msg) from e
 
 
+def _written_resources(endpoint: list[str | int]) -> tuple[str, ...]:
+    """Return the cached resources a successful write to ``endpoint`` may have changed."""
+    resource = str(endpoint[0])
+    # Credits and variants are read back as part of their issue.
+    if resource in ("credit", "variant"):
+        return (resource, ResourceEndpoint.ISSUE)
+    # Acquiring a wish list item adds it to the collection.
+    if resource == ResourceEndpoint.WISH_LIST and endpoint[-1] == "acquire":
+        return (resource, ResourceEndpoint.COLLECTION)
+    return (resource,)
+
+
 class Session:
     """A comprehensive API client for interacting with the Metron Comics Database.
 
@@ -639,6 +651,7 @@ class Session:
                 raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
+        self._invalidate_cache(endpoint)
 
     def _handle_write_request(
         self, method: str, endpoint: list[str | int], data: Any, response_class: type
@@ -661,6 +674,7 @@ class Session:
             ApiError: If the request fails or validation fails.
         """
         resp = self._send(method, endpoint, data)
+        self._invalidate_cache(endpoint)
         return self._validate_response(resp, response_class)
 
     # Generic resource methods
@@ -2609,3 +2623,23 @@ class Session:
         if self.cache is None:
             return
         self.cache.store(key, data, resource=resource, kind=kind)
+
+    def _invalidate_cache(self, endpoint: list[str | int]) -> None:
+        """Drop cached entries a successful write to ``endpoint`` may have made stale.
+
+        Only a cache with an ``invalidate(resource)`` method, such as ``SqliteCache``, can
+        be invalidated; other caches keep their entries until they expire.
+
+        Args:
+            endpoint: The path segments the write was sent to.
+        """
+        invalidate = getattr(self.cache, "invalidate", None)
+        if invalidate is None:
+            return
+        for resource in _written_resources(endpoint):
+            # The write has already succeeded, so raising here would invite a retry that
+            # repeats it; log a failing cache instead.
+            try:
+                invalidate(resource)
+            except Exception:
+                LOGGER.exception("Cache invalidate(%r) failed; ignoring", resource)

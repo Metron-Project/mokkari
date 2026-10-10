@@ -92,6 +92,10 @@ class Cache(Protocol):
     ``api(..., cache=...)``). ``SqliteCache`` is the bundled implementation.
     Implementations must be safe to call concurrently from multiple threads
     sharing one ``Session``.
+
+    A cache may also have an ``invalidate(resource)`` method. If it does, ``Session``
+    calls it after each successful write, with the resource written to and any others
+    the write may have changed, so later reads don't return the pre-write copy.
     """
 
     def get(self, key: str) -> Any | None:
@@ -364,8 +368,8 @@ class SqliteCache:
     def invalidate(self, resource: str, kind: CacheKind | None = None) -> int:
         """Remove every entry for ``resource``, or only those of ``kind`` if given.
 
-        Useful after changing data on Metron, e.g. ``invalidate("series")`` after
-        ``series_patch()``.
+        ``Session`` calls this after each of its own writes. Call it yourself after
+        changing data on Metron some other way, such as through the website.
 
         Returns:
             The number of entries removed.

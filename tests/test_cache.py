@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING, Any
 import pytest
 import requests_mock
 
-from mokkari import api, exceptions, sqlite_cache
+from mokkari import api, exceptions, session, sqlite_cache
+from mokkari.schemas.universe import UniversePost
+from mokkari.schemas.wish_list import AcquireWishListItem
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -865,3 +867,119 @@ def test_session_does_not_cache_pull_list(
         assert r.call_count == 2
 
     assert count_rows(cache) == 0
+
+
+# ============================================================================
+# Invalidation after writes
+# ============================================================================
+
+
+class RecordingCache:
+    """A cache that records which resources Session invalidates."""
+
+    def __init__(self) -> None:
+        """Start with nothing invalidated."""
+        self.invalidated: list[str] = []
+
+    def get(self, key: str) -> Any | None:  # noqa: ARG002
+        """Retrieve no data."""
+        return None
+
+    def store(self, key: str, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+        """Save no data."""
+        return
+
+    def invalidate(self, resource: str) -> int:
+        """Record the resource."""
+        self.invalidated.append(resource)
+        return 0
+
+
+class FailingInvalidateCache(RecordingCache):
+    """A cache whose invalidate() fails, e.g. because its database is locked."""
+
+    def invalidate(self, resource: str) -> int:  # noqa: ARG002
+        """Fail."""
+        msg = "database is locked"
+        raise sqlite3.OperationalError(msg)
+
+
+def test_session_write_invalidates_cache(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A read after a successful write fetches the new data instead of the cached copy."""
+    m = api(dummy_api_token, cache=make_cache())
+    url = "https://metron.cloud/api/universe/1/"
+    body = {
+        "id": 1,
+        "name": "Earth 2",
+        "modified": "2024-01-01T12:00:00Z",
+        "publisher": {"id": 1, "name": "DC Comics"},
+        "designation": "Earth 2",
+        "desc": "",
+        "resource_url": "https://metron.cloud/universe/earth-2/",
+    }
+    patched = {**body, "name": "Earth Two", "publisher": 1}
+
+    with requests_mock.Mocker() as r:
+        r.get(url, json=body)
+        assert m.universe(1).name == "Earth 2"
+        r.patch(url, json=patched)
+        m.universe_patch(1, UniversePost(name="Earth Two"))
+        r.get(url, json={**body, "name": "Earth Two"})
+        assert m.universe(1).name == "Earth Two"
+        assert r.call_count == 3
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        (["series"], ("series",)),
+        (["series", 5], ("series",)),
+        (["credit"], ("credit", "issue")),
+        (["variant"], ("variant", "issue")),
+        (["wish_list", "items", 5, "acquire"], ("wish_list", "collection")),
+        (["wish_list", "items", 5, "remove"], ("wish_list",)),
+    ],
+)
+def test_written_resources(endpoint: list[str | int], expected: tuple[str, ...]) -> None:
+    """A write invalidates its own resource and any others it changes."""
+    assert session._written_resources(endpoint) == expected
+
+
+def test_void_write_invalidates_cache(dummy_api_token: str) -> None:
+    """A write with no response body invalidates the cache too."""
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.post("https://metron.cloud/api/wish_list/items/5/acquire/", status_code=204)
+        m.wish_list_acquire_item(5, AcquireWishListItem())
+
+    assert cache.invalidated == ["wish_list", "collection"]
+
+
+def test_failed_write_does_not_invalidate(dummy_api_token: str) -> None:
+    """Nothing is invalidated when the write fails."""
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.delete("https://metron.cloud/api/collection/5/", status_code=404)
+        with pytest.raises(exceptions.ApiError):
+            m.collection_delete(5)
+
+    assert cache.invalidated == []
+
+
+def test_failing_invalidate_is_logged(
+    dummy_api_token: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A cache that fails to invalidate doesn't turn a successful write into an error."""
+    m = api(dummy_api_token, cache=FailingInvalidateCache())  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.delete("https://metron.cloud/api/collection/5/", status_code=204)
+        m.collection_delete(5)
+
+    assert "Cache invalidate('collection') failed" in caplog.text
