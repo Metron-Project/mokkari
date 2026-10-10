@@ -18,7 +18,7 @@ import time
 from datetime import timedelta
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, runtime_checkable
 
 if TYPE_CHECKING:
     import os
@@ -84,6 +84,7 @@ CREATE INDEX idx_cache_expires ON cache(expires_at);
 _PURGE_EXPIRED: Final[str] = "DELETE FROM cache WHERE expires_at IS NOT NULL AND expires_at <= ?"
 
 
+@runtime_checkable
 class Cache(Protocol):
     """Protocol for a response cache passed to ``Session``.
 

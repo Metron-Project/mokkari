@@ -87,26 +87,35 @@ def count_rows(cache: sqlite_cache.SqliteCache) -> int:
 # ============================================================================
 
 
-def test_no_get(dummy_api_token: str) -> None:
-    """Test for retrieving failure."""
-    m = api(dummy_api_token, cache=NoGet())
+@pytest.mark.parametrize("bad_cache", [NoGet(), NoStore(), object()])
+def test_cache_missing_methods_rejected(dummy_api_token: str, bad_cache: object) -> None:
+    """A cache without get() and store() is rejected when the session is built."""
+    with pytest.raises(exceptions.CacheError, match=r"get\(\) and store\(\)"):
+        api(dummy_api_token, cache=bad_cache)  # type: ignore[arg-type]
 
-    with pytest.raises(exceptions.CacheError):
-        m.series(5)
 
+def test_custom_cache_accepted(dummy_api_token: str) -> None:
+    """Any object with get() and store() methods is accepted, not just SqliteCache."""
 
-def test_no_store(dummy_api_token: str) -> None:
-    """Test for saving data error."""
-    m = api(dummy_api_token, cache=NoStore())
+    class DictCache:
+        def __init__(self) -> None:
+            self.data: dict[str, Any] = {}
+
+        def get(self, key: str) -> Any | None:
+            return self.data.get(key)
+
+        def store(self, key: str, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+            self.data[key] = value
+
+    cache = DictCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
 
     with requests_mock.Mocker() as r:
-        r.get(
-            "https://metron.cloud/api/series/5/",
-            text='{"response_code": 200}',
-        )
-
-        with pytest.raises(exceptions.CacheError):
-            m.series(5)
+        r.get(ROLE_PAGE1, json=role_page(None, "Writer"))
+        m.role_list({"name": "writer"})
+        m.role_list({"name": "writer"})
+        assert r.call_count == 1
+    assert list(cache.data) == [ROLE_PAGE1]
 
 
 # ============================================================================

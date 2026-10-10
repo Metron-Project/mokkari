@@ -299,7 +299,7 @@ class Session:
         AuthenticationError: If the api_token is missing or empty.
         ApiError: For general API errors, authentication failures, or network issues.
         RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
-        CacheError: For cache-related errors.
+        CacheError: If an injected ``cache`` object is missing a ``get`` or ``store`` method.
         RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
@@ -344,6 +344,7 @@ class Session:
 
         Raises:
             AuthenticationError: If the api_token is missing or empty.
+            CacheError: If ``cache`` is missing a ``get`` or ``store`` method.
         """
         # Guards against a token read from an unset environment variable, which the
         # type hint alone won't catch at runtime.
@@ -358,6 +359,10 @@ class Session:
         # Kept out of ``header`` so the token isn't logged with the request headers.
         self._auth = _BearerAuth(api_token)
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
+        # Checked here so a mis-wired cache fails now rather than on the first request.
+        if cache is not None and not isinstance(cache, sqlite_cache.Cache):
+            msg = f"Cache must have get() and store() methods: {cache!r}"
+            raise exceptions.CacheError(msg)
         self.cache = cache
         self.rate_limiter = rate_limiter
         self._http = self._build_http_session()
@@ -2544,50 +2549,28 @@ class Session:
     def _get_results_from_cache(self, key: str) -> Any | None:
         """Retrieve cached response data using the specified key.
 
-        This internal method provides a safe interface to the cache system with
-        proper error handling for missing cache methods.
-
         Args:
             key: The cache key to retrieve data for.
 
         Returns:
             Any | None: The cached response data if available and cache is configured,
                        None if not found or cache is not available.
-
-        Raises:
-            CacheError: If the cache object is missing required methods.
         """
         if self.cache is None:
             return None
-
-        try:
-            return self.cache.get(key)
-        except AttributeError as e:
-            msg = f"Cache object passed in is missing attribute: {e!r}"
-            raise exceptions.CacheError(msg) from e
+        return self.cache.get(key)
 
     def _save_results_to_cache(
         self, key: str, data: Any, resource: str, kind: sqlite_cache.CacheKind
     ) -> None:
         """Store the provided data in the cache using the specified key.
 
-        This internal method provides a safe interface to the cache system with
-        proper error handling for missing cache methods.
-
         Args:
             key: The cache key to store the data under.
             data: The data to be stored in the cache.
             resource: The resource name, the first segment of the endpoint.
             kind: ``"detail"`` or ``"list"``.
-
-        Raises:
-            CacheError: If the cache object is missing required methods.
         """
         if self.cache is None:
             return
-
-        try:
-            self.cache.store(key, data, resource=resource, kind=kind)
-        except AttributeError as e:
-            msg = f"Cache object passed in is missing attribute: {e!r}"
-            raise exceptions.CacheError(msg) from e
+        self.cache.store(key, data, resource=resource, kind=kind)
