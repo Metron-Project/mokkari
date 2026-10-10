@@ -854,6 +854,16 @@ def test_unreadable_database_refused(tmp_path: Path, make_file: Callable[[Path],
     assert db.read_bytes() == before
 
 
+def test_database_error_without_error_code_reraised(tmp_path: Path) -> None:
+    """A DatabaseError raised by the sqlite3 module itself, with no SQLite error code, is re-raised."""
+    error = sqlite3.ProgrammingError("Cannot operate on a closed database.")
+    with (
+        patch.object(sqlite_cache.SqliteCache, "_init_schema", side_effect=error),
+        pytest.raises(sqlite3.ProgrammingError, match="closed database"),
+    ):
+        sqlite_cache.SqliteCache(tmp_path / "cache.db")
+
+
 def test_newer_schema_refused(tmp_path: Path) -> None:
     """A cache written by a newer Mokkari is refused rather than rebuilt, so its entries survive."""
     db = tmp_path / "cache.db"

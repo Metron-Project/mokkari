@@ -33,6 +33,9 @@ LOGGER = logging.getLogger(__name__)
 # release its lock before giving up with "database is locked".
 _BUSY_TIMEOUT: Final[float] = 5.0
 
+# SQLite's extended result codes keep the primary code in their low byte.
+_PRIMARY_RESULT_CODE_MASK: Final[int] = 0xFF
+
 
 # Bumped whenever the table layout changes. An older database is dropped and recreated rather
 # than migrated, since everything in it can be fetched again; a newer one is refused.
@@ -170,7 +173,9 @@ class SqliteCache:
         except sqlite3.DatabaseError as e:
             con.close()
             # Not deleted and rebuilt, since the file may be something other than a cache.
-            if e.sqlite_errorcode & 0xFF in (sqlite3.SQLITE_NOTADB, sqlite3.SQLITE_CORRUPT):
+            # Errors raised by the sqlite3 module rather than SQLite have no error code.
+            code = getattr(e, "sqlite_errorcode", 0) & _PRIMARY_RESULT_CODE_MASK
+            if code in (sqlite3.SQLITE_NOTADB, sqlite3.SQLITE_CORRUPT):
                 msg = (
                     f"Not a SQLite database, or a corrupt one: {e}. Delete it if it's a "
                     "Mokkari cache, or give SqliteCache a file of its own."
