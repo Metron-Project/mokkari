@@ -2757,13 +2757,12 @@ class Session:
         """Drop the cached entries of ``resources``, which a write may have made stale.
 
         Only a cache with an ``invalidate(resource)`` method, such as ``SqliteCache``, can
-        be invalidated; other caches keep their entries until they expire.
+        be invalidated; other caches keep their entries until they expire. Either way, a
+        read in flight is no longer stored, since it may be from before the write.
 
         Args:
             resources: The resources the write changed.
         """
-        if getattr(self.cache, "invalidate", None) is None:
-            return
         with self._invalidation_lock:
             for resource in resources:
                 self._invalidations[resource] += 1

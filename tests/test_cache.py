@@ -1200,6 +1200,34 @@ def test_page_read_during_write_not_stored(
     assert cache.get(page2) is None
 
 
+def test_read_during_write_not_stored_without_invalidate(dummy_api_token: str) -> None:
+    """A cache with no invalidate() doesn't get a response fetched before a write landed."""
+
+    class DictCache:
+        def __init__(self) -> None:
+            self.data: dict[str, Any] = {}
+
+        def get(self, key: str) -> Any | None:
+            return self.data.get(key)
+
+        def store(self, key: str, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+            self.data[key] = value
+
+    cache = DictCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
+    url = "https://metron.cloud/api/series_type/"
+
+    def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
+        m._invalidate_cache(["series_type"])
+        return {"count": 1, "next": None, "previous": None, "results": [{"id": 1, "name": "A"}]}
+
+    with requests_mock.Mocker() as r:
+        r.get(url, json=write_then_answer)
+        m.series_type_list()
+
+    assert cache.data == {}
+
+
 def test_read_during_write_store_dropped(
     dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
