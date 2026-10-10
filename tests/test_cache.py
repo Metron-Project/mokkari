@@ -368,14 +368,69 @@ def test_open_purges_expired(clock: FakeClock, tmp_path: Path) -> None:
         assert count_rows(cache) == 0
 
 
-def test_close_and_context_manager() -> None:
+def test_close_and_context_manager(tmp_path: Path) -> None:
     """The context manager closes the connection, and closing twice is harmless."""
-    with sqlite_cache.SqliteCache(":memory:") as cache:
+    with sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
         cache.store("key", 1, resource="series", kind="detail")
+        con = cache.con
 
     cache.close()
     with pytest.raises(sqlite3.ProgrammingError):
-        cache.get("key")
+        con.execute("SELECT 1")
+
+
+def test_reopens_after_close(tmp_path: Path) -> None:
+    """A closed cache reopens on the next call, keeping a file-backed cache's entries."""
+    cache = sqlite_cache.SqliteCache(tmp_path / "cache.db")
+    cache.store("a", 1, resource="series", kind="detail")
+    cache.close()
+
+    assert cache.get("a") == 1
+    cache.close()
+    cache.store("b", 2, resource="series", kind="detail")
+    cache.close()
+    assert cache.delete("a")
+    assert cache.journal_mode == "wal"
+    cache.close()
+
+
+def test_in_memory_reopens_empty() -> None:
+    """A closed in-memory cache reopens as a fresh, working database."""
+    cache = sqlite_cache.SqliteCache(":memory:")
+    cache.store("key", 1, resource="series", kind="detail")
+    cache.close()
+
+    assert cache.get("key") is None
+    cache.store("key", 2, resource="series", kind="detail")
+    assert cache.get("key") == 2
+    cache.close()
+
+
+def test_reopen_purges_expired(clock: FakeClock, tmp_path: Path) -> None:
+    """Reopening a closed cache purges entries that expired while it was closed."""
+    cache = sqlite_cache.SqliteCache(tmp_path / "cache.db", default_ttl=timedelta(hours=1))
+    cache.store("key", 1, resource="series", kind="detail")
+    cache.close()
+    clock.now += 3600
+
+    assert count_rows(cache) == 0
+    cache.close()
+
+
+def test_close_while_in_use(tmp_path: Path) -> None:
+    """Closing from one thread while others use the cache never breaks their calls."""
+    cache = sqlite_cache.SqliteCache(tmp_path / "cache.db")
+
+    def worker(i: int) -> None:
+        for j in range(50):
+            cache.store(f"{i}-{j}", j, resource="series", kind="detail")
+            assert cache.get(f"{i}-{j}") == j
+            if j % 10 == 0:
+                cache.close()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(worker, range(4)))
+    cache.close()
 
 
 # ============================================================================

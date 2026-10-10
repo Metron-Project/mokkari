@@ -81,6 +81,8 @@ CREATE INDEX idx_cache_resource ON cache(resource, kind);
 CREATE INDEX idx_cache_expires ON cache(expires_at);
 """
 
+_PURGE_EXPIRED: Final[str] = "DELETE FROM cache WHERE expires_at IS NOT NULL AND expires_at <= ?"
+
 
 class Cache(Protocol):
     """Protocol for a response cache passed to ``Session``.
@@ -124,6 +126,10 @@ class SqliteCache:
     aren't blocked while one writes. Where WAL isn't available, such as on some
     network filesystems, the cache logs a warning and carries on in SQLite's
     default journal mode; ``journal_mode`` says which one is in use.
+
+    ``close()`` releases the connection, but the cache stays usable: the next
+    call reopens it, so a long-lived cache can be closed between runs like a
+    ``requests.Session``. A closed ``":memory:"`` cache reopens empty.
 
     Opening a database written by an older version of Mokkari discards its contents.
 
@@ -180,23 +186,52 @@ class SqliteCache:
                 )
                 raise ValueError(msg)
 
+        self._db_name = db_name
         self._lock = threading.Lock()
-        self.con = sqlite3.connect(db_name, timeout=_BUSY_TIMEOUT, check_same_thread=False)
+        self._con: sqlite3.Connection | None = None
+        self.journal_mode = ""
+        # Open now rather than on first use, so a bad path fails here.
         with self._lock:
-            self.journal_mode = self._enable_wal()
-            self._init_schema()
-        self.cleanup()
+            self._connection()
 
-    def _enable_wal(self) -> str:
+    @property
+    def con(self) -> sqlite3.Connection:
+        """The database connection, reopened if the cache was closed.
+
+        Not guarded by the cache's lock, so don't use it while other threads use the cache.
+        """
+        with self._lock:
+            return self._connection()
+
+    def _connection(self) -> sqlite3.Connection:
+        """Return the connection, opening it first if needed. The caller must hold the lock.
+
+        Opening sets the journal mode, creates or resets the table, and purges expired entries.
+        """
+        if self._con is not None:
+            return self._con
+        con = sqlite3.connect(self._db_name, timeout=_BUSY_TIMEOUT, check_same_thread=False)
+        try:
+            self.journal_mode = self._enable_wal(con)
+            self._init_schema(con)
+            with con:
+                con.execute(_PURGE_EXPIRED, (time.time(),))
+        except BaseException:
+            con.close()
+            raise
+        self._con = con
+        return con
+
+    @staticmethod
+    def _enable_wal(con: sqlite3.Connection) -> str:
         """Switch to WAL if possible and return the journal mode now in use.
 
         It's a cache, so falling back to another mode is better than refusing to open.
-        The caller must hold the lock.
         """
         try:
-            (mode,) = self.con.execute("PRAGMA journal_mode=WAL").fetchone()
+            (mode,) = con.execute("PRAGMA journal_mode=WAL").fetchone()
         except sqlite3.OperationalError as e:
-            (mode,) = self.con.execute("PRAGMA journal_mode").fetchone()
+            (mode,) = con.execute("PRAGMA journal_mode").fetchone()
             LOGGER.warning("Couldn't enable WAL for the cache, using %r mode: %s", mode, e)
             return mode
         # An in-memory database ignores the request and stays in "memory" mode.
@@ -204,19 +239,20 @@ class SqliteCache:
             LOGGER.warning("Couldn't enable WAL for the cache, using %r mode", mode)
         return mode
 
-    def _init_schema(self) -> None:
-        """Create the table, discarding any older layout. The caller must hold the lock."""
-        (version,) = self.con.execute("PRAGMA user_version").fetchone()
+    @staticmethod
+    def _init_schema(con: sqlite3.Connection) -> None:
+        """Create the table, discarding any older layout."""
+        (version,) = con.execute("PRAGMA user_version").fetchone()
         if version == SCHEMA_VERSION:
             return
-        with self.con:
+        with con:
             # ``responses`` is the table Mokkari 4.x used.
-            self.con.execute("DROP TABLE IF EXISTS responses")
-            self.con.execute("DROP TABLE IF EXISTS cache")
+            con.execute("DROP TABLE IF EXISTS responses")
+            con.execute("DROP TABLE IF EXISTS cache")
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
-                    self.con.execute(statement)
-            self.con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                    con.execute(statement)
+            con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def ttl_for(self, resource: str, kind: CacheKind) -> Ttl:
         """Return how long an entry for ``resource`` and ``kind`` is kept.
@@ -239,10 +275,14 @@ class SqliteCache:
             The stored data, or ``None`` if it's missing or expired.
         """
         with self._lock:
-            row = self.con.execute(
-                "SELECT value FROM cache WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
-                (key, time.time()),
-            ).fetchone()
+            row = (
+                self._connection()
+                .execute(
+                    "SELECT value FROM cache WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
+                    (key, time.time()),
+                )
+                .fetchone()
+            )
         return json.loads(row[0]) if row else None
 
     def store(self, key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
@@ -261,8 +301,8 @@ class SqliteCache:
             return
         now = time.time()
         expires_at = None if ttl is None else now + ttl.total_seconds()
-        with self._lock, self.con:
-            self.con.execute(
+        with self._lock, self._connection() as con:
+            con.execute(
                 "INSERT INTO cache(key, resource, kind, value, created_at, expires_at) "
                 "VALUES(?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET resource = excluded.resource, "
@@ -306,18 +346,21 @@ class SqliteCache:
         Returns:
             The number of entries removed.
         """
-        return self._delete(
-            "DELETE FROM cache WHERE expires_at IS NOT NULL AND expires_at <= ?", (time.time(),)
-        )
+        return self._delete(_PURGE_EXPIRED, (time.time(),))
 
     def _delete(self, sql: str, params: tuple[Any, ...]) -> int:
-        with self._lock, self.con:
-            return self.con.execute(sql, params).rowcount
+        with self._lock, self._connection() as con:
+            return con.execute(sql, params).rowcount
 
     def close(self) -> None:
-        """Close the database connection. Safe to call more than once."""
+        """Close the database connection. Safe to call more than once.
+
+        The cache can still be used afterwards; the next call reopens the connection.
+        """
         with self._lock:
-            self.con.close()
+            if self._con is not None:
+                self._con.close()
+                self._con = None
 
     def __enter__(self) -> Self:
         """Enter the context manager, returning this cache."""
