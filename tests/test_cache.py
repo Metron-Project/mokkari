@@ -1197,6 +1197,33 @@ def test_page_read_during_write_not_stored(
     assert cache.get(page2) is None
 
 
+def test_read_during_write_store_dropped(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A response whose store a write's invalidation overtakes is dropped once it lands."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/series_type/"
+    store = cache.store
+
+    def write_then_store(key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
+        # The write's invalidation runs before this entry is written, so it misses it.
+        m._invalidate_cache(["series_type"])
+        store(key, value, resource=resource, kind=kind)
+
+    with (
+        requests_mock.Mocker() as r,
+        patch.object(cache, "store", side_effect=write_then_store),
+    ):
+        r.get(
+            url,
+            json={"count": 1, "next": None, "previous": None, "results": [{"id": 1, "name": "A"}]},
+        )
+        m.series_type_list()
+
+    assert cache.get(url) is None
+
+
 def test_page_read_during_unrelated_write_stored(
     dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:

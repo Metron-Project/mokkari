@@ -2689,18 +2689,24 @@ class Session:
         """
         if self.cache is None:
             return
-        with self._invalidation_lock:
-            # A write invalidated this resource while it was being fetched, so the data may
-            # be from before it, and storing it would undo the invalidation.
-            if invalidations != self._invalidations[resource]:
-                LOGGER.debug("Cache invalidated during the request; not caching %s", key)
-                return
-            # The data has already been fetched, so a cache that fails to store it (e.g. its
-            # database is locked or the disk is full) is logged rather than failing the request.
-            try:
-                self.cache.store(self._cache_key(key, resource), data, resource=resource, kind=kind)
-            except Exception:
-                LOGGER.exception("Cache store() failed; not caching %s", key)
+        # A write invalidated this resource while it was being fetched, so the data may be
+        # from before it, and storing it would undo the invalidation.
+        if invalidations != self._invalidations[resource]:
+            LOGGER.debug("Cache invalidated during the request; not caching %s", key)
+            return
+        # The data has already been fetched, so a cache that fails to store it (e.g. its
+        # database is locked or the disk is full) is logged rather than failing the request.
+        try:
+            self.cache.store(self._cache_key(key, resource), data, resource=resource, kind=kind)
+        except Exception:
+            LOGGER.exception("Cache store() failed; not caching %s", key)
+            return
+        # The store isn't made under the lock, so one waiting on a locked database doesn't
+        # hold up every other thread's store and invalidation. A write that invalidated this
+        # resource meanwhile may have done so before the entry landed, so drop it again.
+        if invalidations != self._invalidations[resource]:
+            LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
+            self._invalidate_resource(resource)
 
     def _invalidate_cache(self, endpoint: list[str | int]) -> None:
         """Drop cached entries a write to ``endpoint`` may have made stale.
@@ -2711,16 +2717,27 @@ class Session:
         Args:
             endpoint: The path segments the write was sent to.
         """
-        invalidate = getattr(self.cache, "invalidate", None)
-        if invalidate is None:
+        if getattr(self.cache, "invalidate", None) is None:
             return
         with self._invalidation_lock:
             for resource in _written_resources(endpoint):
                 self._invalidations[resource] += 1
-                # The write may already have been applied, so raising here would invite a
-                # retry that repeats it, or hide the write's own error; log a failing cache
-                # instead.
-                try:
-                    invalidate(resource)
-                except Exception:
-                    LOGGER.exception("Cache invalidate(%r) failed; ignoring", resource)
+                self._invalidate_resource(resource)
+
+    def _invalidate_resource(self, resource: str) -> None:
+        """Call the cache's ``invalidate(resource)``, logging rather than raising a failure.
+
+        After a write, which may already have been applied, raising would invite a retry
+        that repeats it, or hide the write's own error. After a read, the data has already
+        been fetched.
+
+        Args:
+            resource: The resource whose cached entries to drop.
+        """
+        invalidate = getattr(self.cache, "invalidate", None)
+        if invalidate is None:
+            return
+        try:
+            invalidate(resource)
+        except Exception:
+            LOGGER.exception("Cache invalidate(%r) failed; ignoring", resource)
