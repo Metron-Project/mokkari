@@ -105,6 +105,57 @@ def test_cache_missing_methods_rejected(dummy_api_token: str, bad_cache: object)
         api(dummy_api_token, cache=bad_cache)  # type: ignore[arg-type]
 
 
+class OldStoreCache(NoStore):
+    """A 4.x-style cache whose store() doesn't take resource and kind."""
+
+    def store(self: OldStoreCache, key: Any, value: Any) -> None:  # noqa: ARG002
+        """Save no data."""
+        return
+
+
+class NoKeyGetCache(NoGet):
+    """A cache whose get() takes no key."""
+
+    def get(self: NoKeyGetCache) -> None:
+        """Retrieve no data."""
+        return
+
+
+class NonCallableGetCache(NoGet):
+    """A cache whose get is an attribute rather than a method."""
+
+    get = 1
+
+
+@pytest.mark.parametrize(
+    ("bad_cache", "match"),
+    [
+        (
+            OldStoreCache(),
+            r"store\(key, value, \*, resource, kind\) method, not store\(key: 'Any', value: 'Any'\)",
+        ),
+        (NoKeyGetCache(), r"get\(key\) method, not get\(\)"),
+        (NonCallableGetCache(), r"get must be a method"),
+    ],
+)
+def test_cache_wrong_signature_rejected(
+    dummy_api_token: str, bad_cache: object, match: str
+) -> None:
+    """A cache whose methods can't take Session's arguments is rejected when the session is built."""
+    with pytest.raises(exceptions.CacheError, match=match):
+        api(dummy_api_token, cache=bad_cache)  # type: ignore[arg-type]
+
+
+def test_cache_with_flexible_signature_accepted(dummy_api_token: str) -> None:
+    """A store() taking **kwargs accepts resource and kind, so it passes the check."""
+
+    class KwargsCache(NoStore):
+        def store(self, key: Any, value: Any, **kwargs: Any) -> None:  # noqa: ARG002
+            return
+
+    assert api(dummy_api_token, cache=KwargsCache()).cache is not None  # type: ignore[arg-type]
+
+
 def test_custom_cache_accepted(dummy_api_token: str) -> None:
     """Any object with get() and store() methods is accepted, not just SqliteCache."""
 

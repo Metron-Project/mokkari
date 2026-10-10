@@ -35,7 +35,7 @@ def api(
 
     Raises:
         AuthenticationError: If the api_token is missing or empty.
-        CacheError: If ``cache`` is missing a ``get`` or ``store`` method.
+        CacheError: If ``cache`` lacks a ``get`` or ``store`` method taking Session's arguments.
 
     Examples:
         >>> m = api("your-api-token")
