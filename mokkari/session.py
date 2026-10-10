@@ -609,15 +609,20 @@ class Session:
         url = self.api_url.format("/".join(str(e) for e in endpoint))
         header, files, data_dict = self._prepare_request_payload(data)
         response = None
+        unsent = False
         try:
             response = self._execute_http_request(method, url, {}, header, data_dict, files)
+        except exceptions.RateLimitError:
+            # Raised only before the request is sent (a 429 is returned, not raised).
+            unsent = True
+            raise
         finally:
             # A 4xx means Metron rejected the write. Anything else, even a timeout or a 5xx,
             # may have been applied, and dropping the entries only costs a refetch.
             rejected = response is not None and (
                 HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
             )
-            if not rejected:
+            if not (rejected or unsent):
                 self._invalidate_cache(endpoint)
         return response
 

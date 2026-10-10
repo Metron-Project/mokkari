@@ -11,6 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import pytest
 import requests
@@ -1257,6 +1258,24 @@ def test_rejected_write_does_not_invalidate(dummy_api_token: str) -> None:
         r.delete("https://metron.cloud/api/collection/5/", status_code=404)
         with pytest.raises(exceptions.ApiError):
             m.collection_delete(5)
+
+    assert cache.invalidated == []
+
+
+def test_rate_limited_write_does_not_invalidate(dummy_api_token: str) -> None:
+    """Nothing is invalidated when the rate limit stops the write before it's sent."""
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
+    error = exceptions.RateLimitError("limited", retry_after=5)
+
+    with (
+        requests_mock.Mocker() as r,
+        patch.object(m, "_check_rate_limit", side_effect=error),
+        pytest.raises(exceptions.RateLimitError),
+    ):
+        m.collection_delete(5)
+
+    assert not r.called
 
     assert cache.invalidated == []
 
