@@ -95,7 +95,7 @@ def test_no_cache_writes_nothing(client: fakeredis.FakeRedis) -> None:
 
 
 def test_index_set_outlives_its_entries(client: fakeredis.FakeRedis) -> None:
-    """An index set's expiry is extended to its longest-lived entry, never shortened."""
+    """An index set expires with its longest-lived entry."""
     cache = RedisCache(client, default_ttl=timedelta(hours=1), empty_list_ttl=timedelta(minutes=30))
     index = "mokkari:cache:v1:idx:issue:list"
 
