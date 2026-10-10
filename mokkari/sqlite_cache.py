@@ -86,7 +86,7 @@ class SqliteCache:
 
     Opening a database written by an older version of Mokkari discards its contents.
     One written by a newer version, or holding anything else, is refused with ``CacheError``
-    rather than replaced.
+    rather than replaced, as is a file that isn't a SQLite database or is corrupt.
 
     Examples:
         >>> from datetime import timedelta
@@ -134,7 +134,7 @@ class SqliteCache:
             ValueError: If any TTL is zero or negative, or a ``ttl`` key names an unknown
                 resource or kind.
             CacheError: If ``db_name`` is a database with tables other than a Mokkari cache's,
-                or a cache written by a newer version of Mokkari.
+                a cache written by a newer version of Mokkari, or a corrupt or non-SQLite file.
         """
         self.ttl_policy = TtlPolicy(default_ttl=default_ttl, ttl=ttl, empty_list_ttl=empty_list_ttl)
 
@@ -170,6 +170,16 @@ class SqliteCache:
             self.journal_mode = self._enable_wal(con)
             with con:
                 con.execute(_PURGE_EXPIRED, (time.time(),))
+        except sqlite3.DatabaseError as e:
+            con.close()
+            # Not deleted and rebuilt, since the file may be something other than a cache.
+            if e.sqlite_errorcode & 0xFF in (sqlite3.SQLITE_NOTADB, sqlite3.SQLITE_CORRUPT):
+                msg = (
+                    f"Not a SQLite database, or a corrupt one: {e}. Delete it if it's a "
+                    "Mokkari cache, or give SqliteCache a file of its own."
+                )
+                raise exceptions.CacheError(msg) from e
+            raise
         except BaseException:
             con.close()
             raise

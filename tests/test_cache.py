@@ -825,6 +825,32 @@ def test_foreign_database_refused(
     con.close()
 
 
+def _corrupt_cache(db: Path) -> None:
+    """Write a cache to ``db``, then overwrite part of its first page."""
+    with sqlite_cache.SqliteCache(db) as cache:
+        cache.con.execute("PRAGMA journal_mode = DELETE")
+    data = bytearray(db.read_bytes())
+    data[100:200] = b"\xff" * 100
+    db.write_bytes(bytes(data))
+
+
+@pytest.mark.parametrize(
+    "make_file",
+    [lambda db: db.write_text("Not a database. " * 16), _corrupt_cache],
+    ids=["not_a_database", "corrupt"],
+)
+def test_unreadable_database_refused(tmp_path: Path, make_file: Callable[[Path], None]) -> None:
+    """A file that isn't a SQLite database, or a corrupt one, is refused and left untouched."""
+    db = tmp_path / "cache.db"
+    make_file(db)
+    before = db.read_bytes()
+
+    with pytest.raises(exceptions.CacheError, match=r"Not a SQLite database, or a corrupt one"):
+        sqlite_cache.SqliteCache(db)
+
+    assert db.read_bytes() == before
+
+
 def test_newer_schema_refused(tmp_path: Path) -> None:
     """A cache written by a newer Mokkari is refused rather than rebuilt, so its entries survive."""
     db = tmp_path / "cache.db"
