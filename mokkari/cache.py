@@ -131,6 +131,11 @@ class Cache(Protocol):
     def store(self, key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
         """Store ``value`` under ``key``, replacing any existing entry.
 
+        ``key`` is the request URL with its query string. For per-user data (``collection``,
+        ``pull_list``, ``reading_list`` and ``wish_list``) it also ends in ``#user=`` and a
+        hash of the API token, so sessions with different tokens sharing a cache don't see
+        each other's entries.
+
         ``resource`` is the type of object the endpoint returns, normally its first
         segment (e.g. ``"series"``), but ``"issue"`` for a resource's issue list such as
         ``series/5/issue_list``. ``kind`` is ``"detail"`` for a single object or ``"list"``

@@ -281,7 +281,7 @@ class SqliteCache:
         """Retrieve unexpired data from the cache database.
 
         Args:
-            key: The cache key, normally the request URL.
+            key: The cache key; see ``Cache.store``.
 
         Returns:
             The stored data, or ``None`` if it's missing or expired.
@@ -301,7 +301,7 @@ class SqliteCache:
         A list response with no results is kept for no longer than ``empty_list_ttl``.
 
         Args:
-            key: The cache key, normally the request URL.
+            key: The cache key; see ``Cache.store``.
             value: JSON-serializable data to store.
             resource: The resource the entry holds, e.g. ``"series"``; see ``Cache.store``.
             kind: ``"detail"`` or ``"list"``.
@@ -323,6 +323,10 @@ class SqliteCache:
 
     def delete(self, key: str) -> bool:
         """Remove the entry for ``key``.
+
+        For per-user data, ``key`` includes the ``#user=`` suffix ``Session`` adds (see
+        ``Cache.store``), so the bare URL won't match. Use ``invalidate`` to drop every
+        entry for such a resource instead.
 
         Returns:
             ``True`` if an entry was removed.
