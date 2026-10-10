@@ -310,7 +310,7 @@ class SqliteCache:
         Args:
             key: The cache key, normally the request URL.
             value: JSON-serializable data to store.
-            resource: The first segment of the endpoint, e.g. ``"series"``.
+            resource: The resource the entry holds, e.g. ``"series"``; see ``Cache.store``.
             kind: ``"detail"`` or ``"list"``.
         """
         ttl = self.ttl_policy.ttl_for_value(value, resource=resource, kind=kind)

@@ -114,9 +114,10 @@ class Cache(Protocol):
     def store(self, key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
         """Store ``value`` under ``key``, replacing any existing entry.
 
-        ``resource`` is the first segment of the endpoint (e.g. ``"series"``), and
-        ``kind`` is ``"detail"`` for a single object or ``"list"`` for a list
-        endpoint, including every page of a paginated one. An implementation may
+        ``resource`` is the type of object the endpoint returns, normally its first
+        segment (e.g. ``"series"``), but ``"issue"`` for a resource's issue list such as
+        ``series/5/issue_list``. ``kind`` is ``"detail"`` for a single object or ``"list"``
+        for a list endpoint, including every page of a paginated one. An implementation may
         use them to decide how long to keep the entry, or whether to keep it at all.
         """
         ...

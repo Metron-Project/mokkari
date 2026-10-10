@@ -2635,7 +2635,7 @@ class Session:
 
         Args:
             key: The cache key to retrieve data for.
-            resource: The resource name, the first segment of the endpoint.
+            resource: The resource the entry is cached under (see ``_cached_resource``).
 
         Returns:
             Any | None: The cached response data if available and cache is configured,
@@ -2657,7 +2657,7 @@ class Session:
         Args:
             key: The cache key to store the data under.
             data: The data to be stored in the cache.
-            resource: The resource name, the first segment of the endpoint.
+            resource: The resource the entry is cached under (see ``_cached_resource``).
             kind: ``"detail"`` or ``"list"``.
         """
         if self.cache is None:
