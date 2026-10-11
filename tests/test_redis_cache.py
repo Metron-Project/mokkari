@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import fakeredis
 import pytest
@@ -17,6 +17,9 @@ import requests_mock
 from mokkari import api
 from mokkari.cache import NO_CACHE
 from mokkari.redis_cache import RedisCache
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 EMPTY_LIST: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
 FULL_LIST: dict[str, Any] = {"count": 1, "next": None, "previous": None, "results": [{"id": 1}]}
@@ -245,6 +248,31 @@ def test_delete_takes_entry_out_of_its_sets(
     assert forever.delete("s1")
     assert not forever.delete("s1")
     assert client.keys() == []
+
+
+@pytest.mark.parametrize(
+    "remove",
+    [
+        lambda forever: forever.delete("k"),
+        lambda forever: forever.store("k", 1, resource="series", kind="list", tags={"id:2"}),
+        lambda forever: forever.invalidate_tags("series", {"id:2"}),
+    ],
+    ids=["delete", "store_again", "invalidate_tags"],
+)
+def test_set_expires_once_never_expiring_entry_leaves(
+    client: fakeredis.FakeRedis,
+    cache: RedisCache,
+    forever: RedisCache,
+    remove: Callable[[RedisCache], object],
+) -> None:
+    """A set losing its never-expiring entry expires with the entries it has left."""
+    tag_set = "mokkari:cache:v1:idx:series:tag:id:1"
+    forever.store("k", 1, resource="series", kind="list", tags={"id:1", "id:2"})
+    cache.store("j", 2, resource="series", kind="list", tags={"id:1"})
+    assert client.pttl(tag_set) == -1
+
+    remove(forever)
+    assert_pttl(client, tag_set, HOUR_MS)
 
 
 def test_invalidate_skips_expired_members(client: fakeredis.FakeRedis, cache: RedisCache) -> None:

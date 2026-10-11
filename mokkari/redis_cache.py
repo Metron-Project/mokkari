@@ -38,16 +38,35 @@ _BATCH_SIZE: Final[int] = 500
 
 _KINDS: Final[tuple[CacheKind, ...]] = get_args(CacheKind)
 
-# KEYS: entry, its record, its index set, then a set per tag
-# ARGV: JSON value, TTL in ms ('' to never expire)
 # Each index and tag set is a sorted set scored by each entry's expiry time in ms ('+inf' for
-# never). Members whose entries have expired are dropped on every store, so a set holds only
-# live entries, and it lives exactly as long as its longest-lived entry. An entry's record is
-# the set of the sets it's in, expiring with it, so it can be taken out of them when it's
-# stored again or removed, rather than left there once it never expires.
-_STORE: Final[str] = """
+# never). refresh_set drops a set's members whose entries have expired and makes the set
+# expire with its longest-lived remaining one. It's run on every set an entry is added to or
+# taken out of, so a set holds only live entries and lives exactly as long as they do.
+_REFRESH_SET: Final[str] = """
 local time = redis.call('TIME')
 local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local function refresh_set(set)
+  redis.call('ZREMRANGEBYSCORE', set, '-inf', '(' .. string.format('%.0f', now))
+  if redis.call('ZCOUNT', set, '+inf', '+inf') > 0 then
+    redis.call('PERSIST', set)
+  else
+    -- Redis deletes a set left empty, so there may be no last entry.
+    local last = redis.call('ZRANGE', set, -1, -1, 'WITHSCORES')
+    if #last > 0 then
+      -- The score comes back as a string Redis formats, which may not be a plain integer.
+      redis.call('PEXPIREAT', set, string.format('%.0f', tonumber(last[2])))
+    end
+  end
+end
+"""
+
+# KEYS: entry, its record, its index set, then a set per tag
+# ARGV: JSON value, TTL in ms ('' to never expire)
+# An entry's record is the set of the sets it's in, expiring with it, so it can be taken out
+# of them when it's stored again or removed, rather than left there once it never expires.
+_STORE: Final[str] = (
+    _REFRESH_SET
+    + """
 local sets = {}
 for i = 3, #KEYS do
   sets[KEYS[i]] = true
@@ -55,6 +74,7 @@ end
 for _, set in ipairs(redis.call('SMEMBERS', KEYS[2])) do
   if not sets[set] then
     redis.call('ZREM', set, KEYS[1])
+    refresh_set(set)
   end
 end
 redis.call('DEL', KEYS[2])
@@ -69,30 +89,31 @@ else
 end
 for i = 3, #KEYS do
   redis.call('ZADD', KEYS[i], score, KEYS[1])
-  redis.call('ZREMRANGEBYSCORE', KEYS[i], '-inf', '(' .. string.format('%.0f', now))
-  if redis.call('ZCOUNT', KEYS[i], '+inf', '+inf') > 0 then
-    redis.call('PERSIST', KEYS[i])
-  else
-    -- The score comes back as a string Redis formats, which may not be a plain integer.
-    local last = redis.call('ZRANGE', KEYS[i], -1, -1, 'WITHSCORES')
-    redis.call('PEXPIREAT', KEYS[i], string.format('%.0f', tonumber(last[2])))
-  end
+  refresh_set(KEYS[i])
 end
 return 0
 """
+)
 
 # ARGV: how many keys to unlink per call, the entry key prefix, then the record key prefix
 # Removes entries and their records, taking each out of every set its record lists. Returns
 # how many of the entries still existed.
-_REMOVE_ENTRIES: Final[str] = """
+_REMOVE_ENTRIES: Final[str] = (
+    _REFRESH_SET
+    + """
 local function remove_entries(entries)
   local batch = tonumber(ARGV[1])
   local records = {}
+  local touched = {}
   for i, entry in ipairs(entries) do
     records[i] = ARGV[3] .. string.sub(entry, #ARGV[2] + 1)
     for _, set in ipairs(redis.call('SMEMBERS', records[i])) do
       redis.call('ZREM', set, entry)
+      touched[set] = true
     end
+  end
+  for set in pairs(touched) do
+    refresh_set(set)
   end
   local removed = 0
   for i = 1, #entries, batch do
@@ -103,6 +124,7 @@ local function remove_entries(entries)
   return removed
 end
 """
+)
 
 # KEYS: index or tag sets
 # ARGV: as for _REMOVE_ENTRIES
