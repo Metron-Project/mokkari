@@ -3,8 +3,8 @@
 These tests use the mokkari requests caching for mocking tests, so tests will
 run quickly and not require credentials.
 
-If your code adds a new URL to the cache, set the `METRON_API_TOKEN`
-environment variable before running the test and it will be populated in the
+If your code adds a new URL to the cache, set the `METRON_API_TOKEN` environment
+variable before running the test and it will be populated in the
 `testing_mock.sqlite` database.
 
 At any point you should be able to delete the database, set any creditials, and

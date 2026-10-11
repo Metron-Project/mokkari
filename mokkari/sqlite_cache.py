@@ -10,8 +10,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import warnings
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Final
+
+EXPIRE_DEPRECATION: Final[str] = (
+    "SqliteCache's expire argument is deprecated and will be removed in mokkari 5.0. "
+    "Pass default_ttl=timedelta(days=...) instead once you upgrade."
+)
 
 
 class SqliteCache:
@@ -34,7 +40,19 @@ class SqliteCache:
         db_name: str = "mokkari_cache.db",
         expire: int | None = None,
     ) -> None:
-        """Initialize a new SqliteCache."""
+        """Initialize a new SqliteCache.
+
+        Args:
+            db_name: Path to the SQLite database file.
+            expire: Number of days to keep entries. Deprecated: mokkari 5.0 replaces it
+                with ``default_ttl``, a ``timedelta``.
+
+        Warns:
+            DeprecationWarning: If ``expire`` is passed.
+        """
+        if expire is not None:
+            # SqliteCache is built directly by the caller, so stacklevel 2 points at their code.
+            warnings.warn(EXPIRE_DEPRECATION, DeprecationWarning, stacklevel=2)
         self.expire = expire
         self._lock = threading.Lock()
         self.con = sqlite3.connect(db_name, check_same_thread=False)

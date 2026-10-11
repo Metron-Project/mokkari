@@ -94,7 +94,7 @@ def dummy_cache():
         def get(self, key):
             return self._store.get(key)
 
-        def store(self, key, value):
+        def store(self, key, value, *, resource=None, kind=None):  # noqa: ARG002
             self._store[key] = value
 
     return DummyCache()

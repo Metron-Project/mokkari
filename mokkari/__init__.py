@@ -38,7 +38,9 @@ def api(  # noqa: PLR0913, PLR0917
         A Session object.
 
     Warns:
-        DeprecationWarning: If ``username`` or ``passwd`` is passed.
+        DeprecationWarning: If ``username`` or ``passwd`` is passed, or if ``cache`` is
+            a custom cache whose ``store()`` can't take the ``resource`` and ``kind``
+            keywords mokkari 5.0 passes.
 
     Raises:
         AuthenticationError: If neither an api_token nor a complete username/passwd
