@@ -102,6 +102,12 @@ BASIC_AUTH_DEPRECATION: Final[str] = (
     "in mokkari 5.0. Use an API token from your metron.cloud account page instead: "
     "mokkari.api(api_token=...)."
 )
+CACHE_STORE_DEPRECATION: Final[str] = (
+    "Custom caches whose store() only takes (key, value) are deprecated and will be "
+    "rejected in mokkari 5.0, which calls store(key, value, *, resource, kind). Add "
+    "keyword-only resource and kind parameters (e.g. resource=None, kind=None) to "
+    "{name}.store()."
+)
 _PACKAGE_DIR: Final[Path] = Path(__file__).parent
 
 # Metron reports rate-limit state via these response headers rather than a
@@ -159,6 +165,24 @@ def __getattr__(name: str) -> Any:
         stacklevel=_external_stacklevel(),
     )
     return getattr(module, name)
+
+
+def _store_lacks_5_0_keywords(cache: Any) -> bool:
+    """Return whether a custom cache's ``store()`` can't take mokkari 5.0's keywords.
+
+    The bundled ``SqliteCache`` is skipped, since 5.0 rewrites it. A cache without a
+    ``store()``, or one whose signature can't be read, is left to fail as it does today.
+    """
+    store = getattr(cache, "store", None)
+    if store is None or getattr(type(cache), "store", None) is sqlite_cache.SqliteCache.store:
+        return False
+    try:
+        inspect.signature(store).bind("key", "value", resource="issue", kind="detail")
+    except TypeError:
+        return True
+    except ValueError:
+        return False
+    return False
 
 
 class _BearerAuth(AuthBase):
@@ -363,7 +387,9 @@ class Session:
         >>> print(session.last_cache_status)  # "HIT" or "MISS"
 
     Warns:
-        DeprecationWarning: If ``username`` or ``passwd`` is passed.
+        DeprecationWarning: If ``username`` or ``passwd`` is passed, or if ``cache`` is
+            a custom cache whose ``store()`` can't take the ``resource`` and ``kind``
+            keywords mokkari 5.0 passes.
 
     Raises:
         AuthenticationError: If neither an api_token nor a complete username/passwd
@@ -420,7 +446,9 @@ class Session:
                 in place of the default fail-fast check. Defaults to ``None``.
 
         Warns:
-            DeprecationWarning: If ``username`` or ``passwd`` is passed.
+            DeprecationWarning: If ``username`` or ``passwd`` is passed, or if ``cache``
+                is a custom cache whose ``store()`` can't take the ``resource`` and
+                ``kind`` keywords mokkari 5.0 passes.
 
         Raises:
             AuthenticationError: If neither api_token nor a complete username/passwd
@@ -432,6 +460,12 @@ class Session:
         if username is not None or passwd is not None:
             warnings.warn(
                 BASIC_AUTH_DEPRECATION, DeprecationWarning, stacklevel=_external_stacklevel()
+            )
+        if cache is not None and _store_lacks_5_0_keywords(cache):
+            warnings.warn(
+                CACHE_STORE_DEPRECATION.format(name=type(cache).__name__),
+                DeprecationWarning,
+                stacklevel=_external_stacklevel(),
             )
 
         self.username = username
