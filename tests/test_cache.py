@@ -1415,10 +1415,10 @@ def test_read_during_write_store_dropped(
     url = "https://metron.cloud/api/series_type/"
     store = cache.store
 
-    def write_then_store(key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
+    def write_then_store(key: str, value: Any, **kwargs: Any) -> None:
         # The write's invalidation runs before this entry is written, so it misses it.
         m._invalidate_cache(["series_type"])
-        store(key, value, resource=resource, kind=kind)
+        store(key, value, **kwargs)
 
     with (
         requests_mock.Mocker() as r,
@@ -1455,6 +1455,78 @@ def test_page_read_during_unrelated_write_stored(
         m.series_type_list()
 
     assert cache.get(page2) is not None
+
+
+@pytest.mark.parametrize(("dropped", "stored"), [("id:2", True), ("id:1", False)])
+def test_read_during_tagged_write_stored_unless_it_matches(
+    dummy_api_token: str,
+    make_any_cache: Callable[..., SqliteCache | RedisCache],
+    dropped: str,
+    stored: bool,
+) -> None:
+    """A read is only discarded if a write during it dropped entries tagged like it."""
+    cache = make_any_cache()
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/character/1/"
+
+    def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
+        m._invalidate_cache(["character"], tags={"character": frozenset({dropped})})
+        return {"id": 1}
+
+    with requests_mock.Mocker() as r:
+        r.get(url, json=write_then_answer)
+        m._get(["character", 1])
+
+    assert (cache.get(url) is not None) == stored
+
+
+def test_read_during_too_many_tagged_writes_not_stored(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """A read overlapping more writes than are remembered may be stale, so isn't stored."""
+    cache = make_any_cache()
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/character/1/"
+
+    def writes_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
+        for _ in range(session._WRITE_LOG_SIZE + 1):
+            m._invalidate_cache(["character"], tags={"character": frozenset({"id:2"})})
+        return {"id": 1}
+
+    with requests_mock.Mocker() as r:
+        r.get(url, json=writes_then_answer)
+        m._get(["character", 1])
+
+    assert cache.get(url) is None
+
+
+def test_read_during_tagged_write_store_dropped_by_its_tags(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """A store a tagged write overtakes drops only entries tagged like it, not the resource."""
+    cache = make_any_cache()
+    m = api(dummy_api_token, cache=cache)
+    url = "https://metron.cloud/api/character/"
+    other = "https://metron.cloud/api/character/2/"
+    store = cache.store
+
+    def write_then_store(key: str, value: Any, **kwargs: Any) -> None:
+        # The write's invalidation runs before this entry is written, so it misses it.
+        if key == url:
+            m._invalidate_cache(["character"], tags={"character": frozenset({"id:1"})})
+        store(key, value, **kwargs)
+
+    with (
+        requests_mock.Mocker() as r,
+        patch.object(cache, "store", side_effect=write_then_store),
+    ):
+        r.get(other, json={"id": 2})
+        m._get(["character", 2])
+        r.get(url, json={"count": 1, "next": None, "previous": None, "results": [{"id": 1}]})
+        m._get_results(["character"])
+
+    assert cache.get(url) is None
+    assert cache.get(other) is not None
 
 
 @pytest.mark.parametrize(

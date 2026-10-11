@@ -15,7 +15,7 @@ import logging
 import platform
 import threading
 import time
-from collections import Counter, OrderedDict
+from collections import Counter, OrderedDict, defaultdict, deque
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
@@ -203,6 +203,11 @@ _PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
         ResourceEndpoint.WISH_LIST,
     }
 )
+
+# How many of each resource's latest writes are remembered, for reads that finish during
+# them (see ``Session._stale_tags``). A read that more writes overlapped treats every entry
+# as stale.
+_WRITE_LOG_SIZE: Final[int] = 64
 
 
 class Session:
@@ -431,6 +436,11 @@ class Session:
         # after it, while reads of other resources are stored as usual.
         self._invalidation_lock = threading.Lock()
         self._invalidations: Counter[str] = Counter()
+        # The tags each of a resource's latest invalidations dropped, or None if it dropped
+        # every entry, so a read overlapping one is only discarded if it could be stale.
+        self._invalidated_tags: defaultdict[str, deque[frozenset[str] | None]] = defaultdict(
+            lambda: deque(maxlen=_WRITE_LOG_SIZE)
+        )
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -2799,32 +2809,67 @@ class Session:
         """
         if self.cache is None:
             return
-        # A write invalidated this resource while it was being fetched, so the data may be
-        # from before it, and storing it would undo the invalidation.
-        if invalidations != self._invalidations[resource]:
+        # Only a cache invalidated by tag takes tags (see Cache).
+        tags = (
+            entry_tags(key, data, resource=resource, kind=kind)
+            if hasattr(self.cache, "invalidate_tags")
+            else None
+        )
+        # A write invalidated entries like this one while it was being fetched, so the data
+        # may be from before it, and storing it would undo the invalidation.
+        if self._stale_tags(resource, invalidations, tags) != frozenset():
             LOGGER.debug("Cache invalidated during the request; not caching %s", key)
             return
         # The data has already been fetched, so a cache that fails to store it (e.g. its
         # database is locked or the disk is full) is logged rather than failing the request.
         try:
-            # Only a cache invalidated by tag takes tags (see Cache).
-            tags = (
-                {"tags": entry_tags(key, data, resource=resource, kind=kind)}
-                if hasattr(self.cache, "invalidate_tags")
-                else {}
-            )
             self.cache.store(
-                self._cache_key(key, resource), data, resource=resource, kind=kind, **tags
+                self._cache_key(key, resource),
+                data,
+                resource=resource,
+                kind=kind,
+                **({} if tags is None else {"tags": tags}),
             )
         except Exception:
             LOGGER.exception("Cache store() failed; not caching %s", key)
             return
         # The store isn't made under the lock, so one waiting on a locked database doesn't
-        # hold up every other thread's store and invalidation. A write that invalidated this
-        # resource meanwhile may have done so before the entry landed, so drop it again.
-        if invalidations != self._invalidations[resource]:
+        # hold up every other thread's store and invalidation. A write that invalidated
+        # entries like this one meanwhile may have done so before it landed, so drop it again.
+        stale = self._stale_tags(resource, invalidations, tags)
+        if stale is None:
             LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
             self._invalidate_resource(resource)
+        elif stale:
+            LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
+            self._invalidate_tags(resource, stale)
+
+    def _stale_tags(
+        self, resource: str, invalidations: int, tags: frozenset[str] | None
+    ) -> frozenset[str] | None:
+        """Return which of an entry's tags the invalidations made since a read dropped.
+
+        Args:
+            resource: The resource the entry is cached under.
+            invalidations: ``resource``'s count in ``self._invalidations`` from just before
+                the read was sent.
+            tags: The entry's tags, or ``None`` if the cache isn't invalidated by tag.
+
+        Returns:
+            The tags to drop the entry by, which are empty if none of those invalidations
+            could have made it stale, or ``None`` if one may have, but not by its tags.
+        """
+        with self._invalidation_lock:
+            missed = self._invalidations[resource] - invalidations
+            if not missed:
+                return frozenset()
+            log = self._invalidated_tags[resource]
+            if tags is None or missed > len(log):
+                return None
+            dropped = list(log)[-missed:]
+        if None in dropped:
+            return None
+        return tags & frozenset().union(*dropped)
 
     def _invalidate_cache(
         self, resources: Iterable[str], *, tags: Mapping[str, frozenset[str]] | None = None
@@ -2844,8 +2889,10 @@ class Session:
             for resource in resources:
                 self._invalidations[resource] += 1
                 if tags is not None and resource in tags:
+                    self._invalidated_tags[resource].append(tags[resource])
                     self._invalidate_tags(resource, tags[resource])
                 else:
+                    self._invalidated_tags[resource].append(None)
                     self._invalidate_resource(resource)
 
     def _invalidate_tags(self, resource: str, tags: frozenset[str]) -> None:
