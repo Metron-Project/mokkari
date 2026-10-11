@@ -286,7 +286,7 @@ class TtlPolicy:
 # only the entries it could have made stale. They're computed here, from the URL Session
 # requested and the response, so a backend only has to keep them and delete by them.
 #
-#   id:N             a detail entry for object N, or a list holding it
+#   id:N             a detail entry for object N or one showing it, or a list holding it
 #   field:F          a list whose filters depend on field F
 #   exact:P=V        a list filtered on exact-match id P (e.g. cv_id) equal to V
 #   exact:P          a list filtered on exact-match id P, whatever its value
@@ -423,6 +423,13 @@ _ISSUE_LIST_FIELDS: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 
+# Fields of a resource's detail that show other objects of the same resource (by id and
+# name), so a write to one of those objects can change the detail. Metron keeps a series'
+# associations on both series, so linking two changes both details.
+_RELATED_FIELDS: Final[Mapping[str, str]] = MappingProxyType(
+    {ResourceEndpoint.ISSUE: "reprints", ResourceEndpoint.SERIES: "associated"}
+)
+
 # Every update changes an object's modification time.
 _ALWAYS_UPDATED: Final[str] = "modified"
 
@@ -448,6 +455,28 @@ def _api_path(url: str) -> list[str]:
     return segments[1:] if segments[:1] == ["api"] else segments
 
 
+def _id_tags(items: Any) -> set[str]:
+    """Return the ``id:`` tags of ``items``, a list of objects or ids, or ``{TAG_ANY}``."""
+    if not isinstance(items, list):
+        return {TAG_ANY}
+    return {
+        f"id:{item['id']}"
+        if isinstance(item, dict) and "id" in item
+        else f"id:{item}"
+        if isinstance(item, int)
+        else TAG_ANY
+        for item in items
+    }
+
+
+def _related_tags(resource: str, values: Mapping[str, Any]) -> set[str]:
+    """Return the ``id:`` tags of the objects of ``resource`` that ``values`` relates to."""
+    field = _RELATED_FIELDS.get(resource)
+    if field is None or values.get(field) is None:
+        return set()
+    return _id_tags(values[field])
+
+
 def entry_tags(key: str, value: Any, *, resource: str, kind: CacheKind) -> frozenset[str]:
     """Return the tags of the cache entry for ``key``.
 
@@ -469,16 +498,14 @@ def entry_tags(key: str, value: Any, *, resource: str, kind: CacheKind) -> froze
             and isinstance(value, dict)
             and str(value.get("id")) == path[1]
         ):
-            return frozenset({f"id:{path[1]}"})
+            # A related object's name is shown, so a write to it drops this entry too.
+            return frozenset({f"id:{path[1]}"} | _related_tags(resource, value))
         return unknown
 
     results = value.get("results") if isinstance(value, dict) else None
     if not isinstance(results, list):
         return unknown
-    tags = {
-        f"id:{item['id']}" if isinstance(item, dict) and "id" in item else TAG_ANY
-        for item in results
-    }
+    tags = _id_tags(results)
     if path != [resource]:
         if not (
             resource == ResourceEndpoint.ISSUE
@@ -529,7 +556,9 @@ def update_tags(resource: str, object_id: int, fields: Mapping[str, Any]) -> fro
     Those are its detail entry, lists holding it, lists filtered on a field the update sets
     (or on its modification time, which every update changes), and lists filtered on an
     exact-match id equal to the new value. Lists filtered on any other value of that id
-    can't gain the object, and any it leaves already hold it.
+    can't gain the object, and any it leaves already hold it. Details of objects it's
+    related to (see ``_RELATED_FIELDS``) show it, so they're dropped too: those it was
+    related to through its ``id:`` tag, and those it's now related to through theirs.
 
     Args:
         resource: The resource updated.
@@ -542,6 +571,7 @@ def update_tags(resource: str, object_id: int, fields: Mapping[str, Any]) -> fro
     tags = {TAG_ANY, f"id:{object_id}", f"field:{_ALWAYS_UPDATED}"}
     tags.update(f"field:{field}" for field in fields)
     tags.update(_exact_tags(resource, fields))
+    tags.update(_related_tags(resource, fields))
     return frozenset(tags)
 
 
@@ -549,7 +579,8 @@ def create_tags(resource: str, created: Mapping[str, Any]) -> frozenset[str]:
     """Return the tags of entries that creating an object could make stale.
 
     Those are the lists a new object could join: every list but those filtered on an
-    exact-match id the object doesn't have. Detail entries of other objects are unaffected.
+    exact-match id the object doesn't have, and the details of objects it's related to (see
+    ``_RELATED_FIELDS``), which may now show it.
 
     Args:
         resource: The resource created.
@@ -560,6 +591,7 @@ def create_tags(resource: str, created: Mapping[str, Any]) -> frozenset[str]:
     """
     tags = {TAG_CREATE}
     tags.update(_exact_tags(resource, created))
+    tags.update(_related_tags(resource, created))
     # Without the id in the response, lists filtered on any value of it might gain the object.
     tags.update(
         f"exact:{param}" for param in _EXACT_FILTERS.get(resource, frozenset()).difference(created)

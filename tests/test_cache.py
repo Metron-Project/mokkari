@@ -1619,6 +1619,15 @@ API = "https://metron.cloud/api/"
     ("url", "value", "kind", "expected"),
     [
         ("character/5/", {"id": 5}, "detail", {"id:5"}),
+        # A detail showing other objects of its resource is tagged with them too.
+        (
+            "series/5/",
+            {"id": 5, "associated": [{"id": 6, "series": "S6"}]},
+            "detail",
+            {"id:5", "id:6"},
+        ),
+        ("issue/5/", {"id": 5, "reprints": [{"id": 6, "issue": "I6"}]}, "detail", {"id:5", "id:6"}),
+        ("series/5/", {"id": 5, "associated": "x"}, "detail", {"id:5", "any"}),
         # Not the object the URL names, so nothing can be said about it.
         ("character/5/", {"id": 6}, "detail", {"any", "post"}),
         ("collection/stats/", {"total": 1}, "detail", {"any", "post"}),
@@ -1670,6 +1679,18 @@ def test_update_tags() -> None:
     }
 
 
+def test_update_tags_of_related_objects() -> None:
+    """An update relating an object to others drops their details, which now show it."""
+    assert update_tags("series", 7, {"associated": [8, 9]}) == {
+        "any",
+        "id:7",
+        "id:8",
+        "id:9",
+        "field:modified",
+        "field:associated",
+    }
+
+
 @pytest.mark.parametrize(
     ("resource", "created", "expected"),
     [
@@ -1682,6 +1703,12 @@ def test_update_tags() -> None:
             {"post", "exact:upc=abc"},
         ),
         ("universe", {"id": 8}, {"post"}),
+        ("series", {"id": 8, "cv_id": None, "gcd_id": None, "associated": [9]}, {"post", "id:9"}),
+        (
+            "issue",
+            {"id": 8, "cv_id": None, "gcd_id": None, "upc": "", "sku": "", "reprints": [9]},
+            {"post", "id:9"},
+        ),
     ],
 )
 def test_create_tags(resource: str, created: dict[str, Any], expected: set[str]) -> None:
@@ -1806,6 +1833,59 @@ def test_issue_update_drops_issue_lists_it_may_join(
         )
         m.issue_patch(1, IssuePost(characters=[7]))
         assert refetched(m, matchers) == {"character/7/issue_list/"}
+
+
+def series_body(id_: int, *associated: int) -> dict[str, Any]:
+    """Return a series as Metron sends it, associated with the series ``associated``."""
+    return {
+        "id": id_,
+        "name": f"S{id_}",
+        "associated": [{"id": a, "series": f"S{a}"} for a in associated],
+        "resource_url": f"https://metron.cloud/series/{id_}/",
+    }
+
+
+def series_write_body(id_: int, *associated: int) -> dict[str, Any]:
+    """Return a series as Metron sends it in response to a write."""
+    return {
+        "id": id_,
+        "name": f"S{id_}",
+        "modified": "2024-01-01T12:00:00Z",
+        "associated": list(associated),
+    }
+
+
+def test_update_drops_details_showing_the_object(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """An update drops the details of objects it was or is now related to, which show it."""
+    m = api(dummy_api_token, cache=make_any_cache())
+    reads = {
+        "series/1/": series_body(1, 2),
+        "series/2/": series_body(2, 1),
+        "series/3/": series_body(3),
+        "series/4/": series_body(4),
+    }
+
+    with requests_mock.Mocker() as r:
+        matchers = cache_reads(m, r, reads)
+        r.patch(f"{API}series/1/", json=series_write_body(1, 3))
+        m.series_patch(1, SeriesPost(associated=[3]))
+        assert refetched(m, matchers) == {"series/1/", "series/2/", "series/3/"}
+
+
+def test_create_drops_details_of_related_objects(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """A create drops the details of the objects it's related to, which now show it."""
+    m = api(dummy_api_token, cache=make_any_cache())
+    reads = {"series/2/": series_body(2), "series/3/": series_body(3)}
+
+    with requests_mock.Mocker() as r:
+        matchers = cache_reads(m, r, reads)
+        r.post(f"{API}series/", json=series_write_body(5, 2))
+        m.series_post(SeriesPost(name="S5", associated=[2]))
+        assert refetched(m, matchers) == {"series/2/"}
 
 
 def test_update_of_object_on_later_page_refetches_whole_list(
