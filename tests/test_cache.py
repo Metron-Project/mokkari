@@ -2051,6 +2051,47 @@ class TagRecordingCache(RecordingCache):
         return 0
 
 
+def test_reassigned_cache_checked(dummy_api_token: str) -> None:
+    """A cache assigned after the session is made is checked like one passed to it."""
+    m = api(dummy_api_token)
+
+    with pytest.raises(exceptions.CacheError, match=r"get\(\) and store\(\)"):
+        m.cache = object()  # type: ignore[assignment]
+
+
+def test_reassigned_cache_invalidated_its_own_way(dummy_api_token: str) -> None:
+    """A cache without invalidate_tags, assigned in place of one with it, is invalidated whole."""
+    m = api(dummy_api_token, cache=TagRecordingCache())  # type: ignore[arg-type]
+    cache = RecordingCache()
+    m.cache = cache  # type: ignore[assignment]
+
+    with requests_mock.Mocker() as r:
+        r.patch(f"{API}series/5/", json={"id": 5, "name": "X", "modified": "2024-01-01T12:00:00Z"})
+        m.series_patch(5, SeriesPost(name="X"))
+
+    assert cache.invalidated == ["series"]
+
+
+def test_uncached_resource_not_tagged(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """A response the cache's TTL policy keeps out isn't described by tags or stored."""
+    cache = make_any_cache(ttl={"character": NO_CACHE})
+    m = api(dummy_api_token, cache=cache)
+    url = f"{API}character/1/"
+
+    with (
+        requests_mock.Mocker() as r,
+        patch.object(session, "entry_tags") as entry_tags_,
+        patch.object(cache, "store") as store,
+    ):
+        r.get(url, json={"id": 1})
+        m._get(["character", 1])
+
+    entry_tags_.assert_not_called()
+    store.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("sent", "write", "expected", "expected_tags"),
     [

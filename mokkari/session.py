@@ -16,12 +16,12 @@ import platform
 import threading
 import time
 from collections import Counter, OrderedDict, defaultdict, deque
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Final, Self, TypeVar
+from typing import Any, Final, Protocol, Self, TypeVar, runtime_checkable
 from urllib.parse import urlencode
 
 import requests
@@ -30,9 +30,11 @@ from requests.auth import AuthBase
 
 from mokkari import __version__, exceptions, rate_limit, utils
 from mokkari.cache import (
+    NO_CACHE,
     Cache,
     CacheKind,
     ResourceEndpoint,
+    TtlPolicy,
     create_tags,
     entry_tags,
     update_tags,
@@ -138,6 +140,15 @@ class _ServerRateLimitError(exceptions.RateLimitError):
     """
 
 
+@runtime_checkable
+class _TaggedCache(Cache, Protocol):
+    """A ``Cache`` invalidated by tag, which ``store`` passes each entry's tags (see ``Cache``)."""
+
+    def invalidate_tags(self, resource: str, tags: Collection[str]) -> object:
+        """Remove every entry for ``resource`` stored with any of ``tags``."""
+        ...
+
+
 def _check_cache(cache: object) -> None:
     """Raise ``CacheError`` unless ``cache`` can be called the way ``Session`` calls it.
 
@@ -149,7 +160,7 @@ def _check_cache(cache: object) -> None:
         raise exceptions.CacheError(msg)
     store_kwargs: dict[str, Any] = {"resource": "series", "kind": "detail"}
     # A cache invalidated by tag is passed each entry's tags to store.
-    if hasattr(cache, "invalidate_tags"):
+    if isinstance(cache, _TaggedCache):
         store_kwargs["tags"] = frozenset()
     for name, expected, args, kwargs in [
         ("get", "get(key)", ("key",), {}),
@@ -422,9 +433,6 @@ class Session:
         # Identifies the token in per-user cache keys without storing the token itself.
         self._cache_user = hashlib.sha256(api_token.encode()).hexdigest()[:16]
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
-        # Checked here so a mis-wired cache fails now rather than on the first request.
-        if cache is not None:
-            _check_cache(cache)
         self.cache = cache
         self.rate_limiter = rate_limiter
         self._http = self._build_http_session()
@@ -441,6 +449,20 @@ class Session:
         self._invalidated_tags: defaultdict[str, deque[frozenset[str] | None]] = defaultdict(
             lambda: deque(maxlen=_WRITE_LOG_SIZE)
         )
+
+    @property
+    def cache(self) -> Cache | None:
+        """The response cache, or ``None`` if responses aren't cached."""
+        return self._cache
+
+    @cache.setter
+    def cache(self, cache: Cache | None) -> None:
+        # Checked here so a mis-wired cache fails now rather than on the first request.
+        if cache is not None:
+            _check_cache(cache)
+        self._cache = cache
+        # Whether the cache is invalidated by tag is decided once, here, not on each use.
+        self._tagged_cache = cache if isinstance(cache, _TaggedCache) else None
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -2809,11 +2831,19 @@ class Session:
         """
         if self.cache is None:
             return
+        # A cache with a TTL policy (e.g. SqliteCache) wouldn't keep the data, so don't
+        # describe it for one.
+        ttl_policy = getattr(self.cache, "ttl_policy", None)
+        if (
+            isinstance(ttl_policy, TtlPolicy)
+            and ttl_policy.ttl_for_value(data, resource=resource, kind=kind) is NO_CACHE
+        ):
+            return
         # Only a cache invalidated by tag takes tags (see Cache).
         tags = (
-            entry_tags(key, data, resource=resource, kind=kind)
-            if hasattr(self.cache, "invalidate_tags")
-            else None
+            None
+            if self._tagged_cache is None
+            else entry_tags(key, data, resource=resource, kind=kind)
         )
         # A write invalidated entries like this one while it was being fetched, so the data
         # may be from before it, and storing it would undo the invalidation.
@@ -2867,9 +2897,12 @@ class Session:
             if tags is None or missed > len(log):
                 return None
             dropped = list(log)[-missed:]
-        if None in dropped:
-            return None
-        return tags & frozenset().union(*dropped)
+        stale: set[str] = set()
+        for dropped_tags in dropped:
+            if dropped_tags is None:
+                return None
+            stale.update(tags & dropped_tags)
+        return frozenset(stale)
 
     def _invalidate_cache(
         self, resources: Iterable[str], *, tags: Mapping[str, frozenset[str]] | None = None
@@ -2904,12 +2937,11 @@ class Session:
             resource: The resource whose cached entries to drop.
             tags: The tags of the entries to drop.
         """
-        invalidate_tags = getattr(self.cache, "invalidate_tags", None)
-        if invalidate_tags is None:
+        if self._tagged_cache is None:
             self._invalidate_resource(resource)
             return
         try:
-            invalidate_tags(resource, tags)
+            self._tagged_cache.invalidate_tags(resource, tags)
         except Exception:
             LOGGER.exception("Cache invalidate_tags(%r) failed; ignoring", resource)
 
