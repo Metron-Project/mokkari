@@ -20,9 +20,19 @@ import requests
 import requests_mock
 
 from mokkari import api, exceptions, session, sqlite_cache
-from mokkari.cache import NO_CACHE, RESOURCES, CacheKind, Ttl, TtlPolicy
+from mokkari.cache import (
+    NO_CACHE,
+    RESOURCES,
+    CacheKind,
+    Ttl,
+    TtlPolicy,
+    create_tags,
+    entry_tags,
+    update_tags,
+)
 from mokkari.redis_cache import RedisCache
-from mokkari.schemas.issue import CreditPost
+from mokkari.schemas.character import CharacterPost
+from mokkari.schemas.issue import CreditPost, IssuePost
 from mokkari.schemas.series import SeriesPost
 from mokkari.schemas.universe import UniversePost
 from mokkari.schemas.variant import VariantPost
@@ -162,6 +172,18 @@ class NoKeyGetCache(NoGet):
         return
 
 
+class TaglessStoreCache(NoStore):
+    """A cache with invalidate_tags() whose store() doesn't take tags."""
+
+    def store(self, key: Any, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+        """Save no data."""
+        return
+
+    def invalidate_tags(self, resource: str, tags: Any) -> int:  # noqa: ARG002
+        """Remove nothing."""
+        return 0
+
+
 class NonCallableGetCache(NoGet):
     """A cache whose get is an attribute rather than a method."""
 
@@ -176,6 +198,7 @@ class NonCallableGetCache(NoGet):
             r"store\(key, value, \*, resource, kind\) method, not store\(key: 'Any', value: 'Any'\)",
         ),
         (NoKeyGetCache(), r"get\(key\) method, not get\(\)"),
+        (TaglessStoreCache(), r"store\(key, value, \*, resource, kind, tags\) method"),
         (NonCallableGetCache(), r"get must be a method"),
     ],
 )
@@ -609,6 +632,76 @@ def test_clear(any_cache: SqliteCache | RedisCache) -> None:
     assert count_entries(any_cache) == 0
 
 
+def test_invalidate_tags(any_cache: SqliteCache | RedisCache) -> None:
+    """invalidate_tags() removes the resource's entries with any of the tags, and no others."""
+    any_cache.store("a", 1, resource="character", kind="detail", tags={"id:1"})
+    any_cache.store("b", 2, resource="character", kind="list", tags={"id:1", "id:2", "post"})
+    any_cache.store("c", 3, resource="character", kind="list", tags={"id:2", "field:name"})
+    any_cache.store("d", 4, resource="character", kind="detail")
+    any_cache.store("e", 5, resource="issue", kind="detail", tags={"id:1"})
+
+    assert any_cache.invalidate_tags("character", {"id:1", "field:cv_id"}) == 2
+    assert any_cache.get("a") is None
+    assert any_cache.get("b") is None
+    assert any_cache.get("c") == 3
+    assert any_cache.get("d") == 4
+    assert any_cache.get("e") == 5
+
+
+def test_invalidate_no_tags(any_cache: SqliteCache | RedisCache) -> None:
+    """invalidate_tags() with no tags removes nothing."""
+    any_cache.store("a", 1, resource="character", kind="detail", tags={"id:1"})
+
+    assert any_cache.invalidate_tags("character", set()) == 0
+    assert any_cache.get("a") == 1
+
+
+def test_store_replaces_tags(cache: sqlite_cache.SqliteCache) -> None:
+    """Storing an entry again replaces its tags rather than adding to them."""
+    cache.store("a", 1, resource="character", kind="list", tags={"id:1"})
+    cache.store("a", 2, resource="character", kind="list", tags={"id:2"})
+
+    assert cache.invalidate_tags("character", {"id:1"}) == 0
+    assert cache.invalidate_tags("character", {"id:2"}) == 1
+
+
+def count_tags(cache: sqlite_cache.SqliteCache) -> int:
+    """Return the number of rows in the tag table."""
+    return cache.con.execute("SELECT COUNT(*) FROM cache_tag").fetchone()[0]
+
+
+@pytest.mark.parametrize(
+    "remove",
+    [
+        lambda c: c.delete("a"),
+        lambda c: c.invalidate("character"),
+        lambda c: c.invalidate_tags("character", {"id:1"}),
+        lambda c: c.clear(),
+    ],
+    ids=["delete", "invalidate", "invalidate_tags", "clear"],
+)
+def test_removing_entry_removes_its_tags(
+    cache: sqlite_cache.SqliteCache, remove: Callable[[sqlite_cache.SqliteCache], Any]
+) -> None:
+    """An entry's tags go with it, however it's removed."""
+    cache.store("a", 1, resource="character", kind="list", tags={"id:1", "post"})
+
+    remove(cache)
+    assert count_tags(cache) == 0
+
+
+def test_expired_entry_tags_purged(
+    clock: FakeClock, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """cleanup() removes the tags of the expired entries it removes."""
+    cache = make_cache(default_ttl=timedelta(hours=1))
+    cache.store("a", 1, resource="character", kind="list", tags={"id:1"})
+    clock.now += 7200
+
+    assert cache.cleanup() == 1
+    assert count_tags(cache) == 0
+
+
 def test_cleanup(clock: FakeClock, make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
     """cleanup() deletes only expired rows."""
     cache = make_cache(default_ttl=timedelta(hours=1), ttl={"role": None})
@@ -819,7 +912,7 @@ def test_legacy_database_is_reset(tmp_path: Path) -> None:
             row[0]
             for row in cache.con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
-        assert tables == {"cache"}
+        assert tables == {"cache", "cache_tag"}
         assert cache.get("key") is None
         cache.store("key", {"id": 2}, resource="series", kind="detail")
         assert cache.get("key") == {"id": 2}
@@ -946,6 +1039,25 @@ def test_current_version_without_table_rebuilt(tmp_path: Path) -> None:
     with sqlite_cache.SqliteCache(db) as cache:
         cache.store("key", {"id": 1}, resource="series", kind="detail")
         assert cache.get("key") == {"id": 1}
+
+
+def test_cache_without_tag_table_rebuilt(tmp_path: Path) -> None:
+    """A cache from before tags were added is rebuilt with the tag table."""
+    db = tmp_path / "cache.db"
+    con = sqlite3.connect(db)
+    con.execute(
+        "CREATE TABLE cache (key TEXT PRIMARY KEY, resource TEXT NOT NULL, kind TEXT NOT NULL, "
+        "value TEXT NOT NULL, created_at REAL NOT NULL, expires_at REAL)"
+    )
+    con.execute("INSERT INTO cache VALUES ('key', 'series', 'detail', '1', 0, NULL)")
+    con.execute(f"PRAGMA user_version = {sqlite_cache.SCHEMA_VERSION}")
+    con.commit()
+    con.close()
+
+    with sqlite_cache.SqliteCache(db) as cache:
+        assert cache.get("key") is None
+        cache.store("key", 2, resource="series", kind="detail", tags={"id:2"})
+        assert cache.invalidate_tags("series", {"id:2"}) == 1
 
 
 def test_concurrent_open_creates_schema_once(tmp_path: Path) -> None:
@@ -1494,6 +1606,318 @@ def test_failing_invalidate_is_logged(
         m.collection_delete(5)
 
     assert "Cache invalidate('collection') failed" in caplog.text
+
+
+# ============================================================================
+# Invalidating only what a write changes
+# ============================================================================
+
+API = "https://metron.cloud/api/"
+
+
+@pytest.mark.parametrize(
+    ("url", "value", "kind", "expected"),
+    [
+        ("character/5/", {"id": 5}, "detail", {"id:5"}),
+        # Not the object the URL names, so nothing can be said about it.
+        ("character/5/", {"id": 6}, "detail", {"any", "post"}),
+        ("collection/stats/", {"total": 1}, "detail", {"any", "post"}),
+        ("character/", {"results": [{"id": 1}, {"id": 2}]}, "list", {"id:1", "id:2", "post"}),
+        ("character/?page=2", {"results": [{"id": 1}]}, "list", {"id:1", "post"}),
+        ("character/?name=x", {"results": []}, "list", {"field:name", "post"}),
+        (
+            "character/?cv_id=0123&name=x",
+            {"results": [{"id": 1}]},
+            "list",
+            {"id:1", "exact:cv_id=123", "exact:cv_id", "field:name"},
+        ),
+        # Metron ignores an empty filter, and can't compare one that isn't a number.
+        ("character/?cv_id=", {"results": []}, "list", {"any", "post"}),
+        ("character/?cv_id=x", {"results": []}, "list", {"any", "post"}),
+        ("issue/?upc=ABC", {"results": []}, "list", {"exact:upc=abc", "exact:upc"}),
+        # Only issues have UPCs, so a filter on one elsewhere is unknown.
+        ("character/?upc=abc", {"results": []}, "list", {"any", "post"}),
+        ("character/?modified_gt=2024-01-01", {"results": []}, "list", {"field:modified", "post"}),
+        ("character/?unknown=1", {"results": []}, "list", {"any", "post"}),
+        ("issue/?creator_id=1", {"results": []}, "list", {"post"}),
+        ("character/", {"results": [{"name": "A"}]}, "list", {"any", "post"}),
+        ("character/", {"count": 0}, "list", {"any", "post"}),
+        (
+            "character/5/issue_list/",
+            {"results": [{"id": 9}]},
+            "list",
+            {"id:9", "field:characters", "post"},
+        ),
+        ("series/5/issue_list/", {"results": []}, "list", {"field:series", "post"}),
+        ("collection/missing_series/", {"results": []}, "list", {"any", "post"}),
+    ],
+)
+def test_entry_tags(url: str, value: Any, kind: CacheKind, expected: set[str]) -> None:
+    """An entry is tagged with the objects it holds and the fields its filters depend on."""
+    resource = "issue" if "issue" in url else url.split("/", maxsplit=1)[0]
+    assert entry_tags(f"{API}{url}", value, resource=resource, kind=kind) == expected
+
+
+def test_update_tags() -> None:
+    """An update drops the object, lists filtered on what it changes, and indescribable entries."""
+    assert update_tags("character", 7, {"cv_id": 456, "name": "X"}) == {
+        "any",
+        "id:7",
+        "field:modified",
+        "field:cv_id",
+        "field:name",
+        "exact:cv_id=456",
+    }
+
+
+@pytest.mark.parametrize(
+    ("resource", "created", "expected"),
+    [
+        ("character", {"id": 8, "cv_id": 456, "gcd_id": None}, {"post", "exact:cv_id=456"}),
+        # Without an id in the response, a list filtered on any value of it may gain the object.
+        ("character", {"id": 8}, {"post", "exact:cv_id", "exact:gcd_id"}),
+        (
+            "issue",
+            {"id": 8, "cv_id": None, "gcd_id": None, "upc": "ABC", "sku": ""},
+            {"post", "exact:upc=abc"},
+        ),
+        ("universe", {"id": 8}, {"post"}),
+    ],
+)
+def test_create_tags(resource: str, created: dict[str, Any], expected: set[str]) -> None:
+    """A create drops the lists without an exact-match id filter, and those it matches."""
+    assert create_tags(resource, created) == expected
+
+
+def character_body(id_: int, **fields: Any) -> dict[str, Any]:
+    """Return a character as Metron sends it."""
+    return {"id": id_, "name": f"C{id_}", "modified": "2024-01-01T12:00:00Z", **fields}
+
+
+def page_body(*ids: int, next_page: str | None = None) -> dict[str, Any]:
+    """Return a page of characters."""
+    return {
+        "count": len(ids),
+        "next": next_page,
+        "previous": None,
+        "results": [character_body(i) for i in ids],
+    }
+
+
+def cache_reads(
+    m: session.Session, r: requests_mock.Mocker, reads: dict[str, Any]
+) -> dict[str, Any]:
+    """Read each of ``reads`` (path: body) once, so it's cached, and return their matchers."""
+    matchers = {}
+    for path, body in reads.items():
+        matchers[path] = r.get(f"{API}{path}", json=body, complete_qs=True)
+        read_path(m, path)
+        matchers[path].reset()
+    return matchers
+
+
+def refetched(m: session.Session, matchers: dict[str, Any]) -> set[str]:
+    """Read each path in ``matchers`` again, returning those that weren't in the cache."""
+    for path in matchers:
+        read_path(m, path)
+    return {path for path, matcher in matchers.items() if matcher.called}
+
+
+def read_path(m: session.Session, path: str) -> None:
+    """Read ``path`` through Session, as a detail or a list."""
+    base, _, query = path.partition("?")
+    segments: list[str | int] = [s for s in base.split("/") if s]
+    params = dict(pair.split("=") for pair in query.split("&")) if query else None
+    if len(segments) == 2:
+        m._get(segments, params)
+    else:
+        m._get_results(segments, params, resource="issue" if "issue_list" in path else None)
+
+
+def test_update_drops_only_stale_entries(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """An update leaves the entries it can't have changed in the cache."""
+    m = api(dummy_api_token, cache=make_any_cache(empty_list_ttl=timedelta(hours=1)))
+    reads = {
+        "character/1/": character_body(1),
+        "character/2/": character_body(2),
+        "character/": page_body(1, 2),
+        "character/?name=b": page_body(2),
+        "character/?cv_id=123": page_body(2),
+        "character/?cv_id=456": page_body(),
+        "character/?missing_cv_id=true": page_body(2),
+        "character/?modified_gt=2024-01-01": page_body(2),
+    }
+
+    with requests_mock.Mocker() as r:
+        matchers = cache_reads(m, r, reads)
+        r.patch(f"{API}character/1/", json=character_body(1, cv_id=456))
+        m.character_patch(1, CharacterPost(cv_id=456))
+        assert refetched(m, matchers) == {
+            "character/1/",
+            "character/",
+            "character/?cv_id=456",
+            "character/?missing_cv_id=true",
+            "character/?modified_gt=2024-01-01",
+        }
+
+
+def test_create_drops_only_lists_it_may_join(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """A create keeps details, and lists filtered on an exact id the new object doesn't have."""
+    m = api(dummy_api_token, cache=make_any_cache(empty_list_ttl=timedelta(hours=1)))
+    reads = {
+        "character/1/": character_body(1),
+        "character/": page_body(1, 2),
+        "character/?name=b": page_body(2),
+        "character/?cv_id=123": page_body(2),
+        "character/?cv_id=123&name=b": page_body(2),
+        "character/?gcd_id=9": page_body(2),
+        "character/?cv_id=456": page_body(),
+        "character/?modified_gt=2024-01-01": page_body(2),
+    }
+
+    with requests_mock.Mocker() as r:
+        matchers = cache_reads(m, r, reads)
+        r.post(f"{API}character/", json=character_body(3, cv_id=456, gcd_id=None))
+        m.character_post(CharacterPost(name="C3", cv_id=456))
+        assert refetched(m, matchers) == {
+            "character/",
+            "character/?name=b",
+            "character/?cv_id=456",
+            "character/?modified_gt=2024-01-01",
+        }
+
+
+def test_issue_update_drops_issue_lists_it_may_join(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """Changing an issue's characters drops character issue lists, but not series ones."""
+    m = api(dummy_api_token, cache=make_any_cache(empty_list_ttl=timedelta(hours=1)))
+    reads = {"character/7/issue_list/": page_body(), "series/5/issue_list/": page_body()}
+
+    with requests_mock.Mocker() as r:
+        matchers = cache_reads(m, r, reads)
+        r.patch(
+            f"{API}issue/1/",
+            json={"id": 1, "characters": [7], "resource_url": "https://metron.cloud/issue/1/"},
+        )
+        m.issue_patch(1, IssuePost(characters=[7]))
+        assert refetched(m, matchers) == {"character/7/issue_list/"}
+
+
+def test_update_of_object_on_later_page_refetches_whole_list(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+) -> None:
+    """When only a later page holds the object, the whole list is fetched again."""
+    m = api(dummy_api_token, cache=make_any_cache())
+    page2 = "character/?page=2"
+    reads = {"character/": page_body(2, next_page=f"{API}{page2}"), page2: page_body(1)}
+
+    with requests_mock.Mocker() as r:
+        for path, body in reads.items():
+            r.get(f"{API}{path}", json=body, complete_qs=True)
+        m._get_results(["character"])
+        r.patch(f"{API}character/1/", json=character_body(1, desc="New"))
+        m.character_patch(1, CharacterPost(desc="New"))
+        r.reset_mock()
+        assert len(m._get_results(["character"])["results"]) == 2
+        assert r.call_count == 2
+
+
+class TagRecordingCache(RecordingCache):
+    """A cache that also records the tags Session invalidates by."""
+
+    def __init__(self) -> None:
+        """Start with nothing invalidated."""
+        super().__init__()
+        self.invalidated_tags: list[tuple[str, frozenset[str]]] = []
+
+    def store(
+        self,
+        key: str,  # noqa: ARG002
+        value: Any,  # noqa: ARG002
+        *,
+        resource: str,  # noqa: ARG002
+        kind: str,  # noqa: ARG002
+        tags: frozenset[str] = frozenset(),  # noqa: ARG002
+    ) -> None:
+        """Save no data."""
+        return
+
+    def invalidate_tags(self, resource: str, tags: frozenset[str]) -> int:
+        """Record the resource and tags."""
+        self.invalidated_tags.append((resource, tags))
+        return 0
+
+
+@pytest.mark.parametrize(
+    ("sent", "write", "expected", "expected_tags"),
+    [
+        (
+            ("PATCH", "series/5/"),
+            lambda m: m.series_patch(5, SeriesPost(name="X")),
+            [],
+            [("series", update_tags("series", 5, {"name": "X"}))],
+        ),
+        # Without the new object, it's not known which lists it may join.
+        (
+            ("POST", "series/"),
+            lambda m: m.series_post(SeriesPost(name="X")),
+            ["series"],
+            [],
+        ),
+        (
+            ("POST", "credit/"),
+            lambda m: m.credits_post([CreditPost(issue=1, creator=1, role=[1])]),
+            ["credit", "issue"],
+            [],
+        ),
+        (("DELETE", "collection/5/"), lambda m: m.collection_delete(5), ["collection"], []),
+    ],
+    ids=["update", "create", "credit", "delete"],
+)
+def test_failed_write_invalidates_by_tag_only_when_known(
+    dummy_api_token: str,
+    sent: tuple[str, str],
+    write: Callable[[session.Session], Any],
+    expected: list[str],
+    expected_tags: list[tuple[str, frozenset[str]]],
+) -> None:
+    """A write that may have applied drops entries by tag only if it knows what it changed."""
+    cache = TagRecordingCache()
+    m = api(dummy_api_token, cache=cache)  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.request(sent[0], f"{API}{sent[1]}", status_code=500)
+        with pytest.raises(exceptions.ApiError):
+            write(m)
+
+    assert cache.invalidated == expected
+    assert cache.invalidated_tags == expected_tags
+
+
+def test_failing_invalidate_tags_is_logged(
+    dummy_api_token: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A cache that fails to invalidate by tag doesn't turn a successful write into an error."""
+
+    class FailingCache(TagRecordingCache):
+        def invalidate_tags(self, resource: str, tags: frozenset[str]) -> int:  # noqa: ARG002
+            msg = "database is locked"
+            raise sqlite3.OperationalError(msg)
+
+    m = api(dummy_api_token, cache=FailingCache())  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.patch(
+            f"{API}universe/1/", json={"id": 1, "name": "X", "modified": "2024-01-01T12:00:00Z"}
+        )
+        m.universe_patch(1, UniversePost(name="X"))
+
+    assert "Cache invalidate_tags('universe') failed" in caplog.text
 
 
 # ============================================================================

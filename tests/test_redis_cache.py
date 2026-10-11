@@ -155,6 +155,26 @@ def test_invalidate_removes_index_sets(client: fakeredis.FakeRedis, cache: Redis
     assert sorted(client.keys()) == [b"mokkari:cache:v1:i1", b"mokkari:cache:v1:idx:issue:detail"]
 
 
+def test_tag_set_expires_with_its_entries(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
+    """Each tag is a sorted set of entry keys, living as long as its longest-lived entry."""
+    cache.store("s1", 1, resource="series", kind="list", tags={"id:1", "post"})
+
+    tag_set = "mokkari:cache:v1:idx:series:tag:id:1"
+    assert client.zrange(tag_set, 0, -1) == [b"mokkari:cache:v1:s1"]
+    assert_pttl(client, tag_set, HOUR_MS)
+    assert_pttl(client, "mokkari:cache:v1:idx:series:tag:post", HOUR_MS)
+
+
+def test_invalidate_tags_removes_tag_sets(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
+    """invalidate_tags() removes the tag sets it reads along with their entries."""
+    cache.store("s1", 1, resource="series", kind="detail", tags={"id:1"})
+    cache.store("s2", 2, resource="series", kind="detail", tags={"id:2"})
+
+    assert cache.invalidate_tags("series", {"id:1"}) == 1
+    assert not client.exists("mokkari:cache:v1:idx:series:tag:id:1")
+    assert client.exists("mokkari:cache:v1:idx:series:tag:id:2")
+
+
 def test_invalidate_skips_expired_members(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
     """A key in an index set whose entry has already gone isn't counted as removed."""
     cache.store("s1", 1, resource="series", kind="detail")

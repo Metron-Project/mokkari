@@ -23,7 +23,7 @@ from mokkari.cache import NO_CACHE, TtlPolicy
 
 if TYPE_CHECKING:
     import os
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
 
     from mokkari.cache import CacheKind, Ttl
 
@@ -52,6 +52,12 @@ CREATE TABLE cache (
 );
 CREATE INDEX idx_cache_resource ON cache(resource, kind);
 CREATE INDEX idx_cache_expires ON cache(expires_at);
+CREATE TABLE cache_tag (
+    key TEXT NOT NULL REFERENCES cache(key) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (key, tag)
+) WITHOUT ROWID;
+CREATE INDEX idx_cache_tag ON cache_tag(tag);
 """
 
 # The tables a Mokkari cache may hold, and columns they're recognised by. ``responses`` is the
@@ -60,6 +66,7 @@ _OWN_TABLES: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
     {
         "responses": frozenset({"key", "json", "expire"}),
         "cache": frozenset({"key", "resource", "kind", "value"}),
+        "cache_tag": frozenset({"key", "tag"}),
     }
 )
 
@@ -168,6 +175,8 @@ class SqliteCache:
             # The schema is checked first, so a file that isn't a cache is left untouched.
             self._init_schema(con)
             self.journal_mode = self._enable_wal(con)
+            # Off by default, and needed for a tag to go with its entry however it's removed.
+            con.execute("PRAGMA foreign_keys = ON")
             with con:
                 con.execute(_PURGE_EXPIRED, (time.time(),))
         except sqlite3.DatabaseError as e:
@@ -241,6 +250,7 @@ class SqliteCache:
                 )
                 raise exceptions.CacheError(msg)
             con.execute("DROP TABLE IF EXISTS responses")
+            con.execute("DROP TABLE IF EXISTS cache_tag")
             con.execute("DROP TABLE IF EXISTS cache")
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
@@ -256,10 +266,11 @@ class SqliteCache:
         (version,) = con.execute("PRAGMA user_version").fetchone()
         if version != SCHEMA_VERSION:
             return False
-        has_cache = con.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cache'"
+        (tables,) = con.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            "WHERE type = 'table' AND name IN ('cache', 'cache_tag')"
         ).fetchone()
-        return has_cache is not None and not SqliteCache._foreign_objects(con)
+        return tables == 2 and not SqliteCache._foreign_objects(con)  # noqa: PLR2004
 
     @staticmethod
     def _foreign_objects(con: sqlite3.Connection) -> list[str]:
@@ -294,7 +305,15 @@ class SqliteCache:
             ).fetchone()
         return json.loads(row[0]) if row else None
 
-    def store(self, key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
+    def store(
+        self,
+        key: str,
+        value: Any,
+        *,
+        resource: str,
+        kind: CacheKind,
+        tags: Collection[str] = (),
+    ) -> None:
         """Save data to the cache database, replacing any existing entry for ``key``.
 
         Nothing is stored when the TTL for ``resource`` and ``kind`` is ``NO_CACHE``.
@@ -305,6 +324,7 @@ class SqliteCache:
             value: JSON-serializable data to store.
             resource: The resource the entry holds, e.g. ``"series"``; see ``Cache.store``.
             kind: ``"detail"`` or ``"list"``.
+            tags: Tags ``invalidate_tags`` can remove the entry by, replacing any it had.
         """
         ttl = self.ttl_policy.ttl_for_value(value, resource=resource, kind=kind)
         if ttl is NO_CACHE:
@@ -322,6 +342,11 @@ class SqliteCache:
                 "created_at = excluded.created_at, expires_at = excluded.expires_at",
                 (key, resource, kind, encoded, now, expires_at),
             )
+            # An upsert doesn't delete the row, so it doesn't cascade to the old tags.
+            con.execute("DELETE FROM cache_tag WHERE key = ?", (key,))
+            con.executemany(
+                "INSERT INTO cache_tag(key, tag) VALUES(?, ?)", [(key, tag) for tag in tags]
+            )
 
     def delete(self, key: str) -> bool:
         """Remove the entry for ``key``.
@@ -338,8 +363,9 @@ class SqliteCache:
     def invalidate(self, resource: str, kind: CacheKind | None = None) -> int:
         """Remove every entry for ``resource``, or only those of ``kind`` if given.
 
-        ``Session`` calls this after each of its own writes. Call it yourself after
-        changing data on Metron some other way, such as through the website.
+        ``Session`` calls this after each of its own writes, except updates and creates,
+        which use ``invalidate_tags``. Call it yourself after changing data on Metron some
+        other way, such as through the website.
 
         Returns:
             The number of entries removed.
@@ -347,6 +373,21 @@ class SqliteCache:
         if kind is None:
             return self._delete("DELETE FROM cache WHERE resource = ?", (resource,))
         return self._delete("DELETE FROM cache WHERE resource = ? AND kind = ?", (resource, kind))
+
+    def invalidate_tags(self, resource: str, tags: Collection[str]) -> int:
+        """Remove every entry for ``resource`` stored with any of ``tags``.
+
+        ``Session`` calls this instead of ``invalidate`` after updating or creating an
+        object, with the tags of the entries the write could have made stale.
+
+        Returns:
+            The number of entries removed.
+        """
+        return self._delete(
+            "DELETE FROM cache WHERE resource = ? AND key IN "
+            "(SELECT key FROM cache_tag WHERE tag IN (SELECT value FROM json_each(?)))",
+            (resource, json.dumps(list(tags))),
+        )
 
     def clear(self) -> int:
         """Remove every entry.

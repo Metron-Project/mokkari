@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Final, get_args
 from mokkari.cache import NO_CACHE, CacheKind, TtlPolicy
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
 
     from redis import Redis
 
@@ -38,36 +38,39 @@ _BATCH_SIZE: Final[int] = 500
 
 _KINDS: Final[tuple[CacheKind, ...]] = get_args(CacheKind)
 
-# KEYS: entry, index set
+# KEYS: entry, index set, then a set per tag
 # ARGV: JSON value, TTL in ms ('' to never expire)
-# The index is a sorted set scored by each entry's expiry time in ms ('+inf' for never). Members
-# whose entries have expired are dropped on every store, so the set holds only live entries, and
-# it lives exactly as long as its longest-lived entry.
+# Each index and tag set is a sorted set scored by each entry's expiry time in ms ('+inf' for
+# never). Members whose entries have expired are dropped on every store, so a set holds only
+# live entries, and it lives exactly as long as its longest-lived entry.
 _STORE: Final[str] = """
 local time = redis.call('TIME')
 local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local score = '+inf'
 if ARGV[2] == '' then
   redis.call('SET', KEYS[1], ARGV[1])
-  redis.call('ZADD', KEYS[2], '+inf', KEYS[1])
 else
   redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
-  redis.call('ZADD', KEYS[2], string.format('%.0f', now + tonumber(ARGV[2])), KEYS[1])
+  score = string.format('%.0f', now + tonumber(ARGV[2]))
 end
-redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', '(' .. string.format('%.0f', now))
-if redis.call('ZCOUNT', KEYS[2], '+inf', '+inf') > 0 then
-  redis.call('PERSIST', KEYS[2])
-else
-  -- The score comes back as a string Redis formats, which may not be a plain integer.
-  local last = redis.call('ZRANGE', KEYS[2], -1, -1, 'WITHSCORES')
-  redis.call('PEXPIREAT', KEYS[2], string.format('%.0f', tonumber(last[2])))
+for i = 2, #KEYS do
+  redis.call('ZADD', KEYS[i], score, KEYS[1])
+  redis.call('ZREMRANGEBYSCORE', KEYS[i], '-inf', '(' .. string.format('%.0f', now))
+  if redis.call('ZCOUNT', KEYS[i], '+inf', '+inf') > 0 then
+    redis.call('PERSIST', KEYS[i])
+  else
+    -- The score comes back as a string Redis formats, which may not be a plain integer.
+    local last = redis.call('ZRANGE', KEYS[i], -1, -1, 'WITHSCORES')
+    redis.call('PEXPIREAT', KEYS[i], string.format('%.0f', tonumber(last[2])))
+  end
 end
 return 0
 """
 
-# KEYS: index sets
+# KEYS: index or tag sets
 # ARGV: how many keys to unlink per call
-# Reads the index sets, removes their entries and then the sets, all in one step, so nothing
-# can be stored in between and a failure partway can't leave entries without an index.
+# Reads the sets, removes their entries and then the sets, all in one step, so nothing can be
+# stored in between and a failure partway can't leave entries without an index.
 _INVALIDATE: Final[str] = """
 local members = redis.call('ZUNION', #KEYS, unpack(KEYS))
 local batch = tonumber(ARGV[1])
@@ -104,10 +107,13 @@ class RedisCache:
     and ``key_prefix`` share entries.
 
     Needs Redis 7.0 or later, and a single server rather than a Redis Cluster.
-    ``invalidate`` finds entries through per-resource index sets, so if Redis is set to
-    evict keys when it runs out of memory (``maxmemory-policy`` other than
-    ``noeviction``), an evicted index set can leave its entries to be served until they
+    ``invalidate`` and ``invalidate_tags`` find entries through per-resource index and tag
+    sets, so if Redis is set to evict keys when it runs out of memory (``maxmemory-policy``
+    other than ``noeviction``), an evicted set can leave its entries to be served until they
     expire. Give the cache enough memory that eviction doesn't happen, or use short TTLs.
+    Storing an entry again doesn't take it out of the tag sets its previous version was in,
+    and ``invalidate`` leaves the resource's tag sets until they expire. Either way, the
+    most that does is make ``invalidate_tags`` remove an entry it didn't need to.
 
     Safe to share across threads, since redis-py clients are. Errors from the client,
     such as a ``redis.ConnectionError`` while Redis is down, are raised to the caller;
@@ -169,6 +175,10 @@ class RedisCache:
         """
         return f"{self._index_base}{resource}:{kind}"
 
+    def _tag_key(self, resource: str, tag: str) -> str:
+        """Return the key of the sorted set holding the keys of ``resource``'s entries with ``tag``."""
+        return f"{self._index_base}{resource}:tag:{tag}"
+
     def get(self, key: str) -> Any | None:
         """Retrieve unexpired data from the cache.
 
@@ -181,7 +191,15 @@ class RedisCache:
         encoded = self._client.get(self._key(key))
         return None if encoded is None else json.loads(encoded)
 
-    def store(self, key: str, value: Any, *, resource: str, kind: CacheKind) -> None:
+    def store(
+        self,
+        key: str,
+        value: Any,
+        *,
+        resource: str,
+        kind: CacheKind,
+        tags: Collection[str] = (),
+    ) -> None:
         """Save data to the cache, replacing any existing entry for ``key``.
 
         Nothing is stored when the TTL for ``resource`` and ``kind`` is ``NO_CACHE``.
@@ -192,12 +210,17 @@ class RedisCache:
             value: JSON-serializable data to store.
             resource: The resource the entry holds, e.g. ``"series"``; see ``Cache.store``.
             kind: ``"detail"`` or ``"list"``.
+            tags: Tags ``invalidate_tags`` can remove the entry by.
         """
         ttl = self.ttl_policy.ttl_for_value(value, resource=resource, kind=kind)
         if ttl is NO_CACHE:
             return
         self._store_script(
-            keys=[self._key(key), self._index_key(resource, kind)],
+            keys=[
+                self._key(key),
+                self._index_key(resource, kind),
+                *(self._tag_key(resource, tag) for tag in tags),
+            ],
             args=[json.dumps(value), "" if ttl is None else _ttl_ms(ttl)],
         )
 
@@ -216,14 +239,29 @@ class RedisCache:
     def invalidate(self, resource: str, kind: CacheKind | None = None) -> int:
         """Remove every entry for ``resource``, or only those of ``kind`` if given.
 
-        ``Session`` calls this after each of its own writes. Call it yourself after
-        changing data on Metron some other way, such as through the website.
+        ``Session`` calls this after each of its own writes, except updates and creates,
+        which use ``invalidate_tags``. Call it yourself after changing data on Metron some
+        other way, such as through the website.
 
         Returns:
             The number of entries removed.
         """
         indexes = [self._index_key(resource, k) for k in ((kind,) if kind else _KINDS)]
         return self._invalidate_script(keys=indexes, args=[_BATCH_SIZE])
+
+    def invalidate_tags(self, resource: str, tags: Collection[str]) -> int:
+        """Remove every entry for ``resource`` stored with any of ``tags``.
+
+        ``Session`` calls this instead of ``invalidate`` after updating or creating an
+        object, with the tags of the entries the write could have made stale.
+
+        Returns:
+            The number of entries removed.
+        """
+        if not tags:
+            return 0
+        keys = [self._tag_key(resource, tag) for tag in tags]
+        return self._invalidate_script(keys=keys, args=[_BATCH_SIZE])
 
     def clear(self) -> int:
         """Remove every entry this cache's format version wrote under ``key_prefix``.
