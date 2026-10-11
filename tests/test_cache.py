@@ -990,6 +990,33 @@ def test_session_caches_detail(
     assert row == ("universe", "detail")
 
 
+def test_session_logs_cache_hits_and_misses(
+    dummy_api_token: str,
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each cache lookup is logged at debug level as a hit or a miss."""
+    m = api(dummy_api_token, cache=make_cache())
+    url = "https://metron.cloud/api/universe/1/"
+    body = {
+        "id": 1,
+        "name": "Earth 2",
+        "modified": "2024-01-01T12:00:00Z",
+        "publisher": {"id": 1, "name": "DC Comics"},
+        "designation": "Earth 2",
+        "desc": "",
+        "resource_url": "https://metron.cloud/universe/earth-2/",
+    }
+
+    with requests_mock.Mocker() as r, caplog.at_level(logging.DEBUG, logger="mokkari.session"):
+        r.get(url, json=body)
+        m.universe(1)
+        m.universe(1)
+
+    lookups = [rec.getMessage() for rec in caplog.records if rec.getMessage().startswith("Cache ")]
+    assert lookups == [f"Cache miss: {url}", f"Cache hit: {url}"]
+
+
 def test_session_caches_paginated_list(
     dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:

@@ -2714,10 +2714,12 @@ class Session:
         # A failing cache (e.g. its database is locked or unreadable) is treated as a miss,
         # so the data is fetched from Metron instead of the request failing.
         try:
-            return self.cache.get(self._cache_key(key, resource))
+            data = self.cache.get(self._cache_key(key, resource))
         except Exception:
             LOGGER.exception("Cache get() failed; fetching from Metron")
             return None
+        LOGGER.debug("Cache %s: %s", "miss" if data is None else "hit", key)
+        return data
 
     def _save_results_to_cache(
         self, key: str, data: Any, resource: str, kind: CacheKind, *, invalidations: int
