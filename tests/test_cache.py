@@ -656,6 +656,15 @@ def test_invalidate_no_tags(any_cache: SqliteCache | RedisCache) -> None:
     assert any_cache.get("a") == 1
 
 
+def test_store_repeated_tag(any_cache: SqliteCache | RedisCache) -> None:
+    """A tag given more than once is stored once, rather than failing the store."""
+    any_cache.store("a", 1, resource="character", kind="detail", tags=["id:1", "id:1"])
+
+    assert any_cache.get("a") == 1
+    assert any_cache.invalidate_tags("character", {"id:1"}) == 1
+    assert any_cache.get("a") is None
+
+
 def test_store_replaces_tags(cache: sqlite_cache.SqliteCache) -> None:
     """Storing an entry again replaces its tags rather than adding to them."""
     cache.store("a", 1, resource="character", kind="list", tags={"id:1"})

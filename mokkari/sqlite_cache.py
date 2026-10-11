@@ -344,8 +344,9 @@ class SqliteCache:
             )
             # An upsert doesn't delete the row, so it doesn't cascade to the old tags.
             con.execute("DELETE FROM cache_tag WHERE key = ?", (key,))
+            # A tag given twice would break the (key, tag) primary key and fail the store.
             con.executemany(
-                "INSERT INTO cache_tag(key, tag) VALUES(?, ?)", [(key, tag) for tag in tags]
+                "INSERT INTO cache_tag(key, tag) VALUES(?, ?)", [(key, tag) for tag in set(tags)]
             )
 
     def delete(self, key: str) -> bool:
