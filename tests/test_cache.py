@@ -1721,12 +1721,14 @@ def character_body(id_: int, **fields: Any) -> dict[str, Any]:
     return {"id": id_, "name": f"C{id_}", "modified": "2024-01-01T12:00:00Z", **fields}
 
 
-def page_body(*ids: int, next_page: str | None = None) -> dict[str, Any]:
+def page_body(
+    *ids: int, next_page: str | None = None, previous_page: str | None = None
+) -> dict[str, Any]:
     """Return a page of characters."""
     return {
         "count": len(ids),
         "next": next_page,
-        "previous": None,
+        "previous": previous_page,
         "results": [character_body(i) for i in ids],
     }
 
@@ -1905,6 +1907,41 @@ def test_update_of_object_on_later_page_refetches_whole_list(
         r.reset_mock()
         assert len(m._get_results(["character"])["results"]) == 2
         assert r.call_count == 2
+
+
+@pytest.mark.parametrize("start", [2, 3])
+def test_update_of_object_on_earlier_page_refetches_later_pages(
+    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache], start: int
+) -> None:
+    """Pages read from a later one are refetched when an earlier page was dropped.
+
+    The object may have moved onto a later page, shifting the pages between without
+    dropping them.
+    """
+    m = api(dummy_api_token, cache=make_any_cache())
+    page2, page3 = "character/?page=2", "character/?page=3"
+    reads = {
+        "character/": page_body(1, next_page=f"{API}{page2}"),
+        page2: page_body(2, next_page=f"{API}{page3}", previous_page=f"{API}character/"),
+        page3: page_body(3, previous_page=f"{API}{page2}"),
+    }
+
+    with requests_mock.Mocker() as r:
+        matchers = {
+            path: r.get(f"{API}{path}", json=body, complete_qs=True) for path, body in reads.items()
+        }
+        m._get_results(["character"])
+        r.reset_mock()
+        # Every page is cached, so a read from a later page needs no requests.
+        m._get_results(["character"], {"page": start})
+        assert r.call_count == 0
+        r.patch(f"{API}character/1/", json=character_body(1, name="Z"))
+        m.character_patch(1, CharacterPost(name="Z"))
+        r.reset_mock()
+        m._get_results(["character"], {"page": start})
+        assert {path for path, matcher in matchers.items() if matcher.called} == set(
+            list(reads)[start - 1 :]
+        )
 
 
 class TagRecordingCache(RecordingCache):

@@ -2209,8 +2209,8 @@ class Session:
         A paginated list is served either entirely from the cache or entirely from Metron,
         so it's never a mix of pages from an older listing and a newer one: a fresh first
         page means every following page is fetched too, and a cached first page is only
-        used if every following page is cached as well. Otherwise the whole list is fetched
-        again, starting from the first page.
+        used if every other page of the list is cached as well. Otherwise the whole list is
+        fetched again, starting from the first page requested.
 
         Args:
             endpoint: List of path segments to build the API endpoint URL.
@@ -2226,30 +2226,39 @@ class Session:
 
         resource = resource or str(endpoint[0])
         result, from_cache = self._fetch(endpoint, params, kind="list", resource=resource)
-        if not result["next"]:
-            return result
         if from_cache:
             if (cached := self._cached_pages(result, resource)) is not None:
                 return cached
             result, _ = self._fetch(
                 endpoint, params, kind="list", use_cache=False, resource=resource
             )
-            if not result["next"]:
-                return result
+        if not result["next"]:
+            return result
         return self._retrieve_all_results(result, resource)
 
     def _cached_pages(self, data: dict[str, Any], resource: str) -> dict[str, Any] | None:
         """Add every following page of ``data`` from the cache, without making any requests.
 
+        The pages before ``data`` must be cached too, though their results aren't added. A
+        write drops only the pages holding the objects it changes, so an object that moves
+        to another page (e.g. when renamed) shifts the pages between them without dropping
+        them. Only a list whose every page is cached is known to have none dropped.
+
         Args:
-            data: The first page, from the cache. It isn't modified, since the cache may
-                have returned the very object it stores.
+            data: The first page requested, from the cache. It isn't modified, since the
+                cache may have returned the very object it stores.
             resource: The resource name the first page was cached under.
 
         Returns:
-            A copy of ``data`` with every page's results, or ``None`` if any page isn't in
-            the cache.
+            A copy of ``data`` with every following page's results, or ``None`` if any page
+            of the list isn't in the cache.
         """
+        previous_page = data.get("previous")
+        while previous_page:
+            page = self._get_results_from_cache(previous_page, resource)
+            if page is None:
+                return None
+            previous_page = page.get("previous")
         results = list(data["results"])
         next_page = data["next"]
         while next_page:
