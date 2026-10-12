@@ -114,8 +114,7 @@ class Cache(Protocol):
     """Protocol for a response cache passed to ``Session``.
 
     Pass an object implementing this protocol as ``Session(cache=...)`` (or
-    ``api(..., cache=...)``). ``SqliteCache`` and ``RedisCache`` are the bundled
-    implementations.
+    ``api(..., cache=...)``). ``SqliteCache`` is the bundled implementation.
     Implementations must be safe to call concurrently from multiple threads
     sharing one ``Session``.
 

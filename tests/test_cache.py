@@ -1,7 +1,6 @@
 """Test Cache module.
 
-This module contains tests for SqliteCache objects. Tests that don't depend on the backend
-also run against RedisCache, on fakeredis.
+This module contains tests for SqliteCache objects.
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
-import fakeredis
 import pytest
 import requests
 import requests_mock
@@ -30,14 +28,12 @@ from mokkari.cache import (
     entry_tags,
     update_tags,
 )
-from mokkari.redis_cache import RedisCache
 from mokkari.schemas.character import CharacterPost
 from mokkari.schemas.issue import CreditPost, IssuePost
 from mokkari.schemas.series import SeriesPost
 from mokkari.schemas.universe import UniversePost
 from mokkari.schemas.variant import VariantPost
 from mokkari.schemas.wish_list import AcquireWishListItem
-from mokkari.sqlite_cache import SqliteCache
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -113,35 +109,6 @@ def cache(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> sqlite_cache.S
 def count_rows(cache: sqlite_cache.SqliteCache) -> int:
     """Return the number of rows in the cache table, expired or not."""
     return cache.con.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
-
-
-@pytest.fixture(params=["sqlite", "redis"])
-def make_any_cache(
-    request: pytest.FixtureRequest, make_cache: Callable[..., sqlite_cache.SqliteCache]
-) -> Callable[..., SqliteCache | RedisCache]:
-    """Build caches of each backend in turn, in memory or on a fresh fakeredis server."""
-    if request.param == "sqlite":
-        return make_cache
-
-    def factory(**kwargs: Any) -> RedisCache:
-        return RedisCache(fakeredis.FakeRedis(server=fakeredis.FakeServer()), **kwargs)
-
-    return factory
-
-
-@pytest.fixture
-def any_cache(make_any_cache: Callable[..., SqliteCache | RedisCache]) -> SqliteCache | RedisCache:
-    """A cache of each backend in turn, with a one-hour default TTL."""
-    return make_any_cache(default_ttl=timedelta(hours=1))
-
-
-def count_entries(cache: SqliteCache | RedisCache) -> int:
-    """Return the number of entries in either backend, not counting RedisCache's index sets."""
-    if isinstance(cache, SqliteCache):
-        return count_rows(cache)
-    return sum(
-        1 for key in cache._client.scan_iter() if not key.startswith(cache._index_base.encode())
-    )
 
 
 # ============================================================================
@@ -249,24 +216,24 @@ def test_custom_cache_accepted(dummy_api_token: str) -> None:
 # ============================================================================
 
 
-def test_get_missing_key(any_cache: SqliteCache | RedisCache) -> None:
+def test_get_missing_key(cache: sqlite_cache.SqliteCache) -> None:
     """An unknown key returns None."""
-    assert any_cache.get("missing") is None
+    assert cache.get("missing") is None
 
 
-def test_store_and_get(any_cache: SqliteCache | RedisCache) -> None:
+def test_store_and_get(cache: sqlite_cache.SqliteCache) -> None:
     """Stored data comes back unchanged."""
-    any_cache.store("key", {"id": 1, "names": ["a", "b"]}, resource="series", kind="detail")
-    assert any_cache.get("key") == {"id": 1, "names": ["a", "b"]}
+    cache.store("key", {"id": 1, "names": ["a", "b"]}, resource="series", kind="detail")
+    assert cache.get("key") == {"id": 1, "names": ["a", "b"]}
 
 
-def test_store_upserts(any_cache: SqliteCache | RedisCache) -> None:
+def test_store_upserts(cache: sqlite_cache.SqliteCache) -> None:
     """Storing a key twice replaces the first value instead of adding a second row."""
-    any_cache.store("key", {"v": 1}, resource="series", kind="detail")
-    any_cache.store("key", {"v": 2}, resource="series", kind="detail")
+    cache.store("key", {"v": 1}, resource="series", kind="detail")
+    cache.store("key", {"v": 2}, resource="series", kind="detail")
 
-    assert any_cache.get("key") == {"v": 2}
-    assert count_entries(any_cache) == 1
+    assert cache.get("key") == {"v": 2}
+    assert count_rows(cache) == 1
 
 
 def test_upsert_refreshes_expiry(clock: FakeClock, cache: sqlite_cache.SqliteCache) -> None:
@@ -279,9 +246,9 @@ def test_upsert_refreshes_expiry(clock: FakeClock, cache: sqlite_cache.SqliteCac
     assert cache.get("key") == {"v": 2}
 
 
-def test_thread_safety(make_any_cache: Callable[..., SqliteCache | RedisCache]) -> None:
+def test_thread_safety(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
     """Concurrent get/store calls from multiple threads should not raise."""
-    cache = make_any_cache()
+    cache = make_cache()
 
     def worker(i: int) -> None:
         key = f"key-{i}"
@@ -331,14 +298,14 @@ def test_none_default_ttl_never_expires(
 
 
 def test_no_cache_ttl_is_not_stored(
-    make_any_cache: Callable[..., SqliteCache | RedisCache],
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
 ) -> None:
     """A TTL of NO_CACHE means the resource isn't cached at all."""
-    cache = make_any_cache(ttl={"issue": NO_CACHE})
+    cache = make_cache(ttl={"issue": NO_CACHE})
     cache.store("key", {"id": 1}, resource="issue", kind="detail")
 
     assert cache.get("key") is None
-    assert count_entries(cache) == 0
+    assert count_rows(cache) == 0
 
 
 @pytest.mark.parametrize(
@@ -402,13 +369,13 @@ def test_kind_wildcard(
 EMPTY_LIST: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
 
 
-def test_empty_list_not_cached_by_default(any_cache: SqliteCache | RedisCache) -> None:
+def test_empty_list_not_cached_by_default(cache: sqlite_cache.SqliteCache) -> None:
     """A list response with no results isn't cached unless empty_list_ttl allows it."""
-    any_cache.store("empty", EMPTY_LIST, resource="issue", kind="list")
-    any_cache.store("full", {"count": 1, "results": [{"id": 1}]}, resource="issue", kind="list")
+    cache.store("empty", EMPTY_LIST, resource="issue", kind="list")
+    cache.store("full", {"count": 1, "results": [{"id": 1}]}, resource="issue", kind="list")
 
-    assert any_cache.get("empty") is None
-    assert any_cache.get("full") is not None
+    assert cache.get("empty") is None
+    assert cache.get("full") is not None
 
 
 def test_empty_list_ttl_shortens(
@@ -441,20 +408,20 @@ def test_empty_list_ttl_never_lengthens(
 
 
 def test_empty_list_ttl_keeps_no_cache(
-    make_any_cache: Callable[..., SqliteCache | RedisCache],
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
 ) -> None:
     """empty_list_ttl can't opt an excluded resource back into the cache."""
-    cache = make_any_cache(empty_list_ttl=None)
+    cache = make_cache(empty_list_ttl=None)
     cache.store("key", EMPTY_LIST, resource="collection", kind="list")
 
     assert cache.get("key") is None
 
 
-def test_empty_list_ttl_only_for_lists(any_cache: SqliteCache | RedisCache) -> None:
+def test_empty_list_ttl_only_for_lists(cache: sqlite_cache.SqliteCache) -> None:
     """A detail response that happens to have a zero count is cached as usual."""
-    any_cache.store("key", {"id": 1, "count": 0}, resource="series", kind="detail")
+    cache.store("key", {"id": 1, "count": 0}, resource="series", kind="detail")
 
-    assert any_cache.get("key") == {"id": 1, "count": 0}
+    assert cache.get("key") == {"id": 1, "count": 0}
 
 
 @pytest.mark.parametrize(
@@ -481,17 +448,15 @@ def test_ttl_policy_checks_ttls() -> None:
 
 
 @pytest.mark.parametrize("resource", ["collection", "pull_list", "wish_list"])
-def test_user_data_not_cached_by_default(
-    any_cache: SqliteCache | RedisCache, resource: str
-) -> None:
+def test_user_data_not_cached_by_default(cache: sqlite_cache.SqliteCache, resource: str) -> None:
     """Per-user resources aren't cached unless the caller opts in."""
-    any_cache.store("key", {"id": 1}, resource=resource, kind="list")
-    assert any_cache.get("key") is None
+    cache.store("key", {"id": 1}, resource=resource, kind="list")
+    assert cache.get("key") is None
 
 
-def test_user_data_opt_in(make_any_cache: Callable[..., SqliteCache | RedisCache]) -> None:
+def test_user_data_opt_in(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> None:
     """A user-supplied TTL overrides the built-in exclusion."""
-    cache = make_any_cache(ttl={"collection": timedelta(minutes=10)}, empty_list_ttl=None)
+    cache = make_cache(ttl={"collection": timedelta(minutes=10)}, empty_list_ttl=None)
     cache.store("key", {"id": 1}, resource="collection", kind="list")
 
     assert cache.get("key") == {"id": 1}
@@ -590,79 +555,79 @@ def test_every_ttl_key_form_accepted() -> None:
 # ============================================================================
 
 
-def test_delete(any_cache: SqliteCache | RedisCache) -> None:
+def test_delete(cache: sqlite_cache.SqliteCache) -> None:
     """delete() removes one key and reports whether it existed."""
-    any_cache.store("a", 1, resource="series", kind="detail")
-    any_cache.store("b", 2, resource="series", kind="detail")
+    cache.store("a", 1, resource="series", kind="detail")
+    cache.store("b", 2, resource="series", kind="detail")
 
-    assert any_cache.delete("a") is True
-    assert any_cache.delete("a") is False
-    assert any_cache.get("a") is None
-    assert any_cache.get("b") == 2
+    assert cache.delete("a") is True
+    assert cache.delete("a") is False
+    assert cache.get("a") is None
+    assert cache.get("b") == 2
 
 
-def test_invalidate_resource(any_cache: SqliteCache | RedisCache) -> None:
+def test_invalidate_resource(cache: sqlite_cache.SqliteCache) -> None:
     """invalidate(resource) removes every kind of entry for that resource only."""
-    any_cache.store("s1", 1, resource="series", kind="detail")
-    any_cache.store("s2", 2, resource="series", kind="list")
-    any_cache.store("i1", 3, resource="issue", kind="detail")
+    cache.store("s1", 1, resource="series", kind="detail")
+    cache.store("s2", 2, resource="series", kind="list")
+    cache.store("i1", 3, resource="issue", kind="detail")
 
-    assert any_cache.invalidate("series") == 2
-    assert any_cache.get("s1") is None
-    assert any_cache.get("s2") is None
-    assert any_cache.get("i1") == 3
+    assert cache.invalidate("series") == 2
+    assert cache.get("s1") is None
+    assert cache.get("s2") is None
+    assert cache.get("i1") == 3
 
 
-def test_invalidate_resource_kind(any_cache: SqliteCache | RedisCache) -> None:
+def test_invalidate_resource_kind(cache: sqlite_cache.SqliteCache) -> None:
     """invalidate(resource, kind) leaves the resource's other kind alone."""
-    any_cache.store("s1", 1, resource="series", kind="detail")
-    any_cache.store("s2", 2, resource="series", kind="list")
+    cache.store("s1", 1, resource="series", kind="detail")
+    cache.store("s2", 2, resource="series", kind="list")
 
-    assert any_cache.invalidate("series", "list") == 1
-    assert any_cache.get("s1") == 1
-    assert any_cache.get("s2") is None
+    assert cache.invalidate("series", "list") == 1
+    assert cache.get("s1") == 1
+    assert cache.get("s2") is None
 
 
-def test_clear(any_cache: SqliteCache | RedisCache) -> None:
+def test_clear(cache: sqlite_cache.SqliteCache) -> None:
     """clear() removes everything."""
-    any_cache.store("a", 1, resource="series", kind="detail")
-    any_cache.store("b", 2, resource="issue", kind="list")
+    cache.store("a", 1, resource="series", kind="detail")
+    cache.store("b", 2, resource="issue", kind="list")
 
-    assert any_cache.clear() == 2
-    assert count_entries(any_cache) == 0
+    assert cache.clear() == 2
+    assert count_rows(cache) == 0
 
 
-def test_invalidate_tags(any_cache: SqliteCache | RedisCache) -> None:
+def test_invalidate_tags(cache: sqlite_cache.SqliteCache) -> None:
     """invalidate_tags() removes the resource's entries with any of the tags, and no others."""
-    any_cache.store("a", 1, resource="character", kind="detail", tags={"id:1"})
-    any_cache.store("b", 2, resource="character", kind="list", tags={"id:1", "id:2", "post"})
-    any_cache.store("c", 3, resource="character", kind="list", tags={"id:2", "field:name"})
-    any_cache.store("d", 4, resource="character", kind="detail")
-    any_cache.store("e", 5, resource="issue", kind="detail", tags={"id:1"})
+    cache.store("a", 1, resource="character", kind="detail", tags={"id:1"})
+    cache.store("b", 2, resource="character", kind="list", tags={"id:1", "id:2", "post"})
+    cache.store("c", 3, resource="character", kind="list", tags={"id:2", "field:name"})
+    cache.store("d", 4, resource="character", kind="detail")
+    cache.store("e", 5, resource="issue", kind="detail", tags={"id:1"})
 
-    assert any_cache.invalidate_tags("character", {"id:1", "field:cv_id"}) == 2
-    assert any_cache.get("a") is None
-    assert any_cache.get("b") is None
-    assert any_cache.get("c") == 3
-    assert any_cache.get("d") == 4
-    assert any_cache.get("e") == 5
+    assert cache.invalidate_tags("character", {"id:1", "field:cv_id"}) == 2
+    assert cache.get("a") is None
+    assert cache.get("b") is None
+    assert cache.get("c") == 3
+    assert cache.get("d") == 4
+    assert cache.get("e") == 5
 
 
-def test_invalidate_no_tags(any_cache: SqliteCache | RedisCache) -> None:
+def test_invalidate_no_tags(cache: sqlite_cache.SqliteCache) -> None:
     """invalidate_tags() with no tags removes nothing."""
-    any_cache.store("a", 1, resource="character", kind="detail", tags={"id:1"})
+    cache.store("a", 1, resource="character", kind="detail", tags={"id:1"})
 
-    assert any_cache.invalidate_tags("character", set()) == 0
-    assert any_cache.get("a") == 1
+    assert cache.invalidate_tags("character", set()) == 0
+    assert cache.get("a") == 1
 
 
-def test_store_repeated_tag(any_cache: SqliteCache | RedisCache) -> None:
+def test_store_repeated_tag(cache: sqlite_cache.SqliteCache) -> None:
     """A tag given more than once is stored once, rather than failing the store."""
-    any_cache.store("a", 1, resource="character", kind="detail", tags=["id:1", "id:1"])
+    cache.store("a", 1, resource="character", kind="detail", tags=["id:1", "id:1"])
 
-    assert any_cache.get("a") == 1
-    assert any_cache.invalidate_tags("character", {"id:1"}) == 1
-    assert any_cache.get("a") is None
+    assert cache.get("a") == 1
+    assert cache.invalidate_tags("character", {"id:1"}) == 1
+    assert cache.get("a") is None
 
 
 def test_store_replaces_tags(cache: sqlite_cache.SqliteCache) -> None:
@@ -1308,10 +1273,10 @@ class FailingInvalidateCache(RecordingCache):
 
 
 def test_session_write_invalidates_cache(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """A read after a successful write fetches the new data instead of the cached copy."""
-    m = api(dummy_api_token, cache=make_any_cache())
+    m = api(dummy_api_token, cache=make_cache())
     url = "https://metron.cloud/api/universe/1/"
     body = {
         "id": 1,
@@ -1469,12 +1434,12 @@ def test_page_read_during_unrelated_write_stored(
 @pytest.mark.parametrize(("dropped", "stored"), [("id:2", True), ("id:1", False)])
 def test_read_during_tagged_write_stored_unless_it_matches(
     dummy_api_token: str,
-    make_any_cache: Callable[..., SqliteCache | RedisCache],
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
     dropped: str,
     stored: bool,
 ) -> None:
     """A read is only discarded if a write during it dropped entries tagged like it."""
-    cache = make_any_cache()
+    cache = make_cache()
     m = api(dummy_api_token, cache=cache)
     url = "https://metron.cloud/api/character/1/"
 
@@ -1490,10 +1455,10 @@ def test_read_during_tagged_write_stored_unless_it_matches(
 
 
 def test_read_during_too_many_tagged_writes_not_stored(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """A read overlapping more writes than are remembered may be stale, so isn't stored."""
-    cache = make_any_cache()
+    cache = make_cache()
     m = api(dummy_api_token, cache=cache)
     url = "https://metron.cloud/api/character/1/"
 
@@ -1510,10 +1475,10 @@ def test_read_during_too_many_tagged_writes_not_stored(
 
 
 def test_read_during_tagged_write_store_dropped_by_its_tags(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """A store a tagged write overtakes drops only entries tagged like it, not the resource."""
-    cache = make_any_cache()
+    cache = make_cache()
     m = api(dummy_api_token, cache=cache)
     url = "https://metron.cloud/api/character/"
     other = "https://metron.cloud/api/character/2/"
@@ -1845,10 +1810,10 @@ def read_path(m: session.Session, path: str) -> None:
 
 
 def test_update_drops_only_stale_entries(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """An update leaves the entries it can't have changed in the cache."""
-    m = api(dummy_api_token, cache=make_any_cache(empty_list_ttl=timedelta(hours=1)))
+    m = api(dummy_api_token, cache=make_cache(empty_list_ttl=timedelta(hours=1)))
     reads = {
         "character/1/": character_body(1),
         "character/2/": character_body(2),
@@ -1874,10 +1839,10 @@ def test_update_drops_only_stale_entries(
 
 
 def test_create_drops_only_lists_it_may_join(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """A create keeps details, and lists filtered on an exact id the new object doesn't have."""
-    m = api(dummy_api_token, cache=make_any_cache(empty_list_ttl=timedelta(hours=1)))
+    m = api(dummy_api_token, cache=make_cache(empty_list_ttl=timedelta(hours=1)))
     reads = {
         "character/1/": character_body(1),
         "character/": page_body(1, 2),
@@ -1902,10 +1867,10 @@ def test_create_drops_only_lists_it_may_join(
 
 
 def test_issue_update_drops_issue_lists_it_may_join(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """Changing an issue's characters drops character issue lists, but not series ones."""
-    m = api(dummy_api_token, cache=make_any_cache(empty_list_ttl=timedelta(hours=1)))
+    m = api(dummy_api_token, cache=make_cache(empty_list_ttl=timedelta(hours=1)))
     reads = {"character/7/issue_list/": page_body(), "series/5/issue_list/": page_body()}
 
     with requests_mock.Mocker() as r:
@@ -1939,10 +1904,10 @@ def series_write_body(id_: int, *associated: int) -> dict[str, Any]:
 
 
 def test_update_drops_details_showing_the_object(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """An update drops the details of objects it was or is now related to, which show it."""
-    m = api(dummy_api_token, cache=make_any_cache())
+    m = api(dummy_api_token, cache=make_cache())
     reads = {
         "series/1/": series_body(1, 2),
         "series/2/": series_body(2, 1),
@@ -1958,10 +1923,10 @@ def test_update_drops_details_showing_the_object(
 
 
 def test_create_drops_details_of_related_objects(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """A create drops the details of the objects it's related to, which now show it."""
-    m = api(dummy_api_token, cache=make_any_cache())
+    m = api(dummy_api_token, cache=make_cache())
     reads = {"series/2/": series_body(2), "series/3/": series_body(3)}
 
     with requests_mock.Mocker() as r:
@@ -1972,10 +1937,10 @@ def test_create_drops_details_of_related_objects(
 
 
 def test_update_of_object_on_later_page_refetches_whole_list(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """When only a later page holds the object, the whole list is fetched again."""
-    m = api(dummy_api_token, cache=make_any_cache())
+    m = api(dummy_api_token, cache=make_cache())
     page2 = "character/?page=2"
     reads = {"character/": page_body(2, next_page=f"{API}{page2}"), page2: page_body(1)}
 
@@ -1992,14 +1957,14 @@ def test_update_of_object_on_later_page_refetches_whole_list(
 
 @pytest.mark.parametrize("start", [2, 3])
 def test_update_of_object_on_earlier_page_refetches_later_pages(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache], start: int
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache], start: int
 ) -> None:
     """Pages read from a later one are refetched when an earlier page was dropped.
 
     The object may have moved onto a later page, shifting the pages between without
     dropping them.
     """
-    m = api(dummy_api_token, cache=make_any_cache())
+    m = api(dummy_api_token, cache=make_cache())
     page2, page3 = "character/?page=2", "character/?page=3"
     reads = {
         "character/": page_body(1, next_page=f"{API}{page2}"),
@@ -2073,10 +2038,10 @@ def test_reassigned_cache_invalidated_its_own_way(dummy_api_token: str) -> None:
 
 
 def test_uncached_resource_not_tagged(
-    dummy_api_token: str, make_any_cache: Callable[..., SqliteCache | RedisCache]
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
 ) -> None:
     """A response the cache's TTL policy keeps out isn't described by tags or stored."""
-    cache = make_any_cache(ttl={"character": NO_CACHE})
+    cache = make_cache(ttl={"character": NO_CACHE})
     m = api(dummy_api_token, cache=cache)
     url = f"{API}character/1/"
 
@@ -2255,10 +2220,10 @@ def test_per_user_data_not_shared_between_tokens(
 
 
 def test_shared_data_shared_between_tokens(
-    make_any_cache: Callable[..., SqliteCache | RedisCache],
+    make_cache: Callable[..., sqlite_cache.SqliteCache],
 ) -> None:
     """Reference data isn't per-user, so one token's cached copy is served to another."""
-    cache = make_any_cache()
+    cache = make_cache()
     alice = api("alice-token", cache=cache)
     bob = api("bob-token", cache=cache)
 
