@@ -835,7 +835,7 @@ wheels = [
 
 [[package]]
 name = "mokkari"
-version = "5.0.0a2"
+version = "5.0.0a3"
 source = { editable = "." }
 default-groups = ["dev", "docs", "lint", "test"]
 dependencies = [
