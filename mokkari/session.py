@@ -15,13 +15,13 @@ import logging
 import platform
 import threading
 import time
-from collections import Counter, OrderedDict
-from collections.abc import Callable, Iterable
+from collections import Counter, OrderedDict, defaultdict, deque
+from collections.abc import Callable, Collection, Iterable, Mapping
 from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Final, Self, TypeVar
+from typing import Any, Final, Protocol, Self, TypeVar, runtime_checkable
 from urllib.parse import urlencode
 
 import requests
@@ -29,7 +29,16 @@ from pydantic import TypeAdapter, ValidationError
 from requests.auth import AuthBase
 
 from mokkari import __version__, exceptions, rate_limit, utils
-from mokkari.cache import Cache, CacheKind, ResourceEndpoint
+from mokkari.cache import (
+    NO_CACHE,
+    Cache,
+    CacheKind,
+    ResourceEndpoint,
+    TtlPolicy,
+    create_tags,
+    entry_tags,
+    update_tags,
+)
 from mokkari.schemas.arc import Arc, ArcPost
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
@@ -131,6 +140,15 @@ class _ServerRateLimitError(exceptions.RateLimitError):
     """
 
 
+@runtime_checkable
+class _TaggedCache(Cache, Protocol):
+    """A ``Cache`` invalidated by tag, which ``store`` passes each entry's tags (see ``Cache``)."""
+
+    def invalidate_tags(self, resource: str, tags: Collection[str]) -> object:
+        """Remove every entry for ``resource`` stored with any of ``tags``."""
+        ...
+
+
 def _check_cache(cache: object) -> None:
     """Raise ``CacheError`` unless ``cache`` can be called the way ``Session`` calls it.
 
@@ -140,14 +158,13 @@ def _check_cache(cache: object) -> None:
     if not isinstance(cache, Cache):
         msg = f"Cache must have get() and store() methods: {cache!r}"
         raise exceptions.CacheError(msg)
+    store_kwargs: dict[str, Any] = {"resource": "series", "kind": "detail"}
+    # A cache invalidated by tag is passed each entry's tags to store.
+    if isinstance(cache, _TaggedCache):
+        store_kwargs["tags"] = frozenset()
     for name, expected, args, kwargs in [
         ("get", "get(key)", ("key",), {}),
-        (
-            "store",
-            "store(key, value, *, resource, kind)",
-            ("key", None),
-            {"resource": "series", "kind": "detail"},
-        ),
+        ("store", f"store(key, value, *, {', '.join(store_kwargs)})", ("key", None), store_kwargs),
     ]:
         method = getattr(cache, name)
         try:
@@ -165,6 +182,28 @@ def _check_cache(cache: object) -> None:
             raise exceptions.CacheError(msg) from e
 
 
+# Given a write's response (``None`` if it raised), returns the tags of the entries of the
+# written resource to drop, or ``None`` to drop them all.
+_WriteTags = Callable[[requests.Response | None], frozenset[str] | None]
+
+
+def _created_tags(resource: str) -> _WriteTags:
+    """Return a ``_WriteTags`` for creating a ``resource``, which reads the new object back."""
+
+    def tags(response: requests.Response | None) -> frozenset[str] | None:
+        if response is None or not response.ok:
+            return None
+        try:
+            created = response.json()
+        except ValueError:
+            return None
+        if not isinstance(created, dict) or "id" not in created:
+            return None
+        return create_tags(resource, created)
+
+    return tags
+
+
 # Responses from these depend on whose token made the request (e.g. a private reading list),
 # so their cache keys are scoped to the token and other tokens sharing the cache can't see them.
 _PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
@@ -175,6 +214,11 @@ _PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
         ResourceEndpoint.WISH_LIST,
     }
 )
+
+# How many of each resource's latest writes are remembered, for reads that finish during
+# them (see ``Session._stale_tags``). A read that more writes overlapped treats every entry
+# as stale.
+_WRITE_LOG_SIZE: Final[int] = 64
 
 
 class Session:
@@ -389,9 +433,6 @@ class Session:
         # Identifies the token in per-user cache keys without storing the token itself.
         self._cache_user = hashlib.sha256(api_token.encode()).hexdigest()[:16]
         self.api_url = LOCAL_URL if dev_mode else METRON_URL
-        # Checked here so a mis-wired cache fails now rather than on the first request.
-        if cache is not None:
-            _check_cache(cache)
         self.cache = cache
         self.rate_limiter = rate_limiter
         self._http = self._build_http_session()
@@ -403,6 +444,25 @@ class Session:
         # after it, while reads of other resources are stored as usual.
         self._invalidation_lock = threading.Lock()
         self._invalidations: Counter[str] = Counter()
+        # The tags each of a resource's latest invalidations dropped, or None if it dropped
+        # every entry, so a read overlapping one is only discarded if it could be stale.
+        self._invalidated_tags: defaultdict[str, deque[frozenset[str] | None]] = defaultdict(
+            lambda: deque(maxlen=_WRITE_LOG_SIZE)
+        )
+
+    @property
+    def cache(self) -> Cache | None:
+        """The response cache, or ``None`` if responses aren't cached."""
+        return self._cache
+
+    @cache.setter
+    def cache(self, cache: Cache | None) -> None:
+        # Checked here so a mis-wired cache fails now rather than on the first request.
+        if cache is not None:
+            _check_cache(cache)
+        self._cache = cache
+        # Whether the cache is invalidated by tag is decided once, here, not on each use.
+        self._tagged_cache = cache if isinstance(cache, _TaggedCache) else None
 
     @staticmethod
     def _build_http_session() -> requests.Session:
@@ -563,6 +623,7 @@ class Session:
         data: T,
         *,
         also_invalidates: tuple[str, ...] = (),
+        tags: _WriteTags | None = None,
     ) -> Any:
         """Send a request with data to the specified endpoint.
 
@@ -574,6 +635,8 @@ class Session:
             endpoint: List of path segments to build the API endpoint URL.
             data: The data object to send in the request body.
             also_invalidates: Other cached resources the write changes (see ``_execute_write``).
+            tags: Which of the resource's cached entries the write changes (see
+                ``_execute_write``).
 
         Returns:
             Any: The response data from the API.
@@ -582,7 +645,9 @@ class Session:
             ApiError: If there is an error during the API call.
         """
         return self._handle_http_response(
-            self._execute_write(method, endpoint, data, also_invalidates=also_invalidates)
+            self._execute_write(
+                method, endpoint, data, also_invalidates=also_invalidates, tags=tags
+            )
         )
 
     def _execute_write(
@@ -592,6 +657,7 @@ class Session:
         data: Any,
         *,
         also_invalidates: tuple[str, ...] = (),
+        tags: _WriteTags | None = None,
     ) -> requests.Response:
         """Send a write request, then drop cached entries it may have made stale.
 
@@ -601,6 +667,10 @@ class Session:
             data: The data to send in the request body, or ``None``.
             also_invalidates: Cached resources the write changes besides the one it's sent
                 to (the endpoint's first segment), such as ``issue`` for a credit.
+            tags: Given the response, or ``None`` if there isn't one, returns the tags of
+                the entries of the resource it's sent to that the write may have made stale
+                (see ``Cache``), or ``None`` for all of them. All are dropped if not given,
+                and every entry of ``also_invalidates`` always is.
 
         Returns:
             The HTTP response, not yet checked for errors.
@@ -627,7 +697,12 @@ class Session:
                 HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
             )
             if not (rejected or unsent):
-                self._invalidate_cache((str(endpoint[0]), *also_invalidates))
+                resource = str(endpoint[0])
+                written_tags = None if tags is None else tags(response)
+                self._invalidate_cache(
+                    (resource, *also_invalidates),
+                    tags=None if written_tags is None else {resource: written_tags},
+                )
         return response
 
     @staticmethod
@@ -707,7 +782,7 @@ class Session:
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
 
-    def _handle_write_request(
+    def _handle_write_request(  # noqa: PLR0913
         self,
         method: str,
         endpoint: list[str | int],
@@ -715,6 +790,7 @@ class Session:
         response_class: type,
         *,
         also_invalidates: tuple[str, ...] = (),
+        tags: _WriteTags | None = None,
     ) -> Any:
         """Handle POST or PATCH request with consistent error handling and validation.
 
@@ -727,6 +803,8 @@ class Session:
             data: The data to send in the request.
             response_class: The expected response class for validation.
             also_invalidates: Other cached resources the write changes (see ``_execute_write``).
+            tags: Which of the resource's cached entries the write changes (see
+                ``_execute_write``).
 
         Returns:
             Any: The validated response object.
@@ -734,7 +812,7 @@ class Session:
         Raises:
             ApiError: If the request fails or validation fails.
         """
-        resp = self._send(method, endpoint, data, also_invalidates=also_invalidates)
+        resp = self._send(method, endpoint, data, also_invalidates=also_invalidates, tags=tags)
         return self._validate_response(resp, response_class)
 
     # Generic resource methods
@@ -799,7 +877,10 @@ class Session:
             ApiError: If creation fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_write_request("POST", [resource_name], data, response_class)
+        # Only lists the new object may join are dropped.
+        return self._handle_write_request(
+            "POST", [resource_name], data, response_class, tags=_created_tags(resource_name)
+        )
 
     def _patch_resource(self, resource_name: str, _id: int, data: Any, response_class: type) -> Any:
         """Update an existing resource in the database.
@@ -819,7 +900,12 @@ class Session:
             ApiError: If update fails or if user lacks permissions.
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
-        return self._handle_write_request("PATCH", [resource_name, _id], data, response_class)
+        # Only entries the update may change are dropped. None values aren't sent (see
+        # _prepare_request_payload), so they don't change anything.
+        tags = update_tags(resource_name, _id, data.model_dump(exclude_none=True))
+        return self._handle_write_request(
+            "PATCH", [resource_name, _id], data, response_class, tags=lambda _response: tags
+        )
 
     def _list_resources(
         self, resource_name: str, params: dict[str, str | int] | None, response_class: type
@@ -2155,8 +2241,8 @@ class Session:
         A paginated list is served either entirely from the cache or entirely from Metron,
         so it's never a mix of pages from an older listing and a newer one: a fresh first
         page means every following page is fetched too, and a cached first page is only
-        used if every following page is cached as well. Otherwise the whole list is fetched
-        again, starting from the first page.
+        used if every other page of the list is cached as well. Otherwise the whole list is
+        fetched again, starting from the first page requested.
 
         Args:
             endpoint: List of path segments to build the API endpoint URL.
@@ -2172,30 +2258,39 @@ class Session:
 
         resource = resource or str(endpoint[0])
         result, from_cache = self._fetch(endpoint, params, kind="list", resource=resource)
-        if not result["next"]:
-            return result
         if from_cache:
             if (cached := self._cached_pages(result, resource)) is not None:
                 return cached
             result, _ = self._fetch(
                 endpoint, params, kind="list", use_cache=False, resource=resource
             )
-            if not result["next"]:
-                return result
+        if not result["next"]:
+            return result
         return self._retrieve_all_results(result, resource)
 
     def _cached_pages(self, data: dict[str, Any], resource: str) -> dict[str, Any] | None:
         """Add every following page of ``data`` from the cache, without making any requests.
 
+        The pages before ``data`` must be cached too, though their results aren't added. A
+        write drops only the pages holding the objects it changes, so an object that moves
+        to another page (e.g. when renamed) shifts the pages between them without dropping
+        them. Only a list whose every page is cached is known to have none dropped.
+
         Args:
-            data: The first page, from the cache. It isn't modified, since the cache may
-                have returned the very object it stores.
+            data: The first page requested, from the cache. It isn't modified, since the
+                cache may have returned the very object it stores.
             resource: The resource name the first page was cached under.
 
         Returns:
-            A copy of ``data`` with every page's results, or ``None`` if any page isn't in
-            the cache.
+            A copy of ``data`` with every following page's results, or ``None`` if any page
+            of the list isn't in the cache.
         """
+        previous_page = data.get("previous")
+        while previous_page:
+            page = self._get_results_from_cache(previous_page, resource)
+            if page is None:
+                return None
+            previous_page = page.get("previous")
         results = list(data["results"])
         next_page = data["next"]
         while next_page:
@@ -2736,26 +2831,82 @@ class Session:
         """
         if self.cache is None:
             return
-        # A write invalidated this resource while it was being fetched, so the data may be
-        # from before it, and storing it would undo the invalidation.
-        if invalidations != self._invalidations[resource]:
+        # A cache with a TTL policy (e.g. SqliteCache) wouldn't keep the data, so don't
+        # describe it for one.
+        ttl_policy = getattr(self.cache, "ttl_policy", None)
+        if (
+            isinstance(ttl_policy, TtlPolicy)
+            and ttl_policy.ttl_for_value(data, resource=resource, kind=kind) is NO_CACHE
+        ):
+            return
+        # Only a cache invalidated by tag takes tags (see Cache).
+        tags = (
+            None
+            if self._tagged_cache is None
+            else entry_tags(key, data, resource=resource, kind=kind)
+        )
+        # A write invalidated entries like this one while it was being fetched, so the data
+        # may be from before it, and storing it would undo the invalidation.
+        if self._stale_tags(resource, invalidations, tags) != frozenset():
             LOGGER.debug("Cache invalidated during the request; not caching %s", key)
             return
         # The data has already been fetched, so a cache that fails to store it (e.g. its
         # database is locked or the disk is full) is logged rather than failing the request.
         try:
-            self.cache.store(self._cache_key(key, resource), data, resource=resource, kind=kind)
+            self.cache.store(
+                self._cache_key(key, resource),
+                data,
+                resource=resource,
+                kind=kind,
+                **({} if tags is None else {"tags": tags}),
+            )
         except Exception:
             LOGGER.exception("Cache store() failed; not caching %s", key)
             return
         # The store isn't made under the lock, so one waiting on a locked database doesn't
-        # hold up every other thread's store and invalidation. A write that invalidated this
-        # resource meanwhile may have done so before the entry landed, so drop it again.
-        if invalidations != self._invalidations[resource]:
+        # hold up every other thread's store and invalidation. A write that invalidated
+        # entries like this one meanwhile may have done so before it landed, so drop it again.
+        stale = self._stale_tags(resource, invalidations, tags)
+        if stale is None:
             LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
             self._invalidate_resource(resource)
+        elif stale:
+            LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
+            self._invalidate_tags(resource, stale)
 
-    def _invalidate_cache(self, resources: Iterable[str]) -> None:
+    def _stale_tags(
+        self, resource: str, invalidations: int, tags: frozenset[str] | None
+    ) -> frozenset[str] | None:
+        """Return which of an entry's tags the invalidations made since a read dropped.
+
+        Args:
+            resource: The resource the entry is cached under.
+            invalidations: ``resource``'s count in ``self._invalidations`` from just before
+                the read was sent.
+            tags: The entry's tags, or ``None`` if the cache isn't invalidated by tag.
+
+        Returns:
+            The tags to drop the entry by, which are empty if none of those invalidations
+            could have made it stale, or ``None`` if one may have, but not by its tags.
+        """
+        with self._invalidation_lock:
+            missed = self._invalidations[resource] - invalidations
+            if not missed:
+                return frozenset()
+            log = self._invalidated_tags[resource]
+            if tags is None or missed > len(log):
+                return None
+            dropped = list(log)[-missed:]
+        stale: set[str] = set()
+        for dropped_tags in dropped:
+            if dropped_tags is None:
+                return None
+            stale.update(tags & dropped_tags)
+        return frozenset(stale)
+
+    def _invalidate_cache(
+        self, resources: Iterable[str], *, tags: Mapping[str, frozenset[str]] | None = None
+    ) -> None:
         """Drop the cached entries of ``resources``, which a write may have made stale.
 
         Only a cache with an ``invalidate(resource)`` method, such as ``SqliteCache``, can
@@ -2764,11 +2915,35 @@ class Session:
 
         Args:
             resources: The resources the write changed.
+            tags: For some of ``resources``, the tags of the only entries to drop, if the
+                cache has ``invalidate_tags``. Every entry of the rest is dropped.
         """
         with self._invalidation_lock:
             for resource in resources:
                 self._invalidations[resource] += 1
-                self._invalidate_resource(resource)
+                if tags is not None and resource in tags:
+                    self._invalidated_tags[resource].append(tags[resource])
+                    self._invalidate_tags(resource, tags[resource])
+                else:
+                    self._invalidated_tags[resource].append(None)
+                    self._invalidate_resource(resource)
+
+    def _invalidate_tags(self, resource: str, tags: frozenset[str]) -> None:
+        """Call the cache's ``invalidate_tags``, or ``invalidate`` if it hasn't got one.
+
+        Like ``_invalidate_resource``, a failure is logged rather than raised.
+
+        Args:
+            resource: The resource whose cached entries to drop.
+            tags: The tags of the entries to drop.
+        """
+        if self._tagged_cache is None:
+            self._invalidate_resource(resource)
+            return
+        try:
+            self._tagged_cache.invalidate_tags(resource, tags)
+        except Exception:
+            LOGGER.exception("Cache invalidate_tags(%r) failed; ignoring", resource)
 
     def _invalidate_resource(self, resource: str) -> None:
         """Call the cache's ``invalidate(resource)``, logging rather than raising a failure.

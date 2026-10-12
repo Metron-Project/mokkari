@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import fakeredis
 import pytest
@@ -17,6 +17,9 @@ import requests_mock
 from mokkari import api
 from mokkari.cache import NO_CACHE
 from mokkari.redis_cache import RedisCache
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 EMPTY_LIST: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
 FULL_LIST: dict[str, Any] = {"count": 1, "next": None, "previous": None, "results": [{"id": 1}]}
@@ -152,7 +155,124 @@ def test_invalidate_removes_index_sets(client: fakeredis.FakeRedis, cache: Redis
     cache.store("i1", 3, resource="issue", kind="detail")
 
     assert cache.invalidate("series") == 2
-    assert sorted(client.keys()) == [b"mokkari:cache:v1:i1", b"mokkari:cache:v1:idx:issue:detail"]
+    assert sorted(client.keys()) == [
+        b"mokkari:cache:v1:i1",
+        b"mokkari:cache:v1:idx:entry:i1",
+        b"mokkari:cache:v1:idx:issue:detail",
+    ]
+
+
+def test_tag_set_expires_with_its_entries(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
+    """Each tag is a sorted set of entry keys, living as long as its longest-lived entry."""
+    cache.store("s1", 1, resource="series", kind="list", tags={"id:1", "post"})
+
+    tag_set = "mokkari:cache:v1:idx:series:tag:id:1"
+    assert client.zrange(tag_set, 0, -1) == [b"mokkari:cache:v1:s1"]
+    assert_pttl(client, tag_set, HOUR_MS)
+    assert_pttl(client, "mokkari:cache:v1:idx:series:tag:post", HOUR_MS)
+
+
+def test_invalidate_tags_removes_tag_sets(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
+    """invalidate_tags() removes the tag sets it reads along with their entries."""
+    cache.store("s1", 1, resource="series", kind="detail", tags={"id:1"})
+    cache.store("s2", 2, resource="series", kind="detail", tags={"id:2"})
+
+    assert cache.invalidate_tags("series", {"id:1"}) == 1
+    assert not client.exists("mokkari:cache:v1:idx:series:tag:id:1")
+    assert client.exists("mokkari:cache:v1:idx:series:tag:id:2")
+
+
+@pytest.fixture
+def forever(client: fakeredis.FakeRedis) -> RedisCache:
+    """A cache whose entries never expire, so nothing is pruned by expiry."""
+    return RedisCache(client, default_ttl=None)
+
+
+def test_record_expires_with_its_entry(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
+    """An entry's record holds the sets it's in, and expires with it."""
+    cache.store("s1", 1, resource="series", kind="list", tags={"id:1"})
+
+    record = "mokkari:cache:v1:idx:entry:s1"
+    assert client.smembers(record) == {
+        b"mokkari:cache:v1:idx:series:list",
+        b"mokkari:cache:v1:idx:series:tag:id:1",
+    }
+    assert_pttl(client, record, HOUR_MS)
+
+
+def test_store_again_leaves_old_tag_sets(client: fakeredis.FakeRedis, forever: RedisCache) -> None:
+    """Re-storing an entry takes it out of the tag sets it no longer has, deleting empty ones."""
+    forever.store("s1", 1, resource="series", kind="list", tags={"id:1", "id:2"})
+    forever.store("s2", 2, resource="series", kind="list", tags={"id:2"})
+    forever.store("s1", 1, resource="series", kind="list", tags={"id:3"})
+
+    assert not client.exists("mokkari:cache:v1:idx:series:tag:id:1")
+    assert client.zrange("mokkari:cache:v1:idx:series:tag:id:2", 0, -1) == [b"mokkari:cache:v1:s2"]
+    assert client.zrange("mokkari:cache:v1:idx:series:tag:id:3", 0, -1) == [b"mokkari:cache:v1:s1"]
+
+
+def test_invalidate_removes_tag_sets_and_records(
+    client: fakeredis.FakeRedis, forever: RedisCache
+) -> None:
+    """invalidate() leaves none of the resource's tag sets or records behind."""
+    forever.store("s1", 1, resource="series", kind="list", tags={"id:1", "post"})
+    forever.store("s2", 2, resource="series", kind="detail", tags={"id:2"})
+
+    assert forever.invalidate("series") == 2
+    assert client.keys() == []
+
+
+def test_invalidate_tags_takes_entries_out_of_other_tag_sets(
+    client: fakeredis.FakeRedis, forever: RedisCache
+) -> None:
+    """invalidate_tags() takes each entry it removes out of the tag sets it didn't read."""
+    forever.store("s1", 1, resource="series", kind="list", tags={"id:1", "id:2"})
+    forever.store("s2", 2, resource="series", kind="list", tags={"id:2"})
+
+    assert forever.invalidate_tags("series", {"id:1"}) == 1
+    assert sorted(client.keys()) == [
+        b"mokkari:cache:v1:idx:entry:s2",
+        b"mokkari:cache:v1:idx:series:list",
+        b"mokkari:cache:v1:idx:series:tag:id:2",
+        b"mokkari:cache:v1:s2",
+    ]
+    assert client.zrange("mokkari:cache:v1:idx:series:tag:id:2", 0, -1) == [b"mokkari:cache:v1:s2"]
+
+
+def test_delete_takes_entry_out_of_its_sets(
+    client: fakeredis.FakeRedis, forever: RedisCache
+) -> None:
+    """delete() takes the entry out of its index and tag sets, and removes its record."""
+    forever.store("s1", 1, resource="series", kind="list", tags={"id:1"})
+
+    assert forever.delete("s1")
+    assert not forever.delete("s1")
+    assert client.keys() == []
+
+
+@pytest.mark.parametrize(
+    "remove",
+    [
+        lambda forever: forever.delete("k"),
+        lambda forever: forever.store("k", 1, resource="series", kind="list", tags={"id:2"}),
+        lambda forever: forever.invalidate_tags("series", {"id:2"}),
+    ],
+    ids=["delete", "store_again", "invalidate_tags"],
+)
+def test_set_expires_once_never_expiring_entry_leaves(
+    client: fakeredis.FakeRedis,
+    cache: RedisCache,
+    forever: RedisCache,
+    remove: Callable[[RedisCache], object],
+) -> None:
+    """A set losing its never-expiring entry expires with the entries it has left."""
+    tag_set = "mokkari:cache:v1:idx:series:tag:id:1"
+    forever.store("k", 1, resource="series", kind="list", tags={"id:1", "id:2"})
+    cache.store("j", 2, resource="series", kind="list", tags={"id:1"})
+    assert client.pttl(tag_set) == -1
+
+    remove(forever)
+    assert_pttl(client, tag_set, HOUR_MS)
 
 
 def test_invalidate_skips_expired_members(client: fakeredis.FakeRedis, cache: RedisCache) -> None:
