@@ -4,7 +4,7 @@
 This module contains tests for Session objects.
 """
 
-import datetime
+import datetime as dt
 import json
 import logging
 import time
@@ -338,7 +338,7 @@ def test_creator(session: Session, resp: dict[str, str | int], valid: bool, case
                     name="John",
                     desc="",
                     resource_url=HttpUrl("https://foo.bar"),
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                 ),
             ) as val:
                 result = session.creator(1)
@@ -367,7 +367,7 @@ def test_creator_post_happy_path(session: Session) -> None:
                 name="John",
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -413,7 +413,7 @@ def test_creator_patch_happy_path(session: Session) -> None:
                 name="John",
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -464,7 +464,7 @@ def test_creators_list(
         if valid:
             with patch(
                 "mokkari.session.TypeAdapter.validate_python",
-                return_value=[BaseResource(id=1, name="John", modified=datetime.datetime.now())],
+                return_value=[BaseResource(id=1, name="John", modified=dt.datetime.now())],
             ) as val:
                 result = session.creators_list()
                 assert isinstance(result, list)
@@ -500,7 +500,7 @@ def test_character(session: Session, resp: dict[str, str | int], valid: bool, ca
                     name="Batman",
                     desc="",
                     resource_url=HttpUrl("https://foo.bar"),
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                 ),
             ) as val:
                 result = session.character(1)
@@ -524,9 +524,7 @@ def test_character_post_happy_path(session: Session) -> None:
         patch.object(session, "_send", return_value={"id": 1, "name": "Batman"}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=CharacterPostResponse(
-                id=1, name="Batman", modified=datetime.datetime.now()
-            ),
+            return_value=CharacterPostResponse(id=1, name="Batman", modified=dt.datetime.now()),
         ),
     ):
         # Act
@@ -567,9 +565,7 @@ def test_character_patch_happy_path(session: Session) -> None:
         patch.object(session, "_send", return_value={"id": 1, "name": "Batman"}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=CharacterPostResponse(
-                id=1, name="Batman", modified=datetime.datetime.now()
-            ),
+            return_value=CharacterPostResponse(id=1, name="Batman", modified=dt.datetime.now()),
         ),
     ):
         # Act
@@ -620,7 +616,7 @@ def test_characters_list(
         if valid:
             with patch(
                 "mokkari.session.TypeAdapter.validate_python",
-                return_value=[BaseResource(id=1, name="Batman", modified=datetime.datetime.now())],
+                return_value=[BaseResource(id=1, name="Batman", modified=dt.datetime.now())],
             ) as val:
                 result = session.characters_list()
                 assert isinstance(result, list)
@@ -647,9 +643,9 @@ def test_character_issues_list_happy_path(session: Session) -> None:
                 BaseIssue(
                     id=1,
                     number="1",
-                    cover_date=datetime.date(2005, 5, 1),
+                    cover_date=dt.date(2005, 5, 1),
                     store_date=None,
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                     issue="",
                     series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
                 ),
@@ -684,7 +680,7 @@ def test_publisher(session: Session) -> None:
             return_value=Publisher(
                 id=1,
                 name="Marvel",
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
                 country="US",
@@ -707,7 +703,7 @@ def test_publisher_post(session: Session) -> None:
             return_value=Publisher(
                 id=1,
                 name="Marvel",
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
                 country="US",
@@ -730,7 +726,7 @@ def test_publisher_patch(session: Session) -> None:
             return_value=Publisher(
                 id=1,
                 name="Marvel",
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
                 country="US",
@@ -750,7 +746,7 @@ def test_publishers_list(session: Session) -> None:
         patch.object(session, "_get_results", return_value=resp),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="Marvel", modified=datetime.datetime.now())],
+            return_value=[BaseResource(id=1, name="Marvel", modified=dt.datetime.now())],
         ),
     ):
         # Act
@@ -771,7 +767,7 @@ def test_team(session: Session) -> None:
                 name="X-Men",
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -788,7 +784,7 @@ def test_team_post(session: Session) -> None:
         patch.object(session, "_send", return_value={"id": 1, "name": "X-Men"}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=TeamPostResponse(id=1, name="X-Men", modified=datetime.datetime.now()),
+            return_value=TeamPostResponse(id=1, name="X-Men", modified=dt.datetime.now()),
         ),
     ):
         # Act
@@ -804,7 +800,7 @@ def test_team_patch(session: Session) -> None:
         patch.object(session, "_send", return_value={"id": 1, "name": "X-Men"}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=TeamPostResponse(id=1, name="X-Men", modified=datetime.datetime.now()),
+            return_value=TeamPostResponse(id=1, name="X-Men", modified=dt.datetime.now()),
         ),
     ):
         # Act
@@ -820,7 +816,7 @@ def test_teams_list(session: Session) -> None:
         patch.object(session, "_get_results", return_value=resp),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="X-Men", modified=datetime.datetime.now())],
+            return_value=[BaseResource(id=1, name="X-Men", modified=dt.datetime.now())],
         ),
     ):
         # Act
@@ -840,9 +836,9 @@ def test_team_issues_list(session: Session) -> None:
                 BaseIssue(
                     id=1,
                     number="1",
-                    cover_date=datetime.date(2005, 5, 1),
+                    cover_date=dt.date(2005, 5, 1),
                     store_date=None,
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                     issue="",
                     series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
                 ),
@@ -867,7 +863,7 @@ def test_arc(session: Session) -> None:
                 name="Dark Phoenix",
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -889,7 +885,7 @@ def test_arc_post(session: Session) -> None:
                 name="Dark Phoenix",
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -911,7 +907,7 @@ def test_arc_patch(session: Session) -> None:
                 name="Dark Phoenix",
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -928,9 +924,7 @@ def test_arcs_list(session: Session) -> None:
         patch.object(session, "_get_results", return_value=resp),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                BaseResource(id=1, name="Dark Phoenix", modified=datetime.datetime.now())
-            ],
+            return_value=[BaseResource(id=1, name="Dark Phoenix", modified=dt.datetime.now())],
         ),
     ):
         # Act
@@ -950,9 +944,9 @@ def test_arc_issues_list(session: Session) -> None:
                 BaseIssue(
                     id=1,
                     number="1",
-                    cover_date=datetime.date(2005, 5, 1),
+                    cover_date=dt.date(2005, 5, 1),
                     store_date=None,
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                     issue="",
                     series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
                 ),
@@ -978,7 +972,7 @@ def test_series(session: Session) -> None:
                 sort_name="Uncanny X-Men",
                 year_began=2025,
                 issue_count=1,
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
                 volume=1,
                 series_type=GenericItem(id=1, name="One Shot"),
                 status="Completed",
@@ -1001,9 +995,7 @@ def test_series_post(session: Session) -> None:
         patch.object(session, "_send", return_value={"id": 1, "name": "Uncanny X-Men"}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=SeriesPostResponse(
-                id=1, name="Uncanny X-Men", modified=datetime.datetime.now()
-            ),
+            return_value=SeriesPostResponse(id=1, name="Uncanny X-Men", modified=dt.datetime.now()),
         ),
     ):
         # Act
@@ -1019,9 +1011,7 @@ def test_series_patch(session: Session) -> None:
         patch.object(session, "_send", return_value={"id": 1, "name": "Uncanny X-Men"}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=SeriesPostResponse(
-                id=1, name="Uncanny X-Men", modified=datetime.datetime.now()
-            ),
+            return_value=SeriesPostResponse(id=1, name="Uncanny X-Men", modified=dt.datetime.now()),
         ),
     ):
         # Act
@@ -1037,9 +1027,7 @@ def test_series_list(session: Session) -> None:
         patch.object(session, "_get_results", return_value=resp),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                BaseResource(id=1, name="Uncanny X-Men", modified=datetime.datetime.now())
-            ],
+            return_value=[BaseResource(id=1, name="Uncanny X-Men", modified=dt.datetime.now())],
         ),
     ):
         # Act
@@ -1076,9 +1064,9 @@ def test_issue(session: Session) -> None:
                 name=["Issue #1"],
                 number="1",
                 alt_number="529",
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
                 resource_url=HttpUrl("https://foo.bar"),
-                cover_date=datetime.date(2025, 5, 1),
+                cover_date=dt.date(2025, 5, 1),
                 title="",
                 rating=GenericItem(id=1, name="Teen"),
                 series=IssueSeries(
@@ -1154,9 +1142,9 @@ def test_issues_list(session: Session) -> None:
                     id=1,
                     issue="Issue #1",
                     number="1",
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                     series=BasicSeries(id=1, name="Foo Bar", volume=1, year_began=2025),
-                    cover_date=datetime.date(2025, 5, 1),
+                    cover_date=dt.date(2025, 5, 1),
                 )
             ],
         ),
@@ -1175,9 +1163,7 @@ def test_credits_post(session: Session) -> None:
         patch(
             "mokkari.session.TypeAdapter.validate_python",
             return_value=[
-                CreditPostResponse(
-                    id=1, issue=1, creator=1, role=[1], modified=datetime.datetime.now()
-                )
+                CreditPostResponse(id=1, issue=1, creator=1, role=[1], modified=dt.datetime.now())
             ],
         ),
     ):
@@ -1242,7 +1228,7 @@ def test_universe(session: Session) -> None:
                 designation="Earth 616",
                 resource_url=HttpUrl("https://foo.bar"),
                 desc="",
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -1260,7 +1246,7 @@ def test_universe_post(session: Session) -> None:
         patch(
             "mokkari.session.TypeAdapter.validate_python",
             return_value=UniversePostResponse(
-                id=1, name="Marvel Universe", modified=datetime.datetime.now()
+                id=1, name="Marvel Universe", modified=dt.datetime.now()
             ),
         ),
     ):
@@ -1278,7 +1264,7 @@ def test_universe_patch(session: Session) -> None:
         patch(
             "mokkari.session.TypeAdapter.validate_python",
             return_value=UniversePostResponse(
-                id=1, name="Marvel Universe", modified=datetime.datetime.now()
+                id=1, name="Marvel Universe", modified=dt.datetime.now()
             ),
         ),
     ):
@@ -1295,9 +1281,7 @@ def test_universes_list(session: Session) -> None:
         patch.object(session, "_get_results", return_value=resp),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                BaseResource(id=1, name="Marvel Universe", modified=datetime.datetime.now())
-            ],
+            return_value=[BaseResource(id=1, name="Marvel Universe", modified=dt.datetime.now())],
         ),
     ):
         # Act
@@ -1318,7 +1302,7 @@ def test_imprint(session: Session) -> None:
                 name="Epic",
                 desc="",
                 resource_url=HttpUrl("https://foo.bar"),
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
                 publisher=GenericItem(id=1, name="Marvel"),
             ),
         ),
@@ -1336,7 +1320,7 @@ def test_imprints_list(session: Session) -> None:
         patch.object(session, "_get_results", return_value=resp),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="Epic", modified=datetime.datetime.now())],
+            return_value=[BaseResource(id=1, name="Epic", modified=dt.datetime.now())],
         ),
     ):
         # Act
@@ -1380,7 +1364,7 @@ def test_reading_list(session: Session) -> None:
                 rating_count=10,
                 items_url="https://api.example.com/reading_list/1/items/",
                 resource_url="https://api.example.com/reading_list/1/",
-                modified=datetime.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -1424,7 +1408,7 @@ def test_reading_lists_list(session: Session) -> None:
                     attribution_source=AttributionSource.CBRO,
                     average_rating=4.5,
                     rating_count=10,
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                 )
             ],
         ),
@@ -1469,7 +1453,7 @@ def test_reading_lists_list_with_params(session: Session) -> None:
                     is_private=False,
                     average_rating=4.5,
                     rating_count=10,
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                 )
             ],
         ),
@@ -1510,8 +1494,8 @@ def test_reading_list_items(session: Session) -> None:
                         id=100,
                         series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                         number="1",
-                        cover_date=datetime.date(2023, 1, 1),
-                        modified=datetime.datetime.now(),
+                        cover_date=dt.date(2023, 1, 1),
+                        modified=dt.datetime.now(),
                     ),
                     order=1,
                     issue_type="Core Issue",
@@ -1567,24 +1551,24 @@ def test_collection(session: Session) -> None:
                     id=100,
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
-                    cover_date=datetime.date(2023, 1, 1),
-                    modified=datetime.datetime.now(),
+                    cover_date=dt.date(2023, 1, 1),
+                    modified=dt.datetime.now(),
                 ),
                 quantity=1,
                 book_format="PRINT",
                 grade=9.8,
                 grading_company="CGC",
-                purchase_date=datetime.date(2023, 1, 15),
+                purchase_date=dt.date(2023, 1, 15),
                 purchase_price=Decimal("49.99"),
                 purchase_store="Local Comic Shop",
                 storage_location="Box 1",
                 notes="First appearance",
                 is_read=True,
-                date_read=datetime.datetime(2023, 1, 20, tzinfo=datetime.UTC),
+                date_read=dt.datetime(2023, 1, 20, tzinfo=dt.UTC),
                 rating=5,
                 resource_url="https://api.example.com/collection/1/",
-                created_on=datetime.datetime.now(),
-                modified=datetime.datetime.now(),
+                created_on=dt.datetime.now(),
+                modified=dt.datetime.now(),
             ),
         ),
     ):
@@ -1631,14 +1615,14 @@ def test_collections_list(session: Session) -> None:
                         id=100,
                         series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                         number="1",
-                        cover_date=datetime.date(2023, 1, 1),
-                        modified=datetime.datetime.now(),
+                        cover_date=dt.date(2023, 1, 1),
+                        modified=dt.datetime.now(),
                     ),
                     quantity=1,
                     book_format="PRINT",
                     grading_company="CGC",
                     is_read=True,
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                 )
             ],
         ),
@@ -1687,14 +1671,14 @@ def test_collections_list_with_params(session: Session) -> None:
                         id=101,
                         series=BasicSeries(id=1, name="Superman", volume=1, year_began=1938),
                         number="1",
-                        cover_date=datetime.date(2023, 2, 1),
-                        modified=datetime.datetime.now(),
+                        cover_date=dt.date(2023, 2, 1),
+                        modified=dt.datetime.now(),
                     ),
                     quantity=1,
                     book_format="DIGITAL",
                     grading_company="",
                     is_read=False,
-                    modified=datetime.datetime.now(),
+                    modified=dt.datetime.now(),
                 )
             ],
         ),
@@ -1737,14 +1721,14 @@ def test_collection_missing_issues(session: Session) -> None:
                     id=200,
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="2",
-                    cover_date=datetime.date(2023, 2, 1),
-                    store_date=datetime.date(2023, 1, 15),
+                    cover_date=dt.date(2023, 2, 1),
+                    store_date=dt.date(2023, 1, 15),
                 ),
                 MissingIssue(
                     id=201,
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="3",
-                    cover_date=datetime.date(2023, 3, 1),
+                    cover_date=dt.date(2023, 3, 1),
                 ),
             ],
         ),
@@ -1877,7 +1861,7 @@ def test_collection_scrobble(session: Session) -> None:
     # Arrange
     scrobble_request = ScrobbleRequest(
         issue_id=1,
-        date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
+        date_read=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
         rating=5,
     )
     resp = {
@@ -1906,15 +1890,15 @@ def test_collection_scrobble(session: Session) -> None:
                     id=1,
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
-                    cover_date=datetime.date(2024, 1, 1),
-                    store_date=datetime.date(2023, 12, 15),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                    cover_date=dt.date(2024, 1, 1),
+                    store_date=dt.date(2023, 12, 15),
+                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
                 ),
                 is_read=True,
-                date_read=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
+                date_read=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
                 rating=5,
                 created=True,
-                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
+                modified=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
             ),
         ),
     ):
@@ -1955,12 +1939,12 @@ def test_collection_scrobble_minimal(session: Session) -> None:
                     id=1,
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
-                    cover_date=datetime.date(2024, 1, 1),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                    cover_date=dt.date(2024, 1, 1),
+                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
                 ),
                 is_read=True,
                 created=False,
-                modified=datetime.datetime(2024, 1, 20, 14, 30, 0, tzinfo=datetime.UTC),
+                modified=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
             ),
         ),
     ):
@@ -1982,7 +1966,7 @@ def test_collection_patch(session: Session) -> None:
         patch.object(session, "_send", return_value={"id": 1, "rating": 4}),
         patch(
             "mokkari.session.TypeAdapter.validate_python",
-            return_value=CollectionUpdateResponse(id=1, rating=4, modified=datetime.datetime.now()),
+            return_value=CollectionUpdateResponse(id=1, rating=4, modified=dt.datetime.now()),
         ),
     ):
         # Act
@@ -2035,16 +2019,16 @@ def test_collection_add(session: Session) -> None:
                     id=1,
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
-                    cover_date=datetime.date(2024, 1, 1),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                    cover_date=dt.date(2024, 1, 1),
+                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
                 ),
                 quantity=2,
                 book_format="PRINT",
                 grading_company="",
                 is_read=False,
                 resource_url="https://api.example.com/collection/100/",
-                created_on=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
-                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                created_on=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
+                modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
             ),
         ),
     ):
@@ -2569,10 +2553,10 @@ def test_update_rate_limit_status_parses_headers(session: Session) -> None:
     status = session.rate_limit_status
     assert status.burst.limit == 20
     assert status.burst.remaining == 19
-    assert status.burst.reset == datetime.datetime.fromtimestamp(1700000060, tz=datetime.UTC)
+    assert status.burst.reset == dt.datetime.fromtimestamp(1700000060, tz=dt.UTC)
     assert status.sustained.limit == 10_000
     assert status.sustained.remaining == 9_999
-    assert status.sustained.reset == datetime.datetime.fromtimestamp(1700086400, tz=datetime.UTC)
+    assert status.sustained.reset == dt.datetime.fromtimestamp(1700086400, tz=dt.UTC)
 
 
 def test_update_rate_limit_status_ignores_response_without_headers(session: Session) -> None:
@@ -2617,7 +2601,7 @@ def test_check_rate_limit_allows_request_when_no_state_observed(session: Session
 
 def test_check_rate_limit_allows_request_when_remaining_positive(session: Session) -> None:
     """Test that a window with remaining quota does not block."""
-    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=30)
+    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=30)
     session._rate_limit_status = rate_limit.RateLimitStatus(
         burst=rate_limit.RateLimitWindow(limit=20, remaining=5, reset=reset)
     )
@@ -2627,7 +2611,7 @@ def test_check_rate_limit_allows_request_when_remaining_positive(session: Sessio
 
 def test_check_rate_limit_raises_when_burst_exhausted(session: Session) -> None:
     """Test that an exhausted burst (minute) window raises RateLimitError."""
-    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
+    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
     session._rate_limit_status = rate_limit.RateLimitStatus(
         burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
@@ -2649,7 +2633,7 @@ def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> N
     tier rather than the default 5,000/day, since it's read straight from
     whatever the server last reported.
     """
-    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+    reset = dt.datetime.now(dt.UTC) + dt.timedelta(days=1)
     session._rate_limit_status = rate_limit.RateLimitStatus(
         sustained=rate_limit.RateLimitWindow(limit=10_000, remaining=0, reset=reset)
     )
@@ -2666,7 +2650,7 @@ def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> N
 
 def test_check_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
     """Test that an exhausted window prevents the HTTP request from being made."""
-    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
+    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
     session._rate_limit_status = rate_limit.RateLimitStatus(
         burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
@@ -2810,7 +2794,7 @@ def test_execute_http_request_falls_back_to_check_rate_limit_when_no_limiter(
     session: Session, monkeypatch
 ) -> None:
     """With no rate_limiter set (the default), behavior is unchanged: fail fast."""
-    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)
+    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
     session._rate_limit_status = rate_limit.RateLimitStatus(
         burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
     )
@@ -3032,7 +3016,7 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
     """An exhausted daily window surfaces as RateLimitError and no HTTP request is sent."""
     limiter = HeaderPacedRateLimiter()
     paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
-    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+    reset = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
     paced_session._rate_limit_status = rate_limit.RateLimitStatus(
         sustained=rate_limit.RateLimitWindow(limit=5000, remaining=0, reset=reset)
     )
@@ -3051,7 +3035,7 @@ def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatc
     """A 429 carrying an exhausted daily window stops the next request before it is sent."""
     limiter = HeaderPacedRateLimiter()
     paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
-    reset = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+    reset = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
     sent = []
 
     class DummyResp:
@@ -3315,7 +3299,7 @@ def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) ->
     monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     # Act
-    result = session.arc(1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC))
+    result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
 
     # Assert
     assert result is None
@@ -3345,13 +3329,11 @@ def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch
             name="Updated Arc",
             desc="",
             resource_url=HttpUrl("https://foo.bar"),
-            modified=datetime.datetime.now(),
+            modified=dt.datetime.now(),
         ),
     ):
         # Act
-        result = session.arc(
-            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
-        )
+        result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
 
     # Assert
     assert isinstance(result, Arc)
@@ -3380,7 +3362,7 @@ def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
     # Act
     session.arc(
         1,
-        if_modified_since=datetime.datetime(2025, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+        if_modified_since=dt.datetime(2025, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
     )
 
     # Assert — verify the header was formatted as RFC 7231
@@ -3407,7 +3389,7 @@ def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monke
     monkeypatch.setattr(session._http, "request", mock_request)
 
     # Act — pass a naive datetime
-    session.arc(1, if_modified_since=datetime.datetime(2025, 6, 15, 8, 30, 0))  # noqa: DTZ001
+    session.arc(1, if_modified_since=dt.datetime(2025, 6, 15, 8, 30, 0))  # noqa: DTZ001
 
     # Assert — should be formatted as UTC
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Sun, 15 Jun 2025 08:30:00 GMT"
@@ -3433,9 +3415,9 @@ def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypa
     monkeypatch.setattr(session._http, "request", mock_request)
 
     # Create a US/Central-like timezone (UTC-6)
-    cst = datetime.timezone(datetime.timedelta(hours=-6))
+    cst = dt.timezone(dt.timedelta(hours=-6))
     # 2025-01-01 06:00:00 CST == 2025-01-01 12:00:00 UTC
-    dt_cst = datetime.datetime(2025, 1, 1, 6, 0, 0, tzinfo=cst)
+    dt_cst = dt.datetime(2025, 1, 1, 6, 0, 0, tzinfo=cst)
 
     # Act
     session.arc(1, if_modified_since=dt_cst)
@@ -3472,13 +3454,11 @@ def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeyp
             name="Fresh",
             desc="",
             resource_url=HttpUrl("https://foo.bar"),
-            modified=datetime.datetime.now(),
+            modified=dt.datetime.now(),
         ),
     ):
         # Act — with if_modified_since, cache should be ignored
-        result = session.arc(
-            1, if_modified_since=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
-        )
+        result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
 
     # Assert — got the fresh data, not the cached
     assert isinstance(result, Arc)
@@ -3499,7 +3479,7 @@ def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> 
             name="Cached Arc",
             desc="",
             resource_url=HttpUrl("https://foo.bar"),
-            modified=datetime.datetime.now(),
+            modified=dt.datetime.now(),
         ),
     ):
         # Act — no if_modified_since, should use cache
@@ -3532,7 +3512,7 @@ def test_wish_list(session: Session) -> None:
                     id=1,
                     item_count=5,
                     items_url="https://metron.cloud/api/wish_list/1/items/",
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
                 )
             ],
         ),
@@ -3576,12 +3556,12 @@ def test_wish_list_items(session: Session) -> None:
                         id=1,
                         series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                         number="1",
-                        cover_date=datetime.date(2024, 1, 1),
-                        modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                        cover_date=dt.date(2024, 1, 1),
+                        modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
                     ),
                     status="Wanted",
                     priority=Priority.THREE,
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
                 )
             ],
         ),
@@ -3624,15 +3604,15 @@ def test_wish_list_add_item(session: Session) -> None:
                     id=1,
                     series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
                     number="1",
-                    cover_date=datetime.date(2024, 1, 1),
-                    modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                    cover_date=dt.date(2024, 1, 1),
+                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
                 ),
                 status="Wanted",
                 priority=Priority.TWO,
                 max_price_currency=None,
                 notes="High priority",
-                added_on=datetime.datetime(2024, 1, 1, 10, 0, 0, tzinfo=datetime.UTC),
-                modified=datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+                added_on=dt.datetime(2024, 1, 1, 10, 0, 0, tzinfo=dt.UTC),
+                modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
             ),
         ),
     ):
