@@ -7,7 +7,7 @@ two processes sharing an account.
 
 from __future__ import annotations
 
-import datetime
+import datetime as dt
 from unittest.mock import MagicMock
 
 import fakeredis
@@ -46,10 +46,10 @@ def _limiter(server: fakeredis.FakeServer, account: str = "user", **kwargs) -> R
     return RedisRateLimiter(fakeredis.FakeRedis(server=server), account, **kwargs)
 
 
-def _in(seconds: float | None) -> datetime.datetime | None:
+def _in(seconds: float | None) -> dt.datetime | None:
     if seconds is None:
         return None
-    return datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=seconds)
+    return dt.datetime.now(dt.UTC) + dt.timedelta(seconds=seconds)
 
 
 def _status(  # noqa: PLR0913
@@ -313,7 +313,7 @@ def test_session_reports_exhausted_burst_window_to_redis(
     client = fakeredis.FakeRedis(server=server)
     limiter = RedisRateLimiter(client, "user")
     session = Session(dummy_api_token, rate_limiter=limiter)
-    reset = int(datetime.datetime.now(datetime.UTC).timestamp()) + 30
+    reset = int(dt.datetime.now(dt.UTC).timestamp()) + 30
     headers = {
         "X-RateLimit-Burst-Limit": "60",
         "X-RateLimit-Burst-Remaining": "0",
