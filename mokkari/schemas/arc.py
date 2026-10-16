@@ -1,3 +1,4 @@
+# ruff: noqa: RUF012
 """Arc module.
 
 This module provides the following classes:
@@ -10,6 +11,7 @@ __all__ = ["Arc", "ArcPost"]
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 
 
@@ -22,6 +24,7 @@ class Arc(BaseResource):
         cv_id (int, optional): The Comic Vine ID of the arc.
         gcd_id (int, optional): The Grand Comics Database ID of the arc.
         resource_url (HttpUrl): The URL of the arc resource.
+        attribution (list[Attribution], optional): The sources of the arc's information.
     """
 
     desc: str
@@ -29,6 +32,7 @@ class Arc(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class ArcPost(BaseModel):

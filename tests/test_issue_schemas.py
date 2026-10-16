@@ -376,6 +376,7 @@ def test_issue_creation_full_data():
         "upc": "123456789012",
         "page": 32,
         "desc": "A great comic book issue.",
+        "desc_is_solicitation": True,
         "arcs": [{"id": 1, "name": "Year One", "modified": now}],
         "credits": [{"id": 1, "creator": "Frank Miller", "role": []}],
         "characters": [{"id": 1, "name": "Batman", "modified": now}],
@@ -388,6 +389,9 @@ def test_issue_creation_full_data():
         "cv_id": 123456,
         "gcd_id": 654321,
         "resource_url": "https://example.com/issue/1",
+        "attribution": [
+            {"source": "DC", "url": "https://www.dccomics.com/comics/batman-1940/batman-1"}
+        ],
     }
     issue = Issue(**data)
     assert issue.id == 1
@@ -404,6 +408,10 @@ def test_issue_creation_full_data():
     assert issue.rating_count == 8
     assert issue.cv_id == 123456
     assert issue.gcd_id == 654321
+    assert issue.desc_is_solicitation is True
+    assert len(issue.attribution) == 1
+    assert issue.attribution[0].source == "DC"
+    assert str(issue.attribution[0].url) == "https://www.dccomics.com/comics/batman-1940/batman-1"
 
 
 def test_issue_creation_minimal_data():
@@ -450,6 +458,8 @@ def test_issue_creation_minimal_data():
     assert issue.variants == []
     assert issue.cv_id is None
     assert issue.gcd_id is None
+    assert issue.desc_is_solicitation is False
+    assert issue.attribution == []
 
 
 def test_issue_field_aliases():
@@ -548,6 +558,7 @@ def test_issue_post_creation_empty():
     assert issue_post.upc is None
     assert issue_post.page is None
     assert issue_post.desc is None
+    assert issue_post.desc_is_solicitation is None
     assert issue_post.image is None
     assert issue_post.arcs is None
     assert issue_post.characters is None

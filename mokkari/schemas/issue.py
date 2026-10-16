@@ -37,6 +37,7 @@ from typing import Annotated, Literal
 from pydantic import Field, HttpUrl, StringConstraints
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.reprint import Reprint
@@ -195,6 +196,7 @@ class Issue(CommonIssue):
         upc (str): The Universal Product Code (UPC) of the issue.
         page_count (int, optional): The number of pages in the issue.
         desc (str): The description of the issue.
+        desc_is_solicitation (bool): Whether the description is the publisher's solicitation text.
         arcs (list[BaseResource], optional): The arcs associated with the issue.
         credits (list[Credit], optional): The credits for the issue.
         characters (list[BaseResource], optional): The characters featured in the issue.
@@ -207,6 +209,7 @@ class Issue(CommonIssue):
         cv_id (int, optional): The Comic Vine ID of the issue.
         gcd_id (int, optional): The Grand Comics Database ID of the issue.
         resource_url (HttpUrl): The URL of the issue resource.
+        attribution (list[Attribution], optional): The sources of the issue's information.
     """
 
     publisher: GenericItem
@@ -223,6 +226,7 @@ class Issue(CommonIssue):
     upc: str
     page_count: int | None = Field(alias="page", default=None)
     desc: str
+    desc_is_solicitation: bool = False
     arcs: list[BaseResource] = []
     credits: list[Credit] = []
     characters: list[BaseResource] = []
@@ -235,6 +239,7 @@ class Issue(CommonIssue):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class IssuePost(BaseModel):
@@ -257,6 +262,8 @@ class IssuePost(BaseModel):
         upc (str, optional): The UPC of the issue.
         page (int, optional): The number of pages in the issue.
         desc (str, optional): The description of the issue.
+        desc_is_solicitation (bool, optional): Whether the description is the publisher's
+            solicitation text.
         image (str, optional): The image URL of the issue.
         arcs (list[int], optional): The IDs of the arcs associated with the issue.
         characters (list[int], optional): The IDs of the characters featured in the issue.
@@ -282,6 +289,7 @@ class IssuePost(BaseModel):
     upc: Annotated[str, StringConstraints(max_length=20)] | None = None
     page: int | None = None
     desc: str | None = None
+    desc_is_solicitation: bool | None = None
     image: str | None = None
     arcs: list[int] | None = None
     characters: list[int] | None = None
@@ -312,6 +320,8 @@ class IssuePostResponse(IssuePost):
         upc (str, optional): The UPC of the issue.
         page (int, optional): The number of pages in the issue.
         desc (str, optional): The description of the issue.
+        desc_is_solicitation (bool, optional): Whether the description is the publisher's
+            solicitation text.
         image (str, optional): The image URL of the issue.
         arcs (list[int], optional): The IDs of the arcs associated with the issue.
         characters (list[int], optional): The IDs of the characters featured in the issue.
