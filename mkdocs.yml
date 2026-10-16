@@ -48,6 +48,7 @@ nav:
       - Utilities: mokkari/utils.md
   - Schemas:
       - Arc: mokkari/schemas/arc.md
+      - Attribution: mokkari/schemas/attribution.md
       - BaseResource: mokkari/schemas/base.md
       - Character: mokkari/schemas/character.md
       - Collection: mokkari/schemas/collection.md

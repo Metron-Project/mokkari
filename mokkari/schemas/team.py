@@ -12,6 +12,7 @@ __all__ = ["Team", "TeamPost", "TeamPostResponse"]
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 
 
@@ -26,6 +27,7 @@ class Team(BaseResource):
         cv_id (int, optional): The Comic Vine ID of the team.
         gcd_id (int, optional): The Grand Comics Database ID of the team.
         resource_url (HttpUrl): The URL of the team resource.
+        attribution (list[Attribution], optional): The sources of the team's information.
     """
 
     desc: str
@@ -35,6 +37,7 @@ class Team(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class TeamPost(BaseModel):

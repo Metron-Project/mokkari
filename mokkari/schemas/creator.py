@@ -1,3 +1,4 @@
+# ruff: noqa: RUF012
 """Creator module.
 
 This module provides the following classes:
@@ -12,6 +13,7 @@ from datetime import date
 from pydantic import HttpUrl, PastDate
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 
 
@@ -27,6 +29,7 @@ class Creator(BaseResource):
         cv_id (int, optional): The Comic Vine ID of the creator.
         gcd_id (int, optional): The Grand Comics Database ID of the creator.
         resource_url (HttpUrl): The URL of the creator resource.
+        attribution (list[Attribution], optional): The sources of the creator's information.
     """
 
     birth: PastDate | None = None
@@ -37,6 +40,7 @@ class Creator(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class CreatorPost(BaseModel):

@@ -25,6 +25,7 @@ from datetime import datetime
 from pydantic import Field, HttpUrl
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.generic import GenericItem
 
@@ -98,6 +99,7 @@ class Series(CommonSeries):
         cv_id (int, optional): The Comic Vine ID of the series.
         gcd_id (int, optional): The Grand Comics Database ID of the series.
         resource_url (HttpUrl): The URL of the series resource.
+        attribution (list[Attribution], optional): The sources of the series' information.
     """
 
     name: str
@@ -115,6 +117,7 @@ class Series(CommonSeries):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class SeriesPost(BaseModel):

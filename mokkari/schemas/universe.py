@@ -1,3 +1,4 @@
+# ruff: noqa: RUF012
 """Universe module.
 
 This module provides the following classes:
@@ -12,6 +13,7 @@ __all__ = ["Universe", "UniversePost", "UniversePostResponse"]
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.generic import GenericItem
 
@@ -26,6 +28,7 @@ class Universe(BaseResource):
         image (HttpUrl, optional): The image URL of the universe.
         gcd_id (int, optional): The Grand Comics Database ID of the universe.
         resource_url (HttpUrl): The URL of the universe resource.
+        attribution (list[Attribution], optional): The sources of the universe's information.
     """
 
     publisher: GenericItem
@@ -34,6 +37,7 @@ class Universe(BaseResource):
     image: HttpUrl | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class UniversePost(BaseModel):

@@ -1,3 +1,4 @@
+# ruff: noqa: RUF012
 """Imprint module.
 
 This module provides the following classes:
@@ -7,6 +8,7 @@ This module provides the following classes:
 
 from pydantic import HttpUrl
 
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 from mokkari.schemas.generic import GenericItem
 
@@ -21,6 +23,7 @@ class Imprint(BaseResource):
         cv_id (int, optional): The Comic Vine ID of the publisher.
         gcd_id (int, optional): The Grand Comics Database ID of the publisher.
         resource_url (HttpUrl): The URL of the publisher resource.
+        attribution (list[Attribution], optional): The sources of the imprint's information.
         publisher (GenericItem): The generic item representing the publisher.
 
     """
@@ -31,4 +34,5 @@ class Imprint(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
     publisher: GenericItem

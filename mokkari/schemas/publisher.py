@@ -13,6 +13,7 @@ from typing import Annotated
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 
 COUNTY_CODE_LENGTH = 2
@@ -41,6 +42,7 @@ class Publisher(BaseResource):
         cv_id (int, optional): The Comic Vine ID of the publisher.
         gcd_id (int, optional): The Grand Comics Database ID of the publisher.
         resource_url (HttpUrl): The URL of the publisher resource.
+        attribution (list[Attribution], optional): The sources of the publisher's information.
     """
 
     alt_names: list[str] = []
@@ -51,6 +53,7 @@ class Publisher(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class PublisherPost(BaseModel):

@@ -57,10 +57,14 @@ class Currency(StrEnum):
 
         USD: US Dollar
         GBP: British Pound Sterling
+        EUR: Euro
+        ITL: Italian Lira
     """
 
     USD = "USD"
     GBP = "GBP"
+    EUR = "EUR"
+    ITL = "ITL"
 
 
 class WishList(BaseModel):
@@ -109,7 +113,7 @@ class WishListItemRead(BaseModel):
         priority (Priority, optional): The priority level for acquiring this item.
         desired_grade (Grade, optional): The desired CGC grade for the issue.
         max_price (Decimal, optional): The maximum price willing to pay.
-        max_price_currency (str, optional): Currency code for max_price (e.g. "USD", "GBP").
+        max_price_currency (str, optional): Currency code for max_price (e.g. "USD", "GBP", "EUR", "ITL").
         notes (str): Additional notes about this wish list item.
         added_on (datetime): The date and time when the item was added to the wish list.
         modified (datetime): The date and time when the item was last modified.

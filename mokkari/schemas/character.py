@@ -10,6 +10,7 @@ __all__ = ["Character", "CharacterPost", "CharacterPostResponse"]
 from pydantic import HttpUrl
 
 from mokkari.schemas import BaseModel
+from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 
 
@@ -26,6 +27,7 @@ class Character(BaseResource):
         cv_id (int, optional): The Comic Vine ID of the character.
         gcd_id (int, optional): The Grand Comics Database ID of the character.
         resource_url (HttpUrl): The URL of the character resource.
+        attribution (list[Attribution], optional): The sources of the character's information.
     """
 
     alias: list[str] | None = None
@@ -37,6 +39,7 @@ class Character(BaseResource):
     cv_id: int | None = None
     gcd_id: int | None = None
     resource_url: HttpUrl
+    attribution: list[Attribution] = []
 
 
 class CharacterPost(BaseModel):
