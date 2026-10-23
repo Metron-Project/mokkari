@@ -106,9 +106,15 @@ def cache(make_cache: Callable[..., sqlite_cache.SqliteCache]) -> sqlite_cache.S
     return make_cache(default_ttl=timedelta(hours=1))
 
 
+def connection(cache: sqlite_cache.SqliteCache) -> sqlite3.Connection:
+    """Return the cache's database connection, opening it if the cache was closed."""
+    with cache._lock:
+        return cache._connection()
+
+
 def count_rows(cache: sqlite_cache.SqliteCache) -> int:
     """Return the number of rows in the cache table, expired or not."""
-    return cache.con.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+    return connection(cache).execute("SELECT COUNT(*) FROM cache").fetchone()[0]
 
 
 # ============================================================================
@@ -283,7 +289,7 @@ def test_none_ttl_never_expires(
 
     clock.now += 10 * 365 * 86400
     assert cache.get("key") == {"id": 1}
-    assert cache.con.execute("SELECT expires_at FROM cache").fetchone()[0] is None
+    assert connection(cache).execute("SELECT expires_at FROM cache").fetchone()[0] is None
 
 
 def test_none_default_ttl_never_expires(
@@ -641,7 +647,7 @@ def test_store_replaces_tags(cache: sqlite_cache.SqliteCache) -> None:
 
 def count_tags(cache: sqlite_cache.SqliteCache) -> int:
     """Return the number of rows in the tag table."""
-    return cache.con.execute("SELECT COUNT(*) FROM cache_tag").fetchone()[0]
+    return connection(cache).execute("SELECT COUNT(*) FROM cache_tag").fetchone()[0]
 
 
 @pytest.mark.parametrize(
@@ -703,7 +709,7 @@ def test_close_and_context_manager(tmp_path: Path) -> None:
     """The context manager closes the connection, and closing twice is harmless."""
     with sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
         cache.store("key", 1, resource="series", kind="detail")
-        con = cache.con
+        con = connection(cache)
 
     cache.close()
     with pytest.raises(sqlite3.ProgrammingError):
@@ -783,8 +789,11 @@ def test_file_backed_uses_wal(tmp_path: Path) -> None:
     """A file-backed cache uses WAL mode and records its schema version."""
     with sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
         assert cache.journal_mode == "wal"
-        assert cache.con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        assert cache.con.execute("PRAGMA user_version").fetchone()[0] == sqlite_cache.SCHEMA_VERSION
+        assert connection(cache).execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert (
+            connection(cache).execute("PRAGMA user_version").fetchone()[0]
+            == sqlite_cache.SCHEMA_VERSION
+        )
 
 
 def test_in_memory_stays_in_memory_mode(caplog: pytest.LogCaptureFixture) -> None:
@@ -797,7 +806,7 @@ def test_in_memory_stays_in_memory_mode(caplog: pytest.LogCaptureFixture) -> Non
 def test_busy_timeout_is_set(tmp_path: Path) -> None:
     """The connection waits for other processes' locks instead of failing right away."""
     with sqlite_cache.SqliteCache(tmp_path / "cache.db") as cache:
-        assert cache.con.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+        assert connection(cache).execute("PRAGMA busy_timeout").fetchone()[0] == 5000
 
 
 class WalRefusedConnection(sqlite3.Connection):
@@ -884,7 +893,9 @@ def test_legacy_database_is_reset(tmp_path: Path) -> None:
     with sqlite_cache.SqliteCache(db) as cache:
         tables = {
             row[0]
-            for row in cache.con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            for row in connection(cache).execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
         }
         assert tables == {"cache", "cache_tag"}
         assert cache.get("key") is None
@@ -940,7 +951,7 @@ def test_foreign_database_refused(
 def _corrupt_cache(db: Path) -> None:
     """Write a cache to ``db``, then overwrite part of its first page."""
     with sqlite_cache.SqliteCache(db) as cache:
-        cache.con.execute("PRAGMA journal_mode = DELETE")
+        connection(cache).execute("PRAGMA journal_mode = DELETE")
     data = bytearray(db.read_bytes())
     data[100:200] = b"\xff" * 100
     db.write_bytes(bytes(data))
@@ -978,7 +989,7 @@ def test_newer_schema_refused(tmp_path: Path) -> None:
     db = tmp_path / "cache.db"
     with sqlite_cache.SqliteCache(db) as cache:
         cache.store("key", {"id": 1}, resource="series", kind="detail")
-        cache.con.execute(f"PRAGMA user_version = {sqlite_cache.SCHEMA_VERSION + 1}")
+        connection(cache).execute(f"PRAGMA user_version = {sqlite_cache.SCHEMA_VERSION + 1}")
 
     current = sqlite_cache.SCHEMA_VERSION
     match = rf"newer version of Mokkari \(schema {current + 1}; this version reads {current}\)"
@@ -996,11 +1007,14 @@ def test_older_schema_rebuilt(tmp_path: Path) -> None:
     db = tmp_path / "cache.db"
     with sqlite_cache.SqliteCache(db) as cache:
         cache.store("key", {"id": 1}, resource="series", kind="detail")
-        cache.con.execute("PRAGMA user_version = 0")
+        connection(cache).execute("PRAGMA user_version = 0")
 
     with sqlite_cache.SqliteCache(db) as cache:
         assert cache.get("key") is None
-        assert cache.con.execute("PRAGMA user_version").fetchone()[0] == sqlite_cache.SCHEMA_VERSION
+        assert (
+            connection(cache).execute("PRAGMA user_version").fetchone()[0]
+            == sqlite_cache.SCHEMA_VERSION
+        )
 
 
 def test_current_version_without_table_rebuilt(tmp_path: Path) -> None:
@@ -1072,7 +1086,11 @@ def test_session_caches_detail(
         assert m.universe(1).name == "Earth 2"
         assert r.call_count == 1
 
-    row = cache.con.execute("SELECT resource, kind FROM cache WHERE key = ?", (url,)).fetchone()
+    row = (
+        connection(cache)
+        .execute("SELECT resource, kind FROM cache WHERE key = ?", (url,))
+        .fetchone()
+    )
     assert row == ("universe", "detail")
 
 
@@ -1123,7 +1141,9 @@ def test_session_caches_paginated_list(
 
     assert [role.name for role in first] == ["Writer", "Co-Writer"]
     assert second == first
-    rows = cache.con.execute("SELECT key, resource, kind FROM cache ORDER BY key").fetchall()
+    rows = (
+        connection(cache).execute("SELECT key, resource, kind FROM cache ORDER BY key").fetchall()
+    )
     assert rows == [(page1, "role", "list"), (page2, "role", "list")]
 
 
@@ -2154,7 +2174,29 @@ def test_failing_cache_get_fetches_from_metron(
         roles = m.role_list({"name": "writer"})
 
     assert [role.name for role in roles] == ["Writer"]
-    assert "Cache get() failed" in caplog.text
+    (record,) = [rec for rec in caplog.records if "Cache get() failed" in rec.getMessage()]
+    # A locked database is expected contention, so it's a warning without a traceback.
+    assert record.levelno == logging.WARNING
+    assert "database is locked" in record.getMessage()
+    assert not record.exc_info
+
+
+def test_failing_cache_logs_traceback_when_debugging(
+    dummy_api_token: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failing cache's traceback is logged when the session logger is at DEBUG."""
+    m = api(dummy_api_token, cache=LockedCache())  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r, caplog.at_level(logging.DEBUG, logger="mokkari.session"):
+        r.get(ROLE_PAGE1, json=role_page(None, "Writer"))
+        m.role_list({"name": "writer"})
+
+    failures = [rec for rec in caplog.records if "failed" in rec.getMessage()]
+    assert {rec.getMessage().split(";")[0] for rec in failures} == {
+        "Cache get() failed",
+        "Cache store() failed",
+    }
+    assert all(rec.exc_info for rec in failures)
 
 
 def test_failing_cache_store_keeps_fetched_pages(
@@ -2169,7 +2211,13 @@ def test_failing_cache_store_keeps_fetched_pages(
         roles = m.role_list({"name": "writer"})
 
     assert [role.name for role in roles] == ["Writer", "Co-Writer"]
-    assert f"Cache store() failed; not caching {ROLE_PAGE2}" in caplog.text
+    (record,) = [
+        rec
+        for rec in caplog.records
+        if f"Cache store() failed; not caching {ROLE_PAGE2}" in rec.getMessage()
+    ]
+    assert record.levelno == logging.WARNING
+    assert not record.exc_info
 
 
 # ============================================================================
@@ -2213,7 +2261,7 @@ def test_per_user_data_not_shared_between_tokens(
             bob.reading_list(3)
         assert r.call_count == 2
 
-    keys = [row[0] for row in cache.con.execute("SELECT key FROM cache")]
+    keys = [row[0] for row in connection(cache).execute("SELECT key FROM cache")]
     assert len(keys) == 1
     assert keys[0].startswith(f"{READING_LIST_URL}#user=")
     assert "alice-token" not in keys[0]
@@ -2248,5 +2296,5 @@ def test_per_user_pages_scoped(make_cache: Callable[..., sqlite_cache.SqliteCach
         m.collections_list()
         assert r.call_count == 2
 
-    keys = sorted(row[0] for row in cache.con.execute("SELECT key FROM cache"))
+    keys = sorted(row[0] for row in connection(cache).execute("SELECT key FROM cache"))
     assert [key.partition("#user=")[:2] for key in keys] == [(page1, "#user="), (page2, "#user=")]
