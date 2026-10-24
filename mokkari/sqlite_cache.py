@@ -153,15 +153,6 @@ class SqliteCache:
         with self._lock:
             self._connection()
 
-    @property
-    def con(self) -> sqlite3.Connection:
-        """The database connection, reopened if the cache was closed.
-
-        Not guarded by the cache's lock, so don't use it while other threads use the cache.
-        """
-        with self._lock:
-            return self._connection()
-
     def _connection(self) -> sqlite3.Connection:
         """Return the connection, opening it first if needed. The caller must hold the lock.
 

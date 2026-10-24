@@ -2807,11 +2807,17 @@ class Session:
         if self.cache is None:
             return None
         # A failing cache (e.g. its database is locked or unreadable) is treated as a miss,
-        # so the data is fetched from Metron instead of the request failing.
+        # so the data is fetched from Metron instead of the request failing. A database
+        # shared between processes is expected to be locked now and then, so it's a warning,
+        # with the traceback only when debugging.
         try:
             data = self.cache.get(self._cache_key(key, resource))
-        except Exception:
-            LOGGER.exception("Cache get() failed; fetching from Metron")
+        except Exception as e:
+            LOGGER.warning(
+                "Cache get() failed; fetching from Metron: %r",
+                e,
+                exc_info=LOGGER.isEnabledFor(logging.DEBUG),
+            )
             return None
         LOGGER.debug("Cache %s: %s", "miss" if data is None else "hit", key)
         return data
@@ -2860,8 +2866,14 @@ class Session:
                 kind=kind,
                 **({} if tags is None else {"tags": tags}),
             )
-        except Exception:
-            LOGGER.exception("Cache store() failed; not caching %s", key)
+        except Exception as e:
+            # Logged like a failing get(); see _get_results_from_cache.
+            LOGGER.warning(
+                "Cache store() failed; not caching %s: %r",
+                key,
+                e,
+                exc_info=LOGGER.isEnabledFor(logging.DEBUG),
+            )
             return
         # The store isn't made under the lock, so one waiting on a locked database doesn't
         # hold up every other thread's store and invalidation. A write that invalidated
