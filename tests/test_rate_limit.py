@@ -287,17 +287,52 @@ def test_acquire_waits_for_send_log_when_limit_drops_below_logged_sends() -> Non
     assert fourth - second >= 0.4 - 1e-9
 
 
-def test_acquire_ignores_server_reset_time_for_burst_window() -> None:
-    """A burst reset time on a drifted clock (far in the future) doesn't cause a long wait."""
+def _burst_status(remaining: int | None, reset_in: float | None) -> RateLimitStatus:
+    reset = None if reset_in is None else dt.datetime.now(dt.UTC) + dt.timedelta(seconds=reset_in)
+    return RateLimitStatus(burst=RateLimitWindow(limit=20, remaining=remaining, reset=reset))
+
+
+def test_exhausted_burst_window_blocks_until_reset() -> None:
+    """A response reporting no burst requests left holds callers until its reset."""
     limiter = HeaderPacedRateLimiter()
-    far_future = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
-    status = RateLimitStatus(burst=RateLimitWindow(limit=5, remaining=0, reset=far_future))
 
-    start = time.monotonic()
-    limiter.acquire(status)
-    elapsed = time.monotonic() - start
+    limiter.release(_burst_status(remaining=0, reset_in=5))
 
-    assert elapsed < 0.05
+    assert limiter._blocked_until - time.monotonic() == pytest.approx(5, abs=0.1)
+
+
+@pytest.mark.parametrize(
+    ("remaining", "reset_in"),
+    [(1, 5), (0, -5), (0, None)],
+    ids=["requests-left", "reset-passed", "no-reset"],
+)
+def test_burst_window_with_room_does_not_block(remaining: int, reset_in: float | None) -> None:
+    """Only an exhausted window with a reset still ahead holds sends back."""
+    limiter = HeaderPacedRateLimiter()
+
+    limiter.release(_burst_status(remaining=remaining, reset_in=reset_in))
+
+    assert limiter._blocked_until == 0.0
+
+
+def test_exhausted_burst_window_only_extends_the_backoff() -> None:
+    """An earlier burst reset doesn't cut a longer 429 backoff short."""
+    limiter = HeaderPacedRateLimiter()
+
+    limiter.on_rate_limited(10)
+    limiter.release(_burst_status(remaining=0, reset_in=2))
+
+    assert limiter._blocked_until - time.monotonic() == pytest.approx(10, abs=0.1)
+
+
+def test_burst_reset_wait_is_capped_at_one_window() -> None:
+    """A burst reset on a drifted clock (far in the future) holds callers one window at most."""
+    limiter = HeaderPacedRateLimiter()
+
+    limiter.release(_burst_status(remaining=0, reset_in=3600))
+
+    # The 60s window plus 2s of slack.
+    assert limiter._blocked_until - time.monotonic() == pytest.approx(62, abs=0.1)
 
 
 def test_on_rate_limited_blocks_for_retry_after() -> None:

@@ -246,6 +246,46 @@ def test_exhausted_burst_window_only_extends_the_backoff(server, waits) -> None:
     assert waits[0] == pytest.approx(10, abs=0.1)
 
 
+def test_burst_reset_wait_is_capped_at_one_window(server, waits) -> None:
+    """A burst reset on a drifted clock (far in the future) holds callers one window at most."""
+    limiter = _limiter(server)
+
+    limiter.release(_status(burst_remaining=0, burst_reset_in=3600))
+    with pytest.raises(_BlockedError):
+        limiter.acquire(RateLimitStatus())
+
+    # The 60s window plus 2s of slack.
+    assert waits[0] == pytest.approx(62, abs=0.1)
+
+
+def test_each_send_is_held_for_its_senders_window(server, waits) -> None:
+    """A process with a shorter window still waits out a send made with a longer one."""
+    client = fakeredis.FakeRedis(server=server)
+    longer = RedisRateLimiter(client, "user")
+    shorter = RedisRateLimiter(client, "user", slack=0)
+    longer.acquire(_status(burst_limit=1))
+    client.delete(longer._last_send_key)
+
+    with pytest.raises(_BlockedError):
+        shorter.acquire(RateLimitStatus())
+
+    # The send is held for the sender's 62s, not the 60s the second process uses.
+    assert waits[0] == pytest.approx(62, abs=1)
+
+
+def test_shorter_window_does_not_shorten_key_expiry(server) -> None:
+    """A send by a process with a shorter window keeps the longer window's key TTLs."""
+    client = fakeredis.FakeRedis(server=server)
+    longer = RedisRateLimiter(client, "user")
+    shorter = RedisRateLimiter(client, "user", slack=0)
+
+    longer.acquire(RateLimitStatus())
+    shorter.acquire(RateLimitStatus())
+
+    assert client.pttl(longer._send_log_key) > 61_000
+    assert client.pttl(longer._last_send_key) > 61_000
+
+
 def test_exhausted_daily_window_raises_across_processes(server, waits) -> None:
     """An exhausted daily window raises for every limiter on the account, without waiting."""
     first = _limiter(server)

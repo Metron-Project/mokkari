@@ -42,6 +42,9 @@ local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
 # KEYS: send log (sorted set), last send, blocked until, daily estimate (hash), burst limit
 # ARGV: burst window (period plus slack) in ms, a member suffix unique to this call
+# Each send log entry is scored with when its slot frees, so processes configured with
+# different windows each hold their own sends for their own window, and none trims or
+# expires sends another still holds.
 # Returns {0, 0} once a slot is reserved, {0, ms} to wait for the burst window, or
 # {1, ms, daily limit} when the daily window is exhausted for another ms.
 _ACQUIRE: Final[str] = (
@@ -62,12 +65,12 @@ end
 
 local limit = tonumber(redis.call('GET', KEYS[5]))
 if limit and limit >= 1 then
-  redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - period)
+  redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
   local count = redis.call('ZCARD', KEYS[1])
   if count >= limit then
     -- The send that finally makes room is the (count - limit)th oldest to age out.
     local entry = redis.call('ZRANGE', KEYS[1], count - limit, count - limit, 'WITHSCORES')
-    return {0, tonumber(entry[2]) + period - now}
+    return {0, tonumber(entry[2]) - now}
   end
   local last = tonumber(redis.call('GET', KEYS[2]))
   local interval = math.floor(period / limit)
@@ -76,9 +79,9 @@ if limit and limit >= 1 then
   end
 end
 
-redis.call('ZADD', KEYS[1], now, now .. ':' .. ARGV[2])
-redis.call('PEXPIRE', KEYS[1], period)
-redis.call('SET', KEYS[2], now, 'PX', period)
+redis.call('ZADD', KEYS[1], now + period, now .. ':' .. ARGV[2])
+redis.call('PEXPIRE', KEYS[1], math.max(redis.call('PTTL', KEYS[1]), period))
+redis.call('SET', KEYS[2], now, 'PX', math.max(redis.call('PTTL', KEYS[2]), period))
 if remaining then
   redis.call('HINCRBY', KEYS[4], 'remaining', -1)
 end
@@ -89,7 +92,7 @@ return {0, 0}
 # KEYS: daily estimate (hash), burst limit, blocked until
 # ARGV: burst limit, daily limit, daily remaining, daily reset in epoch ms ('' if unknown),
 #       TTL in ms for state that has no reset of its own, burst remaining,
-#       burst reset in epoch ms
+#       burst reset in epoch ms, burst window (period plus slack) in ms
 _OBSERVE: Final[str] = (
     _NOW
     + """
@@ -99,13 +102,16 @@ end
 
 -- Metron counts its burst window from when requests arrive, so a send the local log
 -- says is due can still land a moment early. An exhausted window blocks until the
--- reported reset instead, which only ever extends a backoff already held.
+-- reported reset instead, which only ever extends a backoff already held. A reset more
+-- than a window away can only come from a clock that disagrees with Metron's, so the
+-- wait is capped at one window.
 local burst_remaining = tonumber(ARGV[6])
 local burst_reset = tonumber(ARGV[7])
 if burst_remaining and burst_remaining <= 0 and burst_reset and burst_reset > now then
+  local deadline = math.min(burst_reset, now + tonumber(ARGV[8]))
   local held = tonumber(redis.call('GET', KEYS[3]))
-  if not held or burst_reset > held then
-    redis.call('SET', KEYS[3], burst_reset, 'PX', burst_reset - now)
+  if not held or deadline > held then
+    redis.call('SET', KEYS[3], deadline, 'PX', deadline - now)
   end
 end
 
@@ -181,9 +187,9 @@ class RedisRateLimiter:
       are spaced evenly across it (``(burst_period + slack) / limit`` apart).
       Each send is held for ``slack`` seconds beyond ``burst_period``, and when
       a response reports the burst window exhausted every caller also waits for
-      its reported reset, since Metron times its window from when requests
-      arrive rather than when they were sent. The limit is re-read from every
-      response's headers.
+      its reported reset (at most one window), since Metron times its window
+      from when requests arrive rather than when they were sent. The limit is
+      re-read from every response's headers.
     - When Metron rejects a request with a 429, every caller sharing the account
       is blocked for the ``Retry-After`` it sent, or a full burst window if none.
     - The daily window is held from the server-reported ``remaining`` and
@@ -310,5 +316,6 @@ class RedisRateLimiter:
                 _STATE_TTL_MS,
                 _arg(burst.remaining),
                 _arg(_epoch_ms(burst.reset)),
+                self._window_ms,
             ],
         )

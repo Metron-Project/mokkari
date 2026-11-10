@@ -285,9 +285,13 @@ class HeaderPacedRateLimiter:
     ``burst_period`` because Metron starts timing a request when it arrives,
     not when it was sent: without it, a slot freed exactly ``burst_period``
     after a send can still be taken on the server, drawing a 429 about once
-    per window under sustained load. The header-reported burst ``limit`` sizes the window and is
-    re-read from every response, so it follows the server raising or lowering
-    it with load. When Metron does reject a request with a 429, the
+    per window under sustained load. A request that takes longer than
+    ``slack`` to arrive is covered too: when a response reports the burst
+    window exhausted, every caller waits for its reported reset, capped at
+    one window so a local clock that disagrees with Metron's can't hold
+    callers for longer. The header-reported burst ``limit`` sizes the window
+    and is re-read from every response, so it follows the server raising or
+    lowering it with load. When Metron does reject a request with a 429, the
     ``Retry-After`` it sends (a relative number of seconds) blocks every
     caller for that long.
 
@@ -395,9 +399,16 @@ class HeaderPacedRateLimiter:
         return self._last_send + self._burst.interval - now
 
     def _observe(self, status: RateLimitStatus) -> None:
-        if status.burst.limit is not None:
-            self._burst.limit = status.burst.limit
+        burst = status.burst
+        if burst.limit is not None:
+            self._burst.limit = burst.limit
         if status.sustained.limit is not None:
             self._sustained_limit = status.sustained.limit
         now = datetime.now(UTC)
         self._sustained.tighten(status.sustained.remaining, status.sustained.reset, now)
+        if burst.remaining is not None and burst.remaining <= 0 and burst.reset is not None:
+            # A reset more than a window away can only come from a clock that disagrees
+            # with Metron's, so the wait is capped at one window.
+            wait = min((burst.reset - now).total_seconds(), self._burst.period)
+            if wait > 0:
+                self._blocked_until = max(self._blocked_until, time.monotonic() + wait)
