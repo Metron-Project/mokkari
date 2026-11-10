@@ -8,6 +8,10 @@ This module provides the following classes:
 - RateLimiter: Protocol for an injectable, opt-in pacing gate for ``Session``
 - HeaderPacedRateLimiter: A ``RateLimiter`` that paces requests from the
   ``X-RateLimit-*`` headers Metron returns with every response
+
+and the following function:
+
+- burst_window: How long a limiter holds each send in its burst window
 """
 
 from __future__ import annotations
@@ -23,7 +27,15 @@ from typing import Final, Protocol
 from mokkari import exceptions
 from mokkari.utils import format_time
 
-__all__ = ["HeaderPacedRateLimiter", "RateLimitStatus", "RateLimitWindow", "RateLimiter"]
+__all__ = [
+    "DEFAULT_BURST_PERIOD",
+    "DEFAULT_BURST_SLACK",
+    "HeaderPacedRateLimiter",
+    "RateLimitStatus",
+    "RateLimitWindow",
+    "RateLimiter",
+    "burst_window",
+]
 
 # Length in seconds of Metron's burst (per-minute) window.
 DEFAULT_BURST_PERIOD: Final[float] = 60.0

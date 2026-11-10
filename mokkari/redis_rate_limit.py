@@ -162,6 +162,11 @@ def _epoch_ms(moment: datetime | None) -> int | None:
     return None if moment is None else round(moment.timestamp() * 1000)
 
 
+def _to_ms(seconds: float) -> int:
+    """Convert a positive duration in seconds to whole milliseconds, at least 1."""
+    return max(1, round(seconds * 1000))
+
+
 class RedisRateLimiter:
     """A ``RateLimiter`` that keeps its pacing state in Redis.
 
@@ -239,8 +244,8 @@ class RedisRateLimiter:
         self._burst_limit_key = f"{base}:burst:limit"
         self._blocked_key = f"{base}:blocked_until"
         self._daily_key = f"{base}:daily"
-        self._window_ms = max(1, round(burst_window(burst_period, slack) * 1000))
-        self._period_ms = max(1, round(burst_period * 1000))
+        self._window_ms = _to_ms(burst_window(burst_period, slack))
+        self._burst_period = burst_period
         self._acquire_script = client.register_script(_ACQUIRE)
         self._observe_script = client.register_script(_OBSERVE)
         self._backoff_script = client.register_script(_BACKOFF)
@@ -275,8 +280,8 @@ class RedisRateLimiter:
 
     def on_rate_limited(self, retry_after: float) -> None:
         """Block every caller on the account for ``retry_after`` seconds, or a burst window."""
-        delay_ms = round(retry_after * 1000) if retry_after > 0 else self._period_ms
-        self._backoff_script(keys=[self._blocked_key], args=[max(1, delay_ms)])
+        delay = retry_after if retry_after > 0 else self._burst_period
+        self._backoff_script(keys=[self._blocked_key], args=[_to_ms(delay)])
 
     def release(self, status: RateLimitStatus | None) -> None:
         """Record fresher headers, if any.
