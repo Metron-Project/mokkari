@@ -62,7 +62,7 @@ docs = [
 default-groups = ["dev", "test", "lint", "docs"]
 
 [tool.hatch.build.targets.sdist]
-include = ["mokkari", "tests"]
+include = ["mokkari", "tests", "CHANGELOG.md"]
 exclude = ["*/**/*~"]
 
 [tool.hatch.build.targets.wheel]

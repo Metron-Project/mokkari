@@ -16,7 +16,12 @@ import time
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
-from mokkari.rate_limit import DEFAULT_BURST_PERIOD, RateLimitStatus, daily_limit_error
+from mokkari.rate_limit import (
+    DEFAULT_BURST_PERIOD,
+    RateLimitStatus,
+    burst_window,
+    daily_limit_error,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -36,7 +41,10 @@ local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 """
 
 # KEYS: send log (sorted set), last send, blocked until, daily estimate (hash), burst limit
-# ARGV: burst period in ms, a member suffix unique to this call
+# ARGV: burst window (period plus slack) in ms, a member suffix unique to this call
+# Each send log entry is scored with when its slot frees, so processes configured with
+# different windows each hold their own sends for their own window, and none trims or
+# expires sends another still holds.
 # Returns {0, 0} once a slot is reserved, {0, ms} to wait for the burst window, or
 # {1, ms, daily limit} when the daily window is exhausted for another ms.
 _ACQUIRE: Final[str] = (
@@ -57,12 +65,12 @@ end
 
 local limit = tonumber(redis.call('GET', KEYS[5]))
 if limit and limit >= 1 then
-  redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - period)
+  redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
   local count = redis.call('ZCARD', KEYS[1])
   if count >= limit then
     -- The send that finally makes room is the (count - limit)th oldest to age out.
     local entry = redis.call('ZRANGE', KEYS[1], count - limit, count - limit, 'WITHSCORES')
-    return {0, tonumber(entry[2]) + period - now}
+    return {0, tonumber(entry[2]) - now}
   end
   local last = tonumber(redis.call('GET', KEYS[2]))
   local interval = math.floor(period / limit)
@@ -71,9 +79,9 @@ if limit and limit >= 1 then
   end
 end
 
-redis.call('ZADD', KEYS[1], now, now .. ':' .. ARGV[2])
-redis.call('PEXPIRE', KEYS[1], period)
-redis.call('SET', KEYS[2], now, 'PX', period)
+redis.call('ZADD', KEYS[1], now + period, now .. ':' .. ARGV[2])
+redis.call('PEXPIRE', KEYS[1], math.max(redis.call('PTTL', KEYS[1]), period))
+redis.call('SET', KEYS[2], now, 'PX', math.max(redis.call('PTTL', KEYS[2]), period))
 if remaining then
   redis.call('HINCRBY', KEYS[4], 'remaining', -1)
 end
@@ -84,7 +92,7 @@ return {0, 0}
 # KEYS: daily estimate (hash), burst limit, blocked until
 # ARGV: burst limit, daily limit, daily remaining, daily reset in epoch ms ('' if unknown),
 #       TTL in ms for state that has no reset of its own, burst remaining,
-#       burst reset in epoch ms
+#       burst reset in epoch ms, burst window (period plus slack) in ms
 _OBSERVE: Final[str] = (
     _NOW
     + """
@@ -94,13 +102,16 @@ end
 
 -- Metron counts its burst window from when requests arrive, so a send the local log
 -- says is due can still land a moment early. An exhausted window blocks until the
--- reported reset instead, which only ever extends a backoff already held.
+-- reported reset instead, which only ever extends a backoff already held. A reset more
+-- than a window away can only come from a clock that disagrees with Metron's, so the
+-- wait is capped at one window.
 local burst_remaining = tonumber(ARGV[6])
 local burst_reset = tonumber(ARGV[7])
 if burst_remaining and burst_remaining <= 0 and burst_reset and burst_reset > now then
+  local deadline = math.min(burst_reset, now + tonumber(ARGV[8]))
   local held = tonumber(redis.call('GET', KEYS[3]))
-  if not held or burst_reset > held then
-    redis.call('SET', KEYS[3], burst_reset, 'PX', burst_reset - now)
+  if not held or deadline > held then
+    redis.call('SET', KEYS[3], deadline, 'PX', deadline - now)
   end
 end
 
@@ -157,6 +168,11 @@ def _epoch_ms(moment: datetime | None) -> int | None:
     return None if moment is None else round(moment.timestamp() * 1000)
 
 
+def _to_ms(seconds: float) -> int:
+    """Convert a positive duration in seconds to whole milliseconds, at least 1."""
+    return max(1, round(seconds * 1000))
+
+
 class RedisRateLimiter:
     """A ``RateLimiter`` that keeps its pacing state in Redis.
 
@@ -168,11 +184,12 @@ class RedisRateLimiter:
     this limiter they are paced as one.
 
     - The burst (per-minute) window is a shared log of send times, and sends
-      are spaced evenly across it (``burst_period / limit`` apart). The limit is
-      re-read from every response's headers. When a response reports the burst
-      window exhausted, every caller also waits for its reported reset, since
-      Metron times its window from when requests arrive rather than when they
-      were sent.
+      are spaced evenly across it (``(burst_period + slack) / limit`` apart).
+      Each send is held for ``slack`` seconds beyond ``burst_period``, and when
+      a response reports the burst window exhausted every caller also waits for
+      its reported reset (at most one window), since Metron times its window
+      from when requests arrive rather than when they were sent. The limit is
+      re-read from every response's headers.
     - When Metron rejects a request with a 429, every caller sharing the account
       is blocked for the ``Retry-After`` it sent, or a full burst window if none.
     - The daily window is held from the server-reported ``remaining`` and
@@ -202,6 +219,7 @@ class RedisRateLimiter:
         account: str,
         *,
         burst_period: float = DEFAULT_BURST_PERIOD,
+        slack: float | None = None,
         key_prefix: str = "mokkari:ratelimit",
     ) -> None:
         """Initialize a RedisRateLimiter.
@@ -214,7 +232,15 @@ class RedisRateLimiter:
                 ``account`` share state, so use a distinct value per account.
                 It appears in key names, so don't use the API token itself.
             burst_period: Length in seconds of Metron's burst window.
+            slack: Extra seconds each send is held in the burst window, to
+                cover the time a request takes to reach Metron. By default
+                it's 2 seconds with the default ``burst_period``, and none
+                with a custom ``burst_period``.
             key_prefix: Prefix for every key this limiter creates.
+
+        Raises:
+            ValueError: If ``burst_period`` isn't a positive finite number, or
+                ``slack`` isn't a non-negative finite number.
         """
         # The braces make a Redis Cluster hash tag, keeping one account's keys on
         # one node, which the scripts need since each touches several keys.
@@ -224,7 +250,8 @@ class RedisRateLimiter:
         self._burst_limit_key = f"{base}:burst:limit"
         self._blocked_key = f"{base}:blocked_until"
         self._daily_key = f"{base}:daily"
-        self._period_ms = max(1, round(burst_period * 1000))
+        self._window_ms = _to_ms(burst_window(burst_period, slack))
+        self._burst_period = burst_period
         self._acquire_script = client.register_script(_ACQUIRE)
         self._observe_script = client.register_script(_OBSERVE)
         self._backoff_script = client.register_script(_BACKOFF)
@@ -246,7 +273,7 @@ class RedisRateLimiter:
         ]
         while True:
             code, wait_ms, *rest = self._acquire_script(
-                keys=keys, args=[self._period_ms, uuid4().hex]
+                keys=keys, args=[self._window_ms, uuid4().hex]
             )
             if code == 1:
                 limit = int(rest[0]) if rest and rest[0] else None
@@ -259,8 +286,8 @@ class RedisRateLimiter:
 
     def on_rate_limited(self, retry_after: float) -> None:
         """Block every caller on the account for ``retry_after`` seconds, or a burst window."""
-        delay_ms = round(retry_after * 1000) if retry_after > 0 else self._period_ms
-        self._backoff_script(keys=[self._blocked_key], args=[max(1, delay_ms)])
+        delay = retry_after if retry_after > 0 else self._burst_period
+        self._backoff_script(keys=[self._blocked_key], args=[_to_ms(delay)])
 
     def release(self, status: RateLimitStatus | None) -> None:
         """Record fresher headers, if any.
@@ -289,5 +316,6 @@ class RedisRateLimiter:
                 _STATE_TTL_MS,
                 _arg(burst.remaining),
                 _arg(_epoch_ms(burst.reset)),
+                self._window_ms,
             ],
         )

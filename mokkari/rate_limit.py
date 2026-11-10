@@ -8,10 +8,21 @@ This module provides the following classes:
 - RateLimiter: Protocol for an injectable, opt-in pacing gate for ``Session``
 - HeaderPacedRateLimiter: A ``RateLimiter`` that paces requests from the
   ``X-RateLimit-*`` headers Metron returns with every response
+
+the following function:
+
+- burst_window: How long a limiter holds each send in its burst window
+
+and the following constants:
+
+- DEFAULT_BURST_PERIOD: Length in seconds of Metron's burst window
+- DEFAULT_BURST_SLACK: Extra seconds each send is held beyond the default
+  burst period
 """
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import deque
@@ -22,10 +33,59 @@ from typing import Final, Protocol
 from mokkari import exceptions
 from mokkari.utils import format_time
 
-__all__ = ["HeaderPacedRateLimiter", "RateLimitStatus", "RateLimitWindow", "RateLimiter"]
+__all__ = [
+    "DEFAULT_BURST_PERIOD",
+    "DEFAULT_BURST_SLACK",
+    "HeaderPacedRateLimiter",
+    "RateLimitStatus",
+    "RateLimitWindow",
+    "RateLimiter",
+    "burst_window",
+]
 
 # Length in seconds of Metron's burst (per-minute) window.
 DEFAULT_BURST_PERIOD: Final[float] = 60.0
+
+# Extra seconds each send is held in the burst window beyond the default
+# ``burst_period``. Metron starts timing a request when it arrives, after the
+# connection is set up and the request authenticated, not when the client sent
+# it, so a slot freed exactly ``burst_period`` after the send can still be
+# occupied on the server. It's only applied by default to the default period: a
+# caller who sets their own period may already have padded it, so they opt in to
+# slack by passing it explicitly.
+DEFAULT_BURST_SLACK: Final[float] = 2.0
+
+
+def _is_finite(value: float) -> bool:
+    """Return whether ``value`` is a finite number, treating non-numbers as not finite."""
+    try:
+        return math.isfinite(value)
+    except TypeError:
+        return False
+
+
+def burst_window(burst_period: float, slack: float | None = None) -> float:
+    """Return how long a limiter holds each send in its burst window.
+
+    Args:
+        burst_period: Length in seconds of Metron's burst window.
+        slack: Extra seconds to hold each send, to cover the delay before it
+            reaches Metron. ``None`` means ``DEFAULT_BURST_SLACK`` when
+            ``burst_period`` is ``DEFAULT_BURST_PERIOD``, and no slack otherwise.
+
+    Raises:
+        ValueError: If ``burst_period`` isn't a positive finite number, or
+            ``slack`` isn't a non-negative finite number.
+    """
+    if not (_is_finite(burst_period) and burst_period > 0):
+        msg = f"burst_period must be a positive finite number, got {burst_period}"
+        raise ValueError(msg)
+    if slack is None:
+        slack = DEFAULT_BURST_SLACK if burst_period == DEFAULT_BURST_PERIOD else 0.0
+    if not (_is_finite(slack) and slack >= 0):
+        msg = f"slack must be a non-negative finite number, got {slack}"
+        raise ValueError(msg)
+    return burst_period + slack
 
 
 @dataclass(frozen=True)
@@ -193,7 +253,9 @@ class _SendLog:
 
     Mirrors how Metron's throttle works: each request occupies a slot for one
     ``period`` and slots free individually as they age out, rather than the
-    whole window resetting at once. Because it only ever compares local
+    whole window resetting at once. ``period`` should include some slack beyond
+    Metron's own window, since Metron starts timing a request when it arrives
+    rather than when it was sent. Because it only ever compares local
     monotonic timestamps with each other, it is unaffected by the local
     wall clock drifting from the server's.
     """
@@ -233,10 +295,18 @@ class HeaderPacedRateLimiter:
     The burst (per-minute) window is paced from a monotonic log of this
     limiter's own send times, so it doesn't depend on the local clock
     matching Metron's, and sends are spaced evenly across the window
-    (``burst_period / limit`` apart) rather than sent back-to-back until it's
-    empty. The header-reported burst ``limit`` sizes the window and is
-    re-read from every response, so it follows the server raising or lowering
-    it with load. When Metron does reject a request with a 429, the
+    (``(burst_period + slack) / limit`` apart) rather than sent back-to-back
+    until it's empty. Each send is held for ``slack`` seconds beyond
+    ``burst_period`` because Metron starts timing a request when it arrives,
+    not when it was sent: without it, a slot freed exactly ``burst_period``
+    after a send can still be taken on the server, drawing a 429 about once
+    per window under sustained load. A request that takes longer than
+    ``slack`` to arrive is covered too: when a response reports the burst
+    window exhausted, every caller waits for its reported reset, capped at
+    one window so a local clock that disagrees with Metron's can't hold
+    callers for longer. The header-reported burst ``limit`` sizes the window
+    and is re-read from every response, so it follows the server raising or
+    lowering it with load. When Metron does reject a request with a 429, the
     ``Retry-After`` it sends (a relative number of seconds) blocks every
     caller for that long.
 
@@ -263,14 +333,29 @@ class HeaderPacedRateLimiter:
     Sessions using different credentials.
     """
 
-    def __init__(self, burst_period: float = DEFAULT_BURST_PERIOD) -> None:
+    def __init__(
+        self,
+        burst_period: float = DEFAULT_BURST_PERIOD,
+        *,
+        slack: float | None = None,
+    ) -> None:
         """Initialize a HeaderPacedRateLimiter with no observed state.
 
         Args:
             burst_period: Length in seconds of Metron's burst window.
+            slack: Extra seconds each send is held in the burst window, to
+                cover the time a request takes to reach Metron. By default
+                it's 2 seconds with the default ``burst_period``, pacing a
+                20-per-minute limit at about 19.4 per minute, and none with a
+                custom ``burst_period``.
+
+        Raises:
+            ValueError: If ``burst_period`` isn't a positive finite number, or
+                ``slack`` isn't a non-negative finite number.
         """
         self._condition = threading.Condition()
-        self._burst = _SendLog(burst_period)
+        self._burst_period = burst_period
+        self._burst = _SendLog(burst_window(burst_period, slack))
         self._sustained = _WindowEstimate()
         self._sustained_limit: int | None = None
         self._in_flight = 0
@@ -304,7 +389,7 @@ class HeaderPacedRateLimiter:
     def on_rate_limited(self, retry_after: float) -> None:
         """Block every caller for ``retry_after`` seconds, or a full burst window if unknown."""
         with self._condition:
-            delay = retry_after if retry_after > 0 else self._burst.period
+            delay = retry_after if retry_after > 0 else self._burst_period
             self._blocked_until = max(self._blocked_until, time.monotonic() + delay)
             self._condition.notify_all()
 
@@ -329,9 +414,16 @@ class HeaderPacedRateLimiter:
         return self._last_send + self._burst.interval - now
 
     def _observe(self, status: RateLimitStatus) -> None:
-        if status.burst.limit is not None:
-            self._burst.limit = status.burst.limit
+        burst = status.burst
+        if burst.limit is not None:
+            self._burst.limit = burst.limit
         if status.sustained.limit is not None:
             self._sustained_limit = status.sustained.limit
         now = datetime.now(UTC)
         self._sustained.tighten(status.sustained.remaining, status.sustained.reset, now)
+        if burst.remaining is not None and burst.remaining <= 0 and burst.reset is not None:
+            # A reset more than a window away can only come from a clock that disagrees
+            # with Metron's, so the wait is capped at one window.
+            wait = min((burst.reset - now).total_seconds(), self._burst.period)
+            if wait > 0:
+                self._blocked_until = max(self._blocked_until, time.monotonic() + wait)
