@@ -205,11 +205,8 @@ def test_on_rate_limited_fallback_ignores_slack() -> None:
     limiter = HeaderPacedRateLimiter(burst_period=0.1, slack=5)
 
     limiter.on_rate_limited(0)
-    start = time.monotonic()
-    limiter.acquire(RateLimitStatus())
-    elapsed = time.monotonic() - start
 
-    assert 0.08 <= elapsed < 1
+    assert limiter._blocked_until - time.monotonic() == pytest.approx(0.1, abs=0.05)
 
 
 def test_acquire_does_not_block_when_no_state_observed() -> None:

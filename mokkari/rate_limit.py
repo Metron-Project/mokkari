@@ -9,9 +9,15 @@ This module provides the following classes:
 - HeaderPacedRateLimiter: A ``RateLimiter`` that paces requests from the
   ``X-RateLimit-*`` headers Metron returns with every response
 
-and the following function:
+the following function:
 
 - burst_window: How long a limiter holds each send in its burst window
+
+and the following constants:
+
+- DEFAULT_BURST_PERIOD: Length in seconds of Metron's burst window
+- DEFAULT_BURST_SLACK: Extra seconds each send is held beyond the default
+  burst period
 """
 
 from __future__ import annotations
@@ -41,11 +47,12 @@ __all__ = [
 DEFAULT_BURST_PERIOD: Final[float] = 60.0
 
 # Extra seconds each send is held in the burst window beyond the default
-# ``burst_period``. Metron starts timing a request when it arrives, after the connection is set up and
-# the request authenticated, not when the client sent it, so a slot freed exactly
-# ``burst_period`` after the send can still be occupied on the server. It's only
-# applied by default to the default period: a caller who sets their own period may
-# already have padded it, so they opt in to slack by passing it explicitly.
+# ``burst_period``. Metron starts timing a request when it arrives, after the
+# connection is set up and the request authenticated, not when the client sent
+# it, so a slot freed exactly ``burst_period`` after the send can still be
+# occupied on the server. It's only applied by default to the default period: a
+# caller who sets their own period may already have padded it, so they opt in to
+# slack by passing it explicitly.
 DEFAULT_BURST_SLACK: Final[float] = 2.0
 
 
