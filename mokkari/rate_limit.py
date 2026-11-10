@@ -49,6 +49,14 @@ DEFAULT_BURST_PERIOD: Final[float] = 60.0
 DEFAULT_BURST_SLACK: Final[float] = 2.0
 
 
+def _is_finite(value: float) -> bool:
+    """Return whether ``value`` is a finite number, treating non-numbers as not finite."""
+    try:
+        return math.isfinite(value)
+    except TypeError:
+        return False
+
+
 def burst_window(burst_period: float, slack: float | None = None) -> float:
     """Return how long a limiter holds each send in its burst window.
 
@@ -62,12 +70,12 @@ def burst_window(burst_period: float, slack: float | None = None) -> float:
         ValueError: If ``burst_period`` isn't a positive finite number, or
             ``slack`` isn't a non-negative finite number.
     """
-    if not (math.isfinite(burst_period) and burst_period > 0):
+    if not (_is_finite(burst_period) and burst_period > 0):
         msg = f"burst_period must be a positive finite number, got {burst_period}"
         raise ValueError(msg)
     if slack is None:
         slack = DEFAULT_BURST_SLACK if burst_period == DEFAULT_BURST_PERIOD else 0.0
-    if not (math.isfinite(slack) and slack >= 0):
+    if not (_is_finite(slack) and slack >= 0):
         msg = f"slack must be a non-negative finite number, got {slack}"
         raise ValueError(msg)
     return burst_period + slack

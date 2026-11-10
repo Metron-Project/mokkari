@@ -133,14 +133,14 @@ def test_slack_is_configurable(server, waits) -> None:
     assert waits[0] == pytest.approx(60, abs=1)
 
 
-@pytest.mark.parametrize("slack", [-1, float("nan"), float("inf")])
+@pytest.mark.parametrize("slack", [-1, float("nan"), float("inf"), "2"])
 def test_invalid_slack_is_rejected(server, slack) -> None:
     """Negative slack frees slots before Metron does, and NaN or inf break the window."""
     with pytest.raises(ValueError, match="slack"):
         _limiter(server, slack=slack)
 
 
-@pytest.mark.parametrize("period", [0, -1, float("nan"), float("inf")])
+@pytest.mark.parametrize("period", [0, -1, float("nan"), float("inf"), "60"])
 def test_invalid_burst_period_is_rejected(server, period) -> None:
     """The burst period must be a positive finite number."""
     with pytest.raises(ValueError, match="burst_period"):

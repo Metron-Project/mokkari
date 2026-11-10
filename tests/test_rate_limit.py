@@ -166,7 +166,7 @@ def test_burst_window_defaults_slack_only_for_the_default_period() -> None:
     assert HeaderPacedRateLimiter(burst_period=1.0)._burst.period == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize("slack", [-1, -0.5, float("nan"), float("inf")])
+@pytest.mark.parametrize("slack", [-1, -0.5, float("nan"), float("inf"), "2"])
 def test_burst_window_rejects_invalid_slack(slack: float) -> None:
     """Negative slack frees slots before Metron does, and NaN or inf break the window."""
     with pytest.raises(ValueError, match="slack"):
@@ -175,7 +175,7 @@ def test_burst_window_rejects_invalid_slack(slack: float) -> None:
         HeaderPacedRateLimiter(slack=slack)
 
 
-@pytest.mark.parametrize("period", [0, -1, float("nan"), float("inf")])
+@pytest.mark.parametrize("period", [0, -1, float("nan"), float("inf"), "60", None])
 def test_burst_window_rejects_invalid_period(period: float) -> None:
     """The burst period must be a positive finite number."""
     with pytest.raises(ValueError, match="burst_period"):
