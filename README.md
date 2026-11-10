@@ -138,8 +138,10 @@ drifted from Metron's doesn't matter, and it spaces sends evenly across the
 window. Each send is held for 2 seconds longer than the window itself, because
 Metron times a request from when it arrives rather than when it was sent, so at
 the 20/min floor it sends one about every 3.1 seconds; pass `slack=` to change
-that margin. If Metron still answers with a 429, it backs every caller off by
-the `Retry-After` value the server sent:
+that margin. The 2-second default only applies to the default 60-second window:
+with a custom `burst_period`, no slack is added unless you pass `slack=`. If
+Metron still answers with a 429, it backs every caller off by the `Retry-After`
+value the server sent:
 
 ```python
 from concurrent.futures import ThreadPoolExecutor

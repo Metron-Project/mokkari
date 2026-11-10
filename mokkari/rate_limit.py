@@ -12,6 +12,7 @@ This module provides the following classes:
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import deque
@@ -27,26 +28,35 @@ __all__ = ["HeaderPacedRateLimiter", "RateLimitStatus", "RateLimitWindow", "Rate
 # Length in seconds of Metron's burst (per-minute) window.
 DEFAULT_BURST_PERIOD: Final[float] = 60.0
 
-# Extra seconds each send is held in the burst window beyond ``burst_period``.
-# Metron starts timing a request when it arrives, after the connection is set up and
+# Extra seconds each send is held in the burst window beyond the default
+# ``burst_period``. Metron starts timing a request when it arrives, after the connection is set up and
 # the request authenticated, not when the client sent it, so a slot freed exactly
-# ``burst_period`` after the send can still be occupied on the server.
+# ``burst_period`` after the send can still be occupied on the server. It's only
+# applied by default to the default period: a caller who sets their own period may
+# already have padded it, so they opt in to slack by passing it explicitly.
 DEFAULT_BURST_SLACK: Final[float] = 2.0
 
 
-def burst_window(burst_period: float, slack: float) -> float:
+def burst_window(burst_period: float, slack: float | None = None) -> float:
     """Return how long a limiter holds each send in its burst window.
 
     Args:
         burst_period: Length in seconds of Metron's burst window.
         slack: Extra seconds to hold each send, to cover the delay before it
-            reaches Metron.
+            reaches Metron. ``None`` means ``DEFAULT_BURST_SLACK`` when
+            ``burst_period`` is ``DEFAULT_BURST_PERIOD``, and no slack otherwise.
 
     Raises:
-        ValueError: If ``slack`` is negative.
+        ValueError: If ``burst_period`` isn't a positive finite number, or
+            ``slack`` isn't a non-negative finite number.
     """
-    if slack < 0:
-        msg = f"slack must not be negative, got {slack}"
+    if not (math.isfinite(burst_period) and burst_period > 0):
+        msg = f"burst_period must be a positive finite number, got {burst_period}"
+        raise ValueError(msg)
+    if slack is None:
+        slack = DEFAULT_BURST_SLACK if burst_period == DEFAULT_BURST_PERIOD else 0.0
+    if not (math.isfinite(slack) and slack >= 0):
+        msg = f"slack must be a non-negative finite number, got {slack}"
         raise ValueError(msg)
     return burst_period + slack
 
@@ -296,19 +306,21 @@ class HeaderPacedRateLimiter:
         self,
         burst_period: float = DEFAULT_BURST_PERIOD,
         *,
-        slack: float = DEFAULT_BURST_SLACK,
+        slack: float | None = None,
     ) -> None:
         """Initialize a HeaderPacedRateLimiter with no observed state.
 
         Args:
             burst_period: Length in seconds of Metron's burst window.
             slack: Extra seconds each send is held in the burst window, to
-                cover the time a request takes to reach Metron. The default
-                of 2 seconds paces a 20-per-minute limit at about 19.4 per
-                minute.
+                cover the time a request takes to reach Metron. By default
+                it's 2 seconds with the default ``burst_period``, pacing a
+                20-per-minute limit at about 19.4 per minute, and none with a
+                custom ``burst_period``.
 
         Raises:
-            ValueError: If ``slack`` is negative.
+            ValueError: If ``burst_period`` isn't a positive finite number, or
+                ``slack`` isn't a non-negative finite number.
         """
         self._condition = threading.Condition()
         self._burst_period = burst_period

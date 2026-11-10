@@ -18,7 +18,6 @@ from uuid import uuid4
 
 from mokkari.rate_limit import (
     DEFAULT_BURST_PERIOD,
-    DEFAULT_BURST_SLACK,
     RateLimitStatus,
     burst_window,
     daily_limit_error,
@@ -209,7 +208,7 @@ class RedisRateLimiter:
         account: str,
         *,
         burst_period: float = DEFAULT_BURST_PERIOD,
-        slack: float = DEFAULT_BURST_SLACK,
+        slack: float | None = None,
         key_prefix: str = "mokkari:ratelimit",
     ) -> None:
         """Initialize a RedisRateLimiter.
@@ -223,11 +222,14 @@ class RedisRateLimiter:
                 It appears in key names, so don't use the API token itself.
             burst_period: Length in seconds of Metron's burst window.
             slack: Extra seconds each send is held in the burst window, to
-                cover the time a request takes to reach Metron.
+                cover the time a request takes to reach Metron. By default
+                it's 2 seconds with the default ``burst_period``, and none
+                with a custom ``burst_period``.
             key_prefix: Prefix for every key this limiter creates.
 
         Raises:
-            ValueError: If ``slack`` is negative.
+            ValueError: If ``burst_period`` isn't a positive finite number, or
+                ``slack`` isn't a non-negative finite number.
         """
         # The braces make a Redis Cluster hash tag, keeping one account's keys on
         # one node, which the scripts need since each touches several keys.
@@ -237,8 +239,8 @@ class RedisRateLimiter:
         self._burst_limit_key = f"{base}:burst:limit"
         self._blocked_key = f"{base}:blocked_until"
         self._daily_key = f"{base}:daily"
-        self._period_ms = max(1, round(burst_period * 1000))
         self._window_ms = max(1, round(burst_window(burst_period, slack) * 1000))
+        self._period_ms = max(1, round(burst_period * 1000))
         self._acquire_script = client.register_script(_ACQUIRE)
         self._observe_script = client.register_script(_OBSERVE)
         self._backoff_script = client.register_script(_BACKOFF)
