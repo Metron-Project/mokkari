@@ -19,6 +19,7 @@ from mokkari.rate_limit import (
     RateLimitWindow,
     _SendLog,
     _WindowEstimate,
+    burst_window,
 )
 
 
@@ -149,6 +150,48 @@ def test_send_log_interval_spreads_period_across_limit() -> None:
     assert log.interval == pytest.approx(3.0)
 
 
+def test_burst_window_adds_slack_to_the_period() -> None:
+    """Each send is held for the burst period plus the slack."""
+    assert burst_window(60, 2) == pytest.approx(62)
+    assert burst_window(60, 0) == pytest.approx(60)
+
+
+def test_burst_window_rejects_negative_slack() -> None:
+    """Negative slack would free slots before Metron does, so it's refused."""
+    with pytest.raises(ValueError, match="slack"):
+        burst_window(60, -1)
+    with pytest.raises(ValueError, match="slack"):
+        HeaderPacedRateLimiter(slack=-0.5)
+
+
+def test_slack_holds_sends_past_the_burst_period() -> None:
+    """A send made at the period's edge still waits out the slack, and spacing widens with it."""
+    limiter = HeaderPacedRateLimiter()
+    log = limiter._burst
+    log.limit = 20
+    log.record(100.0)
+    for t in range(1, 20):
+        log.record(100.0 + t)
+
+    # Metron may not have freed the first slot exactly 60s after it was sent.
+    assert log.wait_seconds(now=160.0) == pytest.approx(2.0)
+    assert log.wait_seconds(now=162.0) == 0.0
+    # 62s spread over 20 sends: about 19.4 a minute.
+    assert log.interval == pytest.approx(3.1)
+
+
+def test_on_rate_limited_fallback_ignores_slack() -> None:
+    """A 429 with no Retry-After backs off for the burst period itself, not period plus slack."""
+    limiter = HeaderPacedRateLimiter(burst_period=0.1, slack=5)
+
+    limiter.on_rate_limited(0)
+    start = time.monotonic()
+    limiter.acquire(RateLimitStatus())
+    elapsed = time.monotonic() - start
+
+    assert 0.08 <= elapsed < 1
+
+
 def test_acquire_does_not_block_when_no_state_observed() -> None:
     """Nothing is known yet, so acquire returns immediately."""
     limiter = HeaderPacedRateLimiter()
@@ -165,7 +208,7 @@ def test_acquire_does_not_block_when_no_state_observed() -> None:
 
 def test_acquire_spreads_sends_across_the_burst_window() -> None:
     """Sends are spaced period / limit apart instead of going out back-to-back."""
-    limiter = HeaderPacedRateLimiter(burst_period=0.4)
+    limiter = HeaderPacedRateLimiter(burst_period=0.4, slack=0)
     status = RateLimitStatus(burst=RateLimitWindow(limit=4))
 
     times = []
@@ -180,7 +223,7 @@ def test_acquire_spreads_sends_across_the_burst_window() -> None:
 
 def test_acquire_follows_burst_limit_changes_between_calls() -> None:
     """A burst limit the server lowers mid-run widens the spacing on the next send."""
-    limiter = HeaderPacedRateLimiter(burst_period=0.4)
+    limiter = HeaderPacedRateLimiter(burst_period=0.4, slack=0)
     roomy = RateLimitStatus(burst=RateLimitWindow(limit=100))
     tight = RateLimitStatus(burst=RateLimitWindow(limit=4))
 
@@ -201,7 +244,7 @@ def test_acquire_follows_burst_limit_changes_between_calls() -> None:
 
 def test_acquire_waits_for_send_log_when_limit_drops_below_logged_sends() -> None:
     """When the server lowers the limit, the log holds sends longer than spacing alone would."""
-    limiter = HeaderPacedRateLimiter(burst_period=0.4)
+    limiter = HeaderPacedRateLimiter(burst_period=0.4, slack=0)
     roomy = RateLimitStatus(burst=RateLimitWindow(limit=4))  # 0.1s spacing
     tight = RateLimitStatus(burst=RateLimitWindow(limit=2))  # 0.2s spacing
 
@@ -276,7 +319,7 @@ def test_on_rate_limited_never_shortens_an_existing_backoff() -> None:
 
 def test_on_rate_limited_blocks_already_waiting_callers() -> None:
     """A caller already blocked in acquire is held up by a 429 reported meanwhile."""
-    limiter = HeaderPacedRateLimiter(burst_period=1.0)
+    limiter = HeaderPacedRateLimiter(burst_period=1.0, slack=0)
     status = RateLimitStatus(burst=RateLimitWindow(limit=10))  # 0.1s spacing
     limiter.acquire(status)
     limiter.release(status)
@@ -420,7 +463,7 @@ def test_daily_429_without_retry_after_raises_again_after_the_reset_passes() -> 
 def test_concurrent_acquire_never_exceeds_burst_limit_in_a_period() -> None:
     """Concurrent callers never log more sends in one period than the burst limit allows."""
     period = 0.3
-    limiter = HeaderPacedRateLimiter(burst_period=period)
+    limiter = HeaderPacedRateLimiter(burst_period=period, slack=0)
     status = RateLimitStatus(burst=RateLimitWindow(limit=3))
     sent: list[float] = []
 

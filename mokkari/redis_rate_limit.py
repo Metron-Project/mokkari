@@ -16,7 +16,13 @@ import time
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
-from mokkari.rate_limit import DEFAULT_BURST_PERIOD, RateLimitStatus, daily_limit_error
+from mokkari.rate_limit import (
+    DEFAULT_BURST_PERIOD,
+    DEFAULT_BURST_SLACK,
+    RateLimitStatus,
+    burst_window,
+    daily_limit_error,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -36,7 +42,7 @@ local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 """
 
 # KEYS: send log (sorted set), last send, blocked until, daily estimate (hash), burst limit
-# ARGV: burst period in ms, a member suffix unique to this call
+# ARGV: burst window (period plus slack) in ms, a member suffix unique to this call
 # Returns {0, 0} once a slot is reserved, {0, ms} to wait for the burst window, or
 # {1, ms, daily limit} when the daily window is exhausted for another ms.
 _ACQUIRE: Final[str] = (
@@ -168,11 +174,12 @@ class RedisRateLimiter:
     this limiter they are paced as one.
 
     - The burst (per-minute) window is a shared log of send times, and sends
-      are spaced evenly across it (``burst_period / limit`` apart). The limit is
-      re-read from every response's headers. When a response reports the burst
-      window exhausted, every caller also waits for its reported reset, since
-      Metron times its window from when requests arrive rather than when they
-      were sent.
+      are spaced evenly across it (``(burst_period + slack) / limit`` apart).
+      Each send is held for ``slack`` seconds beyond ``burst_period``, and when
+      a response reports the burst window exhausted every caller also waits for
+      its reported reset, since Metron times its window from when requests
+      arrive rather than when they were sent. The limit is re-read from every
+      response's headers.
     - When Metron rejects a request with a 429, every caller sharing the account
       is blocked for the ``Retry-After`` it sent, or a full burst window if none.
     - The daily window is held from the server-reported ``remaining`` and
@@ -202,6 +209,7 @@ class RedisRateLimiter:
         account: str,
         *,
         burst_period: float = DEFAULT_BURST_PERIOD,
+        slack: float = DEFAULT_BURST_SLACK,
         key_prefix: str = "mokkari:ratelimit",
     ) -> None:
         """Initialize a RedisRateLimiter.
@@ -214,7 +222,12 @@ class RedisRateLimiter:
                 ``account`` share state, so use a distinct value per account.
                 It appears in key names, so don't use the API token itself.
             burst_period: Length in seconds of Metron's burst window.
+            slack: Extra seconds each send is held in the burst window, to
+                cover the time a request takes to reach Metron.
             key_prefix: Prefix for every key this limiter creates.
+
+        Raises:
+            ValueError: If ``slack`` is negative.
         """
         # The braces make a Redis Cluster hash tag, keeping one account's keys on
         # one node, which the scripts need since each touches several keys.
@@ -225,6 +238,7 @@ class RedisRateLimiter:
         self._blocked_key = f"{base}:blocked_until"
         self._daily_key = f"{base}:daily"
         self._period_ms = max(1, round(burst_period * 1000))
+        self._window_ms = max(1, round(burst_window(burst_period, slack) * 1000))
         self._acquire_script = client.register_script(_ACQUIRE)
         self._observe_script = client.register_script(_OBSERVE)
         self._backoff_script = client.register_script(_BACKOFF)
@@ -246,7 +260,7 @@ class RedisRateLimiter:
         ]
         while True:
             code, wait_ms, *rest = self._acquire_script(
-                keys=keys, args=[self._period_ms, uuid4().hex]
+                keys=keys, args=[self._window_ms, uuid4().hex]
             )
             if code == 1:
                 limit = int(rest[0]) if rest and rest[0] else None

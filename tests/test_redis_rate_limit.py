@@ -90,8 +90,8 @@ def test_sends_are_spaced_across_processes(server, waits) -> None:
     with pytest.raises(_BlockedError):
         second.acquire(RateLimitStatus())
 
-    # Two sends per 60s window are spaced 30s apart.
-    assert waits[0] == pytest.approx(30, abs=1)
+    # Two sends per 62s window (60s plus 2s of slack) are spaced 31s apart.
+    assert waits[0] == pytest.approx(31, abs=0.5)
 
 
 def test_other_accounts_are_not_paced_together(server, waits) -> None:
@@ -116,12 +116,32 @@ def test_full_burst_window_blocks_until_oldest_send_ages_out(server, waits) -> N
     with pytest.raises(_BlockedError):
         limiter.acquire(RateLimitStatus())
 
+    # The send is held for the 60s window plus 2s of slack.
+    assert waits[0] == pytest.approx(62, abs=1)
+
+
+def test_slack_is_configurable(server, waits) -> None:
+    """The slack each send is held for beyond the burst period can be tuned or turned off."""
+    client = fakeredis.FakeRedis(server=server)
+    limiter = RedisRateLimiter(client, "user", slack=0)
+    limiter.acquire(_status(burst_limit=1))
+    client.delete(limiter._last_send_key)
+
+    with pytest.raises(_BlockedError):
+        limiter.acquire(RateLimitStatus())
+
     assert waits[0] == pytest.approx(60, abs=1)
+
+
+def test_negative_slack_is_rejected(server) -> None:
+    """Negative slack would free slots before Metron does, so it's refused."""
+    with pytest.raises(ValueError, match="slack"):
+        _limiter(server, slack=-1)
 
 
 def test_acquire_waits_then_sends(server, monkeypatch) -> None:
     """acquire() sleeps for the wait the script reports, then reserves a slot."""
-    limiter = _limiter(server, burst_period=0.05)
+    limiter = _limiter(server, burst_period=0.05, slack=0)
     slept: list[float] = []
     real_sleep = __import__("time").sleep
 
