@@ -11,6 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1634,3 +1635,53 @@ def test_wish_list_remove_item(session: Session) -> None:
         # Assert
         assert result is None
         mock_send_void.assert_called_once_with("DELETE", ["wish_list", "items", 10, "remove"])
+
+
+@pytest.mark.parametrize(
+    ("method", "endpoint", "item", "count_field"),
+    [
+        (
+            "pull_list",
+            "pull_list",
+            {
+                "id": 1,
+                "series_count": 3,
+                "series_url": "https://metron.cloud/api/pull_list/series/",
+            },
+            "series_count",
+        ),
+        (
+            "wish_list",
+            "wish_list",
+            {"id": 1, "item_count": 5, "items_url": "https://metron.cloud/api/wish_list/items/"},
+            "item_count",
+        ),
+    ],
+    ids=["pull_list", "wish_list"],
+)
+def test_user_list_returns_the_only_result(
+    session: Session, method: str, endpoint: str, item: dict[str, Any], count_field: str
+) -> None:
+    """The pull list and wish list are read from a one-item list."""
+    body = {"next": None, "results": [{**item, "modified": "2024-01-01T12:00:00Z"}]}
+    with requests_mock.Mocker() as r:
+        r.get(session.api_url.format(endpoint), json=body)
+        result = getattr(session, method)()
+
+    assert result.id == 1
+    assert getattr(result, count_field) == item[count_field]
+
+
+@pytest.mark.parametrize(
+    ("method", "endpoint"),
+    [("pull_list", "pull_list"), ("wish_list", "wish_list")],
+    ids=["pull_list", "wish_list"],
+)
+def test_user_list_raises_api_error_when_empty(
+    session: Session, method: str, endpoint: str
+) -> None:
+    """An empty list is reported as an ApiError rather than an IndexError."""
+    with requests_mock.Mocker() as r:
+        r.get(session.api_url.format(endpoint), json={"next": None, "results": []})
+        with pytest.raises(exceptions.ApiError, match="Metron returned no"):
+            getattr(session, method)()

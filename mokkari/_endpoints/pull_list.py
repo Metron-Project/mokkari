@@ -12,6 +12,7 @@ __all__ = ["PullListEndpoints"]
 from typing import TYPE_CHECKING
 
 from mokkari.cache import ResourceEndpoint
+from mokkari.exceptions import ApiError
 from mokkari.schemas.pull_list import PullListAddSeries, PullListIssue, PullListRead, PullListSeries
 
 if TYPE_CHECKING:
@@ -37,7 +38,7 @@ class PullListEndpoints(_Base):
             A PullListRead object.
 
         Raises:
-            ApiError: If there's an API error.
+            ApiError: If there's an API error, or Metron returns no pull list.
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
@@ -46,6 +47,10 @@ class PullListEndpoints(_Base):
             >>> print(f"Series: {pl.series_count}")
         """
         results = self._list_resources(ResourceEndpoint.PULL_LIST, None, PullListRead)
+        # Metron lists the user's one pull list, so an empty list is a malformed response.
+        if not results:
+            msg = "Metron returned no pull list"
+            raise ApiError(msg)
         return results[0]
 
     def pull_list_issues(self, params: dict[str, str | int] | None = None) -> list[PullListIssue]:

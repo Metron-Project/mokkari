@@ -12,6 +12,7 @@ __all__ = ["WishListEndpoints"]
 from typing import TYPE_CHECKING
 
 from mokkari.cache import ResourceEndpoint
+from mokkari.exceptions import ApiError
 from mokkari.schemas.wish_list import (
     AcquireWishListItem,
     WishList,
@@ -43,7 +44,7 @@ class WishListEndpoints(_Base):
             A WishList object.
 
         Raises:
-            ApiError: If there's an API error.
+            ApiError: If there's an API error, or Metron returns no wish list.
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
@@ -52,6 +53,10 @@ class WishListEndpoints(_Base):
             >>> print(f"Items: {wl.item_count}")
         """
         results = self._list_resources(ResourceEndpoint.WISH_LIST, None, WishList)
+        # Metron lists the user's one wish list, so an empty list is a malformed response.
+        if not results:
+            msg = "Metron returned no wish list"
+            raise ApiError(msg)
         return results[0]
 
     def wish_list_items(self, params: dict[str, str | int] | None = None) -> list[WishListItemList]:
