@@ -24,6 +24,11 @@ and this project adheres to
   endpoint methods in private mixins. The public API is unchanged, but code that
   patches or calls `Session`'s private methods may need updating.
 
+### Fixed
+
+- `pull_list()` and `wish_list()` raise `ApiError` rather than `IndexError` if
+  Metron returns an empty list.
+
 ## [5.1.0] - 2026-11-10
 
 ### Added
