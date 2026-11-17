@@ -22,9 +22,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # pyright needs the redis extra to check mokkari.redis_rate_limit.
+      # pyright checks the tests too, so it needs the test group, and the redis
+      # extra for mokkari.redis_rate_limit.
       - name: Install project
-        run: uv sync --python 3.13 --no-default-groups --group lint --all-extras
+        run: uv sync --python 3.13 --no-default-groups --group lint --group test --all-extras
       - name: Install npm packages
         run: npm ci
       - name: Lint
