@@ -125,13 +125,17 @@ def test_bad_publisher_validate(talker: Session) -> None:
             talker.publisher(15)
 
 
-@pytest.mark.parametrize("country", ["GB", ""], ids=["two_letters", "empty"])
-def test_publisher_post_accepts_country(country: str) -> None:
-    """A 2-letter country code, or none at all, is accepted."""
-    assert PublisherPost(name="Titan", country=country).country == country
+def test_publisher_post_accepts_country() -> None:
+    """A 2-letter country code is accepted."""
+    assert PublisherPost(name="Titan", country="GB").country == "GB"
 
 
-@pytest.mark.parametrize("country", ["USA", "U"], ids=["too_long", "too_short"])
+def test_publisher_post_country_defaults_to_unset() -> None:
+    """Without a country, none is set, so Metron's own default or stored value applies."""
+    assert PublisherPost(name="Titan").country is None
+
+
+@pytest.mark.parametrize("country", ["USA", "U", ""], ids=["too_long", "too_short", "empty"])
 def test_publisher_post_rejects_country_of_wrong_length(country: str) -> None:
     """A country code that isn't 2 letters is rejected before anything is sent."""
     with pytest.raises(ValidationError, match="Country code must be 2 characters long"):
@@ -151,3 +155,32 @@ def test_publisher_keeps_country_from_metron() -> None:
         }
     )
     assert publisher.country == "GBR"
+
+
+@pytest.mark.parametrize(
+    ("method", "call"),
+    [
+        ("POST", lambda m: m.publisher_post(PublisherPost(name="Titan"))),
+        ("PATCH", lambda m: m.publisher_patch(1, PublisherPost(desc="Updated"))),
+    ],
+    ids=["post", "patch"],
+)
+def test_publisher_write_without_country_leaves_it_out(talker: Session, method: str, call) -> None:
+    """A write that doesn't set a country doesn't send one, so a PATCH can't overwrite it."""
+    url = "https://metron.cloud/api/publisher/" + ("1/" if method == "PATCH" else "")
+    body = {
+        "id": 1,
+        "name": "Titan",
+        "country": "GB",
+        "desc": "Updated",
+        "modified": "2019-06-23T15:13:19.432378-04:00",
+        "resource_url": "https://metron.cloud/publisher/titan/",
+    }
+    with requests_mock.Mocker() as r:
+        r.register_uri(method, url, json=body)
+        call(talker)
+
+    sent = r.last_request.body
+    sent = sent.decode() if isinstance(sent, bytes) else sent
+    assert "Titan" in sent or "Updated" in sent
+    assert "country" not in sent

@@ -22,8 +22,7 @@ COUNTRY_CODE_LENGTH = 2
 def ensure_country_code_length(value: str) -> str:
     """Ensure the country length is correct."""
     # Should verify it's a valid country code, but checking its length should suffice for now.
-    if not value:
-        return value
+    # Metron doesn't accept a blank country either, so an empty string is rejected too.
     if len(value) != COUNTRY_CODE_LENGTH:
         msg = f"Country code must be {COUNTRY_CODE_LENGTH} characters long."
         raise ValueError(msg)
@@ -63,7 +62,9 @@ class PublisherPost(BaseModel):
         name (str, optional): The name of the publisher.
         alt_names (list[str], optional): Alternative names for the publisher.
         founded (int, optional): The year the publisher was founded.
-        country: str: An ISO 3166-1 2-letter country code. Defaults to 'US'.
+        country (str, optional): An ISO 3166-1 2-letter country code. Left out of the
+            request when unset, so a PATCH keeps the publisher's country and a POST gets
+            Metron's default.
         desc (str, optional): The description of the publisher.
         image (str, optional): The image URL of the publisher.
         cv_id (int, optional): The Comic Vine ID of the publisher.
@@ -74,7 +75,7 @@ class PublisherPost(BaseModel):
     alt_names: list[str] | None = None
     founded: int | None = None
     # Checked only here, on input: a Publisher read from Metron keeps whatever it stores.
-    country: Annotated[str, AfterValidator(ensure_country_code_length)] = "US"
+    country: Annotated[str, AfterValidator(ensure_country_code_length)] | None = None
     desc: str | None = None
     image: str | None = None
     cv_id: int | None = None
