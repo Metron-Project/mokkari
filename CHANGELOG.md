@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `RateLimitWindow.from_headers()` and `RateLimitWindow.seconds_until_reset()`,
+  and `RateLimitStatus.merge_headers()` and `RateLimitStatus.exhausted_error()`,
+  for reading Metron's `X-RateLimit-*` headers and checking for an exhausted
+  window outside a `Session`.
+
+### Changed
+
+- The `HEADER_BURST_*` and `HEADER_SUSTAINED_*` header-name constants moved from
+  `mokkari.session` to `mokkari.rate_limit`.
+- `Session`'s internals have been split up: rate-limit header handling now lives
+  in `mokkari.rate_limit`, cache coordination in a private module, and the
+  endpoint methods in private mixins. The public API is unchanged, but code that
+  patches or calls `Session`'s private methods may need updating.
+
 ## [5.1.0] - 2026-11-10
 
 ### Added
