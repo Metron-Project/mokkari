@@ -1158,6 +1158,34 @@ def role_page(next_page: str | None, *names: str) -> dict[str, Any]:
     return {"count": len(names), "next": next_page, "results": results}
 
 
+def test_page_fetched_after_a_write_during_rate_limit_backoff_is_cached(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A write made while a page's retry waits doesn't stop the page then fetched being cached."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+
+    def write_during_backoff(_seconds: float) -> None:
+        m._cache_coordinator.invalidate(["role"])
+
+    with (
+        requests_mock.Mocker() as r,
+        patch("mokkari.session.time.sleep", side_effect=write_during_backoff),
+    ):
+        r.get(ROLE_PAGE1, json=role_page(ROLE_PAGE2, "Writer"))
+        r.get(
+            ROLE_PAGE2,
+            [
+                {"status_code": 429, "headers": {"Retry-After": "1"}},
+                {"json": role_page(None, "Co-Writer")},
+            ],
+        )
+        m.role_list({"name": "writer"})
+
+    keys = [key for (key,) in connection(cache).execute("SELECT key FROM cache")]
+    assert ROLE_PAGE2 in keys
+
+
 @pytest.mark.parametrize("missing", [ROLE_PAGE1, ROLE_PAGE2])
 def test_session_refetches_whole_paginated_list(
     missing: str, dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]

@@ -812,8 +812,7 @@ class _SessionCore:
         next_page = data["next"]
 
         while next_page:
-            invalidations = self._cache_coordinator.invalidation_count(resource)
-            response = self._fetch_page(next_page)
+            response, invalidations = self._fetch_page(next_page, resource)
             results.extend(response["results"])
             self._cache_coordinator.store(
                 next_page, response, resource, "list", invalidations=invalidations
@@ -822,7 +821,7 @@ class _SessionCore:
 
         return {**data, "results": results}
 
-    def _fetch_page(self, url: str) -> dict[str, Any]:
+    def _fetch_page(self, url: str, resource: str) -> tuple[dict[str, Any], int]:
         """Fetch one page of a paginated list, retrying it when Metron rate-limits it.
 
         Only this page is retried, rather than letting the error propagate and restart
@@ -830,9 +829,11 @@ class _SessionCore:
 
         Args:
             url: The page's URL, a previous page's ``next`` link.
+            resource: The resource the page is cached under.
 
         Returns:
-            The page's parsed response.
+            The page's parsed response, and ``resource``'s ``invalidation_count`` from
+            just before the attempt that fetched it, to pass to ``store``.
 
         Raises:
             RateLimitError: If the page is rejected with a 429 more than
@@ -844,8 +845,11 @@ class _SessionCore:
         untimed_retries = 0
         limited_retries = 0
         while True:
+            # Read before every attempt, not once per page: a write made while a retry
+            # waits is from before the page that's then fetched, so it can't be stale.
+            invalidations = self._cache_coordinator.invalidation_count(resource)
             try:
-                return self._request_data("GET", url)
+                return self._request_data("GET", url), invalidations
             except RateLimitError as e:
                 # A rate limiter that refuses the request itself (an exhausted daily window)
                 # is deliberately not waited out here: the caller decides whether to wait.
