@@ -17,7 +17,7 @@ import pytest
 import requests
 import requests_mock
 
-from mokkari import api, exceptions, session, sqlite_cache
+from mokkari import _cache_coordinator, api, exceptions, session, sqlite_cache
 from mokkari.cache import (
     NO_CACHE,
     RESOURCES,
@@ -1358,7 +1358,7 @@ def test_page_read_during_write_not_stored(
     page2 = f"{url}?page=2"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["series_type"])
+        m._cache_coordinator.invalidate(["series_type"])
         return {"count": 2, "next": None, "previous": url, "results": [{"id": 2, "name": "B"}]}
 
     with requests_mock.Mocker() as r:
@@ -1390,7 +1390,7 @@ def test_read_during_write_not_stored_without_invalidate(dummy_api_token: str) -
     url = "https://metron.cloud/api/series_type/"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["series_type"])
+        m._cache_coordinator.invalidate(["series_type"])
         return {"count": 1, "next": None, "previous": None, "results": [{"id": 1, "name": "A"}]}
 
     with requests_mock.Mocker() as r:
@@ -1411,7 +1411,7 @@ def test_read_during_write_store_dropped(
 
     def write_then_store(key: str, value: Any, **kwargs: Any) -> None:
         # The write's invalidation runs before this entry is written, so it misses it.
-        m._invalidate_cache(["series_type"])
+        m._cache_coordinator.invalidate(["series_type"])
         store(key, value, **kwargs)
 
     with (
@@ -1437,7 +1437,7 @@ def test_page_read_during_unrelated_write_stored(
     page2 = f"{url}?page=2"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["collection"])
+        m._cache_coordinator.invalidate(["collection"])
         return {"count": 2, "next": None, "previous": url, "results": [{"id": 2, "name": "B"}]}
 
     with requests_mock.Mocker() as r:
@@ -1464,7 +1464,7 @@ def test_read_during_tagged_write_stored_unless_it_matches(
     url = "https://metron.cloud/api/character/1/"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["character"], tags={"character": frozenset({dropped})})
+        m._cache_coordinator.invalidate(["character"], tags={"character": frozenset({dropped})})
         return {"id": 1}
 
     with requests_mock.Mocker() as r:
@@ -1483,8 +1483,8 @@ def test_read_during_too_many_tagged_writes_not_stored(
     url = "https://metron.cloud/api/character/1/"
 
     def writes_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        for _ in range(session._WRITE_LOG_SIZE + 1):
-            m._invalidate_cache(["character"], tags={"character": frozenset({"id:2"})})
+        for _ in range(_cache_coordinator.WRITE_LOG_SIZE + 1):
+            m._cache_coordinator.invalidate(["character"], tags={"character": frozenset({"id:2"})})
         return {"id": 1}
 
     with requests_mock.Mocker() as r:
@@ -1507,7 +1507,7 @@ def test_read_during_tagged_write_store_dropped_by_its_tags(
     def write_then_store(key: str, value: Any, **kwargs: Any) -> None:
         # The write's invalidation runs before this entry is written, so it misses it.
         if key == url:
-            m._invalidate_cache(["character"], tags={"character": frozenset({"id:1"})})
+            m._cache_coordinator.invalidate(["character"], tags={"character": frozenset({"id:1"})})
         store(key, value, **kwargs)
 
     with (
@@ -2067,7 +2067,7 @@ def test_uncached_resource_not_tagged(
 
     with (
         requests_mock.Mocker() as r,
-        patch.object(session, "entry_tags") as entry_tags_,
+        patch.object(_cache_coordinator, "entry_tags") as entry_tags_,
         patch.object(cache, "store") as store,
     ):
         r.get(url, json={"id": 1})

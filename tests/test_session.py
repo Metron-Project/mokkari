@@ -260,9 +260,9 @@ def test__get_happy_path(  # noqa: PLR0913, PLR0917
 ) -> None:
     # Arrange
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", return_value=resp),
-        patch.object(session, "_save_results_to_cache") as save_cache,
+        patch.object(session._cache_coordinator, "store") as save_cache,
     ):
         # Act
         result = session._get(endpoint, params)
@@ -274,7 +274,7 @@ def test__get_happy_path(  # noqa: PLR0913, PLR0917
 def test__get_returns_cached(session: Session) -> None:
     # Arrange
     cached = {"id": 99, "name": "Cached"}
-    with patch.object(session, "_get_results_from_cache", return_value=cached):
+    with patch.object(session._cache_coordinator, "get", return_value=cached):
         # Act
         result = session._get(["creator", 99])
         # Assert
@@ -2090,9 +2090,9 @@ def test__retrieve_all_results_skips_cache_reads(session: Session) -> None:
     data = {"results": [1], "next": "url2"}
     resp2 = {"results": [2], "next": None}
     with (
-        patch.object(session, "_get_results_from_cache") as cache_get,
+        patch.object(session._cache_coordinator, "get") as cache_get,
         patch.object(session, "_request_data", return_value=resp2),
-        patch.object(session, "_save_results_to_cache") as cache_store,
+        patch.object(session._cache_coordinator, "store") as cache_store,
     ):
         # Act
         out = session._retrieve_all_results(data, "foo")
@@ -2107,9 +2107,9 @@ def test__retrieve_all_results_without_cache(session: Session) -> None:
     data = {"results": [1], "next": "url2"}
     resp2 = {"results": [2], "next": None}
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", return_value=resp2),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
     ):
         # Act
         out = session._retrieve_all_results(data, "foo")
@@ -2124,7 +2124,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_without_retry_after(
     data = {"results": [1], "next": "url2"}
     error = exceptions.RateLimitError("limited", retry_after=0)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2148,9 +2148,9 @@ def test__retrieve_all_results_untimed_retry_count_resets_after_a_page(session: 
     page3 = {"results": [3], "next": None}
     responses = [error, error, error, page2, error, error, error, page3]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
         patch("mokkari.session.time.sleep"),
     ):
         # Act
@@ -2169,9 +2169,9 @@ def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
     attempts = session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 3
     responses = [error] * attempts + [{"results": [2], "next": None}]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
@@ -2188,7 +2188,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_with_retry_after(
     data = {"results": [1], "next": "url2"}
     error = exceptions.RateLimitError("limited", retry_after=5)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2209,9 +2209,9 @@ def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
     error = session_module._ServerRateLimitError("limited", retry_after=5)
     responses = [error, {"results": [2], "next": None}]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses) as request,
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
@@ -2230,7 +2230,7 @@ def test__retrieve_all_results_with_rate_limiter_caps_retries_of_a_non_blocking_
     data = {"results": [1], "next": "url2"}
     error = session_module._ServerRateLimitError("limited", retry_after=5)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2252,9 +2252,9 @@ def test__retrieve_all_results_with_rate_limiter_retry_cap_resets_after_a_page(
     run = [error] * session_module.MAX_RATE_LIMIT_RETRIES
     responses = [*run, {"results": [2], "next": "url3"}, *run, {"results": [3], "next": None}]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
     ):
         # Act
         out = session._retrieve_all_results(data, "foo")
@@ -2270,7 +2270,7 @@ def test__retrieve_all_results_with_rate_limiter_propagates_limiter_refusal(
     data = {"results": [1], "next": "url2"}
     error = exceptions.RateLimitError("daily limit", retry_after=3600)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2439,9 +2439,9 @@ def test__request_data_detail(monkeypatch, session):
     #     session._request_data("GET", "url")
 
 
-def test__get_results_from_cache_none(session: Session) -> None:
+def test_cache_coordinator_get_without_cache(session: Session) -> None:
     # Act
-    out = session._get_results_from_cache("key", "series")
+    out = session._cache_coordinator.get("key", "series")
     # Assert
     assert out is None
 
