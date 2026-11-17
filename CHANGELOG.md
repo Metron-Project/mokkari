@@ -28,6 +28,9 @@ and this project adheres to
 
 - `pull_list()` and `wish_list()` raise `ApiError` rather than `IndexError` if
   Metron returns an empty list.
+- `PublisherPost` now rejects a `country` that isn't a 2-letter code with a
+  `ValidationError`. The check was never applied before. A `Publisher` read from
+  Metron isn't checked.
 
 ## [5.1.0] - 2026-11-10
 
