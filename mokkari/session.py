@@ -506,8 +506,8 @@ class _SessionCore:
         except ValidationError as error:
             raise ApiError(error) from error
 
-    @staticmethod
-    def _validate_list_response(resp: dict[str, Any], item_class: type) -> list[Any]:
+    @classmethod
+    def _validate_list_response(cls, resp: dict[str, Any], item_class: type) -> list[Any]:
         """Validate API response containing a list of items.
 
         This method validates paginated responses that contain a 'results' field
@@ -523,7 +523,7 @@ class _SessionCore:
         Raises:
             ApiError: If validation fails for any item in the list.
         """
-        return _SessionCore._validate_response(resp["results"], list[item_class])
+        return cls._validate_response(resp["results"], list[item_class])
 
     def _send_void(
         self,
