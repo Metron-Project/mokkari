@@ -35,6 +35,9 @@ and this project adheres to
 - A malformed `X-RateLimit-*` response header no longer raises `ValueError` and
   discards a response that has already arrived. A value that won't parse is
   treated as missing, and a fractional reset timestamp is accepted.
+- A 429 whose `Retry-After` is an HTTP date, or won't parse, raises
+  `RateLimitError` rather than `ValueError`. A date is read as the seconds until
+  then, and a malformed value is treated as missing.
 - A `rate_limiter`'s `release()` is passed `None` rather than the previous
   response's status when a response has no `X-RateLimit-*` headers. Before,
   `HeaderPacedRateLimiter` re-applied that older state, such as an exhausted

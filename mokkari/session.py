@@ -16,12 +16,16 @@ import hashlib
 import http.cookiejar
 import json
 import logging
+import math
 import platform
 import threading
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from email.utils import format_datetime as format_http_datetime
+from email.utils import (
+    format_datetime as format_http_datetime,
+    parsedate_to_datetime as parse_http_datetime,
+)
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Self, TypeAlias
@@ -1118,8 +1122,27 @@ class _SessionCore:
 
     @staticmethod
     def _retry_after_seconds(response: requests.Response) -> float:
-        """Return the response's ``Retry-After`` value in seconds, or 0 if it has none."""
-        return float(response.headers.get("Retry-After", 0))
+        """Return the response's ``Retry-After`` in seconds, or 0 if it has none.
+
+        ``Retry-After`` is either a number of seconds or an HTTP date (RFC 9110), and
+        both are accepted. A value that's malformed, already past or not finite is
+        treated as missing rather than raised, since the response has already arrived,
+        so the caller falls back to waiting out a burst window.
+        """
+        value = response.headers.get("Retry-After")
+        if value is None:
+            return 0.0
+        try:
+            seconds = float(value)
+        except ValueError:
+            try:
+                when = parse_http_datetime(value)
+            except (TypeError, ValueError):
+                return 0.0
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=UTC)
+            seconds = (when - datetime.now(UTC)).total_seconds()
+        return seconds if math.isfinite(seconds) and seconds > 0 else 0.0
 
     def _report_rate_limited(self, retry_after: float) -> None:
         """Tell the injected rate limiter, if any, that Metron rejected a request with a 429.

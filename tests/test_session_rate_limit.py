@@ -10,6 +10,7 @@ import datetime as dt
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
+from email.utils import format_datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -632,6 +633,51 @@ def test_rate_limiter_notified_of_429_without_retry_after(
     session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert reported == [0.0]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("12", 12.0),
+        ("0.5", 0.5),
+        ("", 0.0),
+        ("soon", 0.0),
+        ("-5", 0.0),
+        ("nan", 0.0),
+        ("inf", 0.0),
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 0.0),  # already past
+    ],
+    ids=["seconds", "fractional", "empty", "garbage", "negative", "nan", "inf", "past_date"],
+)
+def test_retry_after_seconds(make_response, value: str, expected: float) -> None:
+    """Retry-After is read as seconds, and a malformed or past value as missing (0)."""
+    response = make_response(429, headers={"Retry-After": value})
+
+    assert Session._retry_after_seconds(response) == expected
+
+
+def test_retry_after_seconds_accepts_http_date(make_response) -> None:
+    """Retry-After given as an HTTP date is read as the seconds until then."""
+    when = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=120)
+    response = make_response(429, headers={"Retry-After": format_datetime(when, usegmt=True)})
+
+    assert Session._retry_after_seconds(response) == pytest.approx(120, abs=2)
+
+
+def test_429_with_malformed_retry_after_raises_rate_limit_error(
+    session: Session, monkeypatch, make_response
+) -> None:
+    """A 429 whose Retry-After won't parse still reaches the caller as a RateLimitError."""
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(429, headers={"Retry-After": "later"}),
+    )
+
+    with pytest.raises(exceptions.RateLimitError) as exc_info:
+        session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert exc_info.value.retry_after == 0
 
 
 def test_rate_limiter_not_notified_of_successful_response(
