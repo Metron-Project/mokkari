@@ -218,6 +218,8 @@ omit = [
   ".venv*/*",
   "*__pycache__*",
   "dist/*",
+  # Only imported while type checking, so it never runs.
+  "mokkari/_endpoints/_helpers.py",
   "node_modules/*",
   "test-results/*",
   "typings/*",
