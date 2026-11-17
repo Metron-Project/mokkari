@@ -15,7 +15,6 @@ import logging
 import platform
 import threading
 import time
-from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
@@ -125,6 +124,12 @@ _JSON_CONTENT_TYPE: Final[str] = "application/json;charset=utf-8"
 # A write's request body: one model, or a list of them for a bulk endpoint (e.g. credits).
 # ``list`` is invariant, so its items are ``Any`` to accept e.g. ``list[CreditPost]``.
 _Payload: TypeAlias = BaseModel | list[Any]
+
+
+def _http_date(moment: datetime) -> str:
+    """Format ``moment`` as an HTTP date (RFC 9110), taking a naive datetime as UTC."""
+    moment = moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+    return format_http_datetime(moment, usegmt=True)
 
 
 @functools.cache
@@ -357,10 +362,8 @@ class _SessionCore:
         if params is None:
             params = {}
 
-        cache_params = ""
-        if params:
-            ordered_params = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
-            cache_params = f"?{urlencode(ordered_params)}"
+        # Sorted so the same query gets the same key whatever order its params were given in.
+        cache_params = f"?{urlencode(sorted(params.items()))}" if params else ""
 
         url = self._url(endpoint)
         cache_key = f"{url}{cache_params}"
@@ -595,16 +598,11 @@ class _SessionCore:
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
         if if_modified_since is not None:
-            url = self._url([resource_name, _id])
-            if if_modified_since.tzinfo is None:
-                if_modified_since = if_modified_since.replace(tzinfo=UTC)
-            else:
-                if_modified_since = if_modified_since.astimezone(UTC)
-            header_value = format_http_datetime(if_modified_since, usegmt=True)
-            data = self._fetch_detail(url, header_value)
-            if data is None:
-                return None
-            return self._validate_response(data, response_class)
+            # Conditional requests skip the cache, which can't answer "has it changed?".
+            data = self._request_data(
+                "GET", self._url([resource_name, _id]), if_modified_since=if_modified_since
+            )
+            return None if data is None else self._validate_response(data, response_class)
 
         resp = self._get([resource_name, _id])
         return self._validate_response(resp, response_class)
@@ -796,21 +794,46 @@ class _SessionCore:
                 pagination links.
 
         Raises:
-            RateLimitError: If a page is rejected with a 429 more than
+            RateLimitError: If a page can't be fetched despite retrying (see ``_fetch_page``).
+        """
+        results = list(data["results"])
+        next_page = data["next"]
+
+        while next_page:
+            invalidations = self._cache_coordinator.invalidation_count(resource)
+            response = self._fetch_page(next_page)
+            results.extend(response["results"])
+            self._cache_coordinator.store(
+                next_page, response, resource, "list", invalidations=invalidations
+            )
+            next_page = response["next"]
+
+        return {**data, "results": results}
+
+    def _fetch_page(self, url: str) -> dict[str, Any]:
+        """Fetch one page of a paginated list, retrying it when Metron rate-limits it.
+
+        Only this page is retried, rather than letting the error propagate and restart
+        the entire paginated fetch from page 1.
+
+        Args:
+            url: The page's URL, a previous page's ``next`` link.
+
+        Returns:
+            The page's parsed response.
+
+        Raises:
+            RateLimitError: If the page is rejected with a 429 more than
                 ``MAX_RATE_LIMIT_RETRIES`` times in a row, or more than
                 ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row when it has no
                 ``Retry-After``, or, when a ``rate_limiter`` is set, if the limiter itself
                 refuses a request (its daily window is exhausted).
         """
-        results = list(data["results"])
-        next_page = data["next"]
         untimed_retries = 0
         limited_retries = 0
-
-        while next_page:
-            invalidations = self._cache_coordinator.invalidation_count(resource)
+        while True:
             try:
-                response = self._request_data("GET", next_page)
+                return self._request_data("GET", url)
             except RateLimitError as e:
                 # A rate limiter that refuses the request itself (an exhausted daily window)
                 # is deliberately not waited out here: the caller decides whether to wait.
@@ -824,8 +847,6 @@ class _SessionCore:
                     or limited_retries > MAX_RATE_LIMIT_RETRIES
                 ):
                     raise
-                # Retry only this page rather than letting the error propagate
-                # and restart the entire paginated fetch from page 1.
                 if self.rate_limiter is None:
                     # Floor a missing Retry-After at the burst window, as the limiter does,
                     # so the capped retries are still spaced out rather than back-to-back.
@@ -835,18 +856,6 @@ class _SessionCore:
                 else:
                     # The limiter has already backed off from this 429; acquire() blocks.
                     LOGGER.warning("Rate limit during pagination; retrying page via rate limiter")
-                continue
-
-            untimed_retries = 0
-            limited_retries = 0
-            results.extend(response["results"])
-
-            self._cache_coordinator.store(
-                next_page, response, resource, "list", invalidations=invalidations
-            )
-            next_page = response["next"]
-
-        return {**data, "results": results}
 
     def _prepare_request_payload(
         self, data: _Payload | None
@@ -1122,6 +1131,8 @@ class _SessionCore:
         method: str,
         url: str,
         params: dict[str, str | int] | None = None,
+        *,
+        if_modified_since: datetime | None = None,
     ) -> Any:
         """Send a request without a body and return its parsed JSON response.
 
@@ -1131,51 +1142,26 @@ class _SessionCore:
             method: HTTP method to use (normally "GET").
             url: The complete URL to send the request to.
             params: Optional query parameters to include in the request.
+            if_modified_since: If given, sent as ``If-Modified-Since`` (a naive datetime
+                is taken as UTC), so Metron can answer 304 Not Modified when the data
+                hasn't changed since.
 
         Returns:
-            Any: The parsed JSON response from the API.
+            Any: The parsed JSON response from the API, or ``None`` for a 304 answering
+                ``if_modified_since``.
 
         Raises:
             ApiError: For connection errors, HTTP errors, or invalid JSON responses.
             RateLimitError: When the API rate limit is exceeded (either locally or by the server).
         """
+        headers = self.header
+        if if_modified_since is not None:
+            headers = {**headers, "If-Modified-Since": _http_date(if_modified_since)}
         LOGGER.debug("Request Method: %s | URL: %s | Params: %s", method, url, params)
-        LOGGER.debug("Header: %s", self.header)
-        response = self._execute_http_request(method, url, params=params)
-        return self._handle_http_response(response)
-
-    def _fetch_detail(
-        self,
-        url: str,
-        if_modified_since: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Fetch a detail resource with conditional request support.
-
-        Makes a GET request to the given URL. If ``if_modified_since`` is provided,
-        the ``If-Modified-Since`` header is included in the request to allow the server
-        to return a 304 Not Modified response when the data has not changed.
-
-        Args:
-            url: The complete URL to fetch.
-            if_modified_since: Optional RFC 7231 formatted date string for the
-                ``If-Modified-Since`` header.
-
-        Returns:
-            The parsed response data, or ``None`` when the server returns 304.
-
-        Raises:
-            ApiError: For connection errors, HTTP errors, or invalid JSON responses.
-            RateLimitError: When the API rate limit is exceeded.
-        """
-        header = self.header.copy()
-        if if_modified_since:
-            header["If-Modified-Since"] = if_modified_since
-
-        response = self._execute_http_request("GET", url, headers=header)
-
-        if response.status_code == HTTPStatus.NOT_MODIFIED:
+        LOGGER.debug("Header: %s", headers)
+        response = self._execute_http_request(method, url, params=params, headers=headers)
+        if if_modified_since is not None and response.status_code == HTTPStatus.NOT_MODIFIED:
             return None
-
         return self._handle_http_response(response)
 
 
