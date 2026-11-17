@@ -31,9 +31,13 @@ and this project adheres to
 
 - `pull_list()` and `wish_list()` raise `ApiError` rather than `IndexError` if
   Metron returns an empty list.
-- `PublisherPost` now rejects a `country` that isn't a 2-letter code with a
-  `ValidationError`. The check was never applied before. A `Publisher` read from
-  Metron isn't checked.
+- `PublisherPost` now rejects a `country` that isn't a 2-letter code, including
+  an empty one, with a `ValidationError`. The check was never applied before. A
+  `Publisher` read from Metron isn't checked.
+- `publisher_patch()` no longer resets the publisher's country to `US` when the
+  `PublisherPost` doesn't set one. `PublisherPost.country` now defaults to
+  `None`, so an unset country is left out of the request, and a
+  `publisher_post()` without one gets Metron's default.
 
 ## [5.1.0] - 2026-11-10
 
