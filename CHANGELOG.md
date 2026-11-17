@@ -221,7 +221,8 @@ and this project adheres to
 See the [GitHub releases](https://github.com/Metron-Project/mokkari/releases)
 for versions before 4.0.0.
 
-[Unreleased]: https://github.com/Metron-Project/mokkari/compare/v5.0.0...HEAD
+[Unreleased]: https://github.com/Metron-Project/mokkari/compare/v5.1.0...HEAD
+[5.1.0]: https://github.com/Metron-Project/mokkari/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/Metron-Project/mokkari/compare/v4.9.0...v5.0.0
 [4.10.0]: https://github.com/Metron-Project/mokkari/compare/v4.9.0...v4.10.0
 [4.9.0]: https://github.com/Metron-Project/mokkari/compare/v4.8.0...v4.9.0
