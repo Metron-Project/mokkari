@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -1398,6 +1399,49 @@ def test_read_during_write_not_stored_without_invalidate(dummy_api_token: str) -
         m.series_type_list()
 
     assert cache.data == {}
+
+
+def test_invalidate_does_not_hold_up_stores_while_the_cache_blocks() -> None:
+    """A store isn't held up while the cache's invalidate() waits, e.g. on a locked database."""
+    entered = threading.Event()
+    unblock = threading.Event()
+
+    class BlockingCache(RecordingCache):
+        def __init__(self) -> None:
+            super().__init__()
+            self.stored: list[str] = []
+
+        def store(self, key: str, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+            self.stored.append(key)
+
+        def invalidate(self, resource: str) -> int:
+            entered.set()
+            unblock.wait(10)
+            return super().invalidate(resource)
+
+    cache = BlockingCache()
+    coordinator = _cache_coordinator.CacheCoordinator(cache, "user")  # type: ignore[arg-type]
+    invalidations = coordinator.invalidation_count("series")
+    writer = threading.Thread(target=coordinator.invalidate, args=(["series_type"],))
+    writer.start()
+    try:
+        assert entered.wait(5)
+        reader = threading.Thread(
+            target=coordinator.store,
+            args=("key", {"id": 1}, "series", "detail"),
+            kwargs={"invalidations": invalidations},
+        )
+        reader.start()
+        reader.join(2)
+        assert not reader.is_alive()
+        assert cache.stored == ["key"]
+        # The invalidation was counted before the cache call, so a read of it in flight
+        # is already discarded.
+        assert coordinator.invalidation_count("series_type") == 1
+    finally:
+        unblock.set()
+        writer.join(5)
+    assert cache.invalidated == ["series_type"]
 
 
 def test_read_during_write_store_dropped(

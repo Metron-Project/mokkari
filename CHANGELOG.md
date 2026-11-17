@@ -41,6 +41,8 @@ and this project adheres to
   burst window, as if this response had just reported it.
 - A write that a `rate_limiter` stops before it's sent, because the limiter is
   missing `acquire()` or `acquire()` raises, no longer drops cached entries.
+- A write's cache invalidation no longer holds up other threads' reads while the
+  cache waits, e.g. on a `SqliteCache` database another process has locked.
 - `pull_list()` and `wish_list()` raise `ApiError` rather than `IndexError` if
   Metron returns an empty list.
 - `PublisherPost` now rejects a `country` that isn't a 2-letter code, including

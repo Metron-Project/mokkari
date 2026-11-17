@@ -283,15 +283,23 @@ class CacheCoordinator:
             tags: For some of ``resources``, the tags of the only entries to drop, if the
                 cache has ``invalidate_tags``. Every entry of the rest is dropped.
         """
+        dropped = [
+            (resource, tags[resource] if tags is not None and resource in tags else None)
+            for resource in resources
+        ]
+        # Counting the invalidations under the lock is what stops a read in flight from
+        # being stored. The cache itself is invalidated after the lock is released, as in
+        # store(), so one waiting on a locked database doesn't hold up every other thread:
+        # a read stored meanwhile is dropped again by store()'s own check, or by this.
         with self._lock:
-            for resource in resources:
+            for resource, resource_tags in dropped:
                 self._invalidations[resource] += 1
-                if tags is not None and resource in tags:
-                    self._invalidated_tags[resource].append(tags[resource])
-                    self._invalidate_tags(resource, tags[resource])
-                else:
-                    self._invalidated_tags[resource].append(None)
-                    self._invalidate_resource(resource)
+                self._invalidated_tags[resource].append(resource_tags)
+        for resource, resource_tags in dropped:
+            if resource_tags is None:
+                self._invalidate_resource(resource)
+            else:
+                self._invalidate_tags(resource, resource_tags)
 
     def _invalidate_tags(self, resource: str, tags: frozenset[str]) -> None:
         """Call the cache's ``invalidate_tags``, or ``invalidate`` if it hasn't got one.
