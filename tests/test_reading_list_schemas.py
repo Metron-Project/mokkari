@@ -101,11 +101,11 @@ def test_user_creation(user_data):
 def test_user_validation_missing_required_fields():
     """Test User validation with missing required fields."""
     with pytest.raises(ValidationError) as exc_info:
-        User(id=1)  # Missing username
+        User.model_validate({"id": 1})  # Missing username
     assert "username" in str(exc_info.value)
 
     with pytest.raises(ValidationError) as exc_info:
-        User(username="testuser")  # Missing id
+        User.model_validate({"username": "testuser"})  # Missing id
     assert "id" in str(exc_info.value)
 
 
@@ -168,11 +168,13 @@ def test_reading_list_issue_creation_minimal(basic_series_data):
 def test_reading_list_issue_validation_missing_fields(basic_series_data):
     """Test ReadingListIssue validation with missing required fields."""
     with pytest.raises(ValidationError):
-        ReadingListIssue(
-            id=1,
-            series=basic_series_data,
-            number="1",
-            modified="2023-01-01T12:00:00Z",
+        ReadingListIssue.model_validate(
+            {
+                "id": 1,
+                "series": basic_series_data,
+                "number": "1",
+                "modified": "2023-01-01T12:00:00Z",
+            }
         )  # Missing cover_date
 
 
@@ -197,14 +199,16 @@ def test_reading_list_item_creation_minimal(reading_list_issue_data):
 def test_reading_list_item_validation_missing_issue():
     """Test ReadingListItem validation with missing issue."""
     with pytest.raises(ValidationError) as exc_info:
-        ReadingListItem(id=1, issue_type="issue")  # Missing issue
+        ReadingListItem.model_validate({"id": 1, "issue_type": "issue"})  # Missing issue
     assert "issue" in str(exc_info.value)
 
 
 def test_reading_list_item_validation_missing_issue_type(reading_list_issue_data):
     """Test ReadingListItem validation with missing issue_type."""
     with pytest.raises(ValidationError) as exc_info:
-        ReadingListItem(id=1, issue=reading_list_issue_data)  # Missing issue_type
+        ReadingListItem.model_validate(
+            {"id": 1, "issue": reading_list_issue_data}
+        )  # Missing issue_type
     assert "issue_type" in str(exc_info.value)
 
 
@@ -265,7 +269,7 @@ def test_reading_list_list_creation_minimal(user_data):
 def test_reading_list_list_validation_missing_fields():
     """Test ReadingListList validation with missing required fields."""
     with pytest.raises(ValidationError) as exc_info:
-        ReadingListList(id=1, name="Test")  # Missing slug, user, modified
+        ReadingListList.model_validate({"id": 1, "name": "Test"})  # Missing slug, user, modified
     error_str = str(exc_info.value)
     assert "slug" in error_str
     assert "user" in error_str
@@ -335,7 +339,9 @@ def test_reading_list_read_creation_minimal(user_data):
 def test_reading_list_read_validation_missing_fields():
     """Test ReadingListRead validation with missing required fields."""
     with pytest.raises(ValidationError) as exc_info:
-        ReadingListRead(id=1, name="Test")  # Missing multiple required fields
+        ReadingListRead.model_validate(
+            {"id": 1, "name": "Test"}
+        )  # Missing multiple required fields
     error_str = str(exc_info.value)
     assert "user" in error_str
     assert "slug" in error_str
@@ -471,6 +477,7 @@ def test_reading_list_with_different_attribution_sources(user_data):
             "modified": "2023-01-01T12:00:00Z",
         }
         reading_list = ReadingListList(**data)
+        assert reading_list.attribution_source is not None
         assert reading_list.attribution_source.value == source
 
 

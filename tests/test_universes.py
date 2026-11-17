@@ -15,14 +15,16 @@ from mokkari.session import Session
 
 def test_known_universe() -> None:
     """Test for a known universe object."""
-    dceased = Universe(
-        id=83,
-        name="DCeased",
-        designation="Earth 55",
-        desc="A DC universe ravaged by a techno-virus.",
-        publisher={"id": 2, "name": "DC Comics"},
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/universe/dceased/",
+    dceased = Universe.model_validate(
+        {
+            "id": 83,
+            "name": "DCeased",
+            "designation": "Earth 55",
+            "desc": "A DC universe ravaged by a techno-virus.",
+            "publisher": {"id": 2, "name": "DC Comics"},
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/universe/dceased/",
+        }
     )
     assert isinstance(dceased, Universe)
     assert dceased.name == "DCeased"

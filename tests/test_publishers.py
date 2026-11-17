@@ -16,15 +16,17 @@ from mokkari.session import Session
 
 def test_known_publishers() -> None:
     """Test for a known publisher."""
-    marvel = Publisher(
-        id=1,
-        name="Marvel",
-        founded=1939,
-        country="US",
-        desc="Marvel Comics.",
-        image="https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg",
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/publisher/marvel/",
+    marvel = Publisher.model_validate(
+        {
+            "id": 1,
+            "name": "Marvel",
+            "founded": 1939,
+            "country": "US",
+            "desc": "Marvel Comics.",
+            "image": "https://static.metron.cloud/media/publisher/2018/11/11/marvel.jpg",
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/publisher/marvel/",
+        }
     )
     assert marvel.name == "Marvel"
     assert (
@@ -38,27 +40,31 @@ def test_known_publishers() -> None:
 
 def test_publisher_with_alt_names() -> None:
     """Test publisher with alternative names."""
-    publisher = Publisher(
-        id=2,
-        name="Bongo Comics",
-        country="US",
-        desc="Bongo Comics.",
-        alt_names=["Bongo Comics Group"],
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/publisher/bongo-comics/",
+    publisher = Publisher.model_validate(
+        {
+            "id": 2,
+            "name": "Bongo Comics",
+            "country": "US",
+            "desc": "Bongo Comics.",
+            "alt_names": ["Bongo Comics Group"],
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/publisher/bongo-comics/",
+        }
     )
     assert publisher.alt_names == ["Bongo Comics Group"]
 
 
 def test_publisher_without_alt_names() -> None:
     """Test that alt_names defaults to an empty list when absent."""
-    marvel = Publisher(
-        id=1,
-        name="Marvel",
-        country="US",
-        desc="Marvel Comics.",
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/publisher/marvel/",
+    marvel = Publisher.model_validate(
+        {
+            "id": 1,
+            "name": "Marvel",
+            "country": "US",
+            "desc": "Marvel Comics.",
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/publisher/marvel/",
+        }
     )
     assert marvel.alt_names == []
 
@@ -134,12 +140,14 @@ def test_publisher_post_rejects_country_of_wrong_length(country: str) -> None:
 
 def test_publisher_keeps_country_from_metron() -> None:
     """A publisher read from Metron isn't rejected for an unexpected country value."""
-    publisher = Publisher(
-        id=1,
-        name="Titan",
-        country="GBR",
-        desc="",
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/publisher/titan/",
+    publisher = Publisher.model_validate(
+        {
+            "id": 1,
+            "name": "Titan",
+            "country": "GBR",
+            "desc": "",
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/publisher/titan/",
+        }
     )
     assert publisher.country == "GBR"

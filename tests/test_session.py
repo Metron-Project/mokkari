@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 import requests_mock
+from requests.adapters import DEFAULT_POOLSIZE, HTTPAdapter
 from requests.exceptions import ConnectionError as ConnError, TooManyRedirects
 
 import mokkari.session as session_module
@@ -54,7 +55,7 @@ def dummy_cache():
         def get(self, key):
             return self._store.get(key)
 
-        def store(self, key, value, *, resource, kind):  # noqa: ARG002
+        def store(self, key, value, *, resource, kind):
             self._store[key] = value
 
     return DummyCache()
@@ -125,10 +126,12 @@ def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> 
 @pytest.mark.parametrize("url", ["https://test.com/api/", "http://127.0.0.1:8000/api/"])
 def test_http_session_pool_fits_concurrent_threads(session: Session, url: str) -> None:
     """Test that the pool holds enough connections that threads sharing a Session reuse them."""
-    pool_kw = session._http.get_adapter(url).poolmanager.connection_pool_kw
+    adapter = session._http.get_adapter(url)
+    assert isinstance(adapter, HTTPAdapter)
+    pool_kw = adapter.poolmanager.connection_pool_kw
 
     assert pool_kw["maxsize"] == session_module.HTTP_POOL_MAXSIZE
-    assert session_module.HTTP_POOL_MAXSIZE > requests.adapters.DEFAULT_POOLSIZE
+    assert session_module.HTTP_POOL_MAXSIZE > DEFAULT_POOLSIZE
 
 
 def test_http_session_drops_cookies(session: Session) -> None:
@@ -213,7 +216,7 @@ def test_session_usable_after_close(session: Session) -> None:
 def test__get_happy_path(  # noqa: PLR0913, PLR0917
     session: Session,
     endpoint: list[str | int],
-    params: dict[str, str] | None,
+    params: dict[str, str | int] | None,
     resp: dict[str, str | int],
     expected: dict[str, str | int],
     case_id: str,
@@ -261,13 +264,13 @@ def test__get_raises_api_error_on_detail(session: Session) -> None:
 def test__send(  # noqa: PLR0913, PLR0917
     session: Session,
     method: str,
-    endpoint: list[str],
+    endpoint: list[str | int],
     data: CreatorPost,
     resp: dict[str, int],
     case_id: str,
 ) -> None:
     # Arrange
-    url = session.api_url.format("/".join(endpoint))
+    url = session._url(endpoint)
     with requests_mock.Mocker() as r:
         r.register_uri(method, url, json=resp)
         # Act
@@ -696,6 +699,7 @@ def test__prepare_request_payload_json_excludes_none_fields(session: Session) ->
     data = SeriesPost(gcd_id=12345)
     _, files, data_dict = session._prepare_request_payload(data)
     assert files is None
+    assert isinstance(data_dict, str)
     parsed = json.loads(data_dict)
     assert parsed == {"gcd_id": 12345}
 
@@ -710,6 +714,7 @@ def test__prepare_request_payload_partial_series_patch_only_sends_set_field(
     """
     data = SeriesPost(gcd_id=99)
     _, _, data_dict = session._prepare_request_payload(data)
+    assert isinstance(data_dict, str)
     parsed = json.loads(data_dict)
     assert parsed == {"gcd_id": 99}
 
@@ -718,6 +723,7 @@ def test__prepare_request_payload_all_set_fields_are_included(session: Session) 
     """Fields that are explicitly set must be present in the JSON body."""
     data = SeriesPost(name="Batman", sort_name="Batman", volume=1, year_began=1940, gcd_id=7)
     _, _, data_dict = session._prepare_request_payload(data)
+    assert isinstance(data_dict, str)
     parsed = json.loads(data_dict)
     assert parsed["name"] == "Batman"
     assert parsed["sort_name"] == "Batman"
@@ -978,6 +984,9 @@ def test_execute_http_request_dispatches_to_rate_limiter_when_set(
     calls = []
 
     class FakeLimiter:
+        def on_rate_limited(self, retry_after):
+            pass
+
         def acquire(self, status):
             calls.append(("acquire", status))
 
@@ -1032,6 +1041,9 @@ def test_rate_limiter_release_called_with_none_on_connection_error(
     calls = []
 
     class FakeLimiter:
+        def on_rate_limited(self, retry_after):
+            pass
+
         def acquire(self, status):
             calls.append(("acquire", status))
 
@@ -1059,6 +1071,9 @@ def test_rate_limiter_release_called_on_unhandled_request_exception(
     calls = []
 
     class FakeLimiter:
+        def on_rate_limited(self, retry_after):
+            pass
+
         def acquire(self, status):
             calls.append(("acquire", status))
 
@@ -1088,6 +1103,9 @@ def test_rate_limiter_release_called_when_status_update_raises(
     calls = []
 
     class FakeLimiter:
+        def on_rate_limited(self, retry_after):
+            pass
+
         def acquire(self, status):
             calls.append(("acquire", status))
 
@@ -1113,12 +1131,15 @@ def test_rate_limiter_not_released_when_acquire_fails(session: Session, monkeypa
     calls = []
 
     class FakeLimiter:
-        def acquire(self, _status):
+        def on_rate_limited(self, retry_after):
+            pass
+
+        def acquire(self, status):
             calls.append("acquire")
             msg = "no capacity"
             raise RuntimeError(msg)
 
-        def release(self, _status):
+        def release(self, status):
             calls.append("release")
 
     session.rate_limiter = FakeLimiter()
@@ -1140,7 +1161,7 @@ def test_rate_limiter_missing_acquire_raises_rate_limiter_error(
         def release(self, status):
             pass
 
-    session.rate_limiter = NoAcquire()
+    session.rate_limiter = NoAcquire()  # pyright: ignore[reportAttributeAccessIssue]  (deliberately lacks acquire)
 
     monkeypatch.setattr(session._http, "request", lambda *a, **k: MagicMock())
 
@@ -1159,7 +1180,7 @@ def test_rate_limiter_missing_release_raises_rate_limiter_error(
         def acquire(self, status):
             pass
 
-    session.rate_limiter = NoRelease()
+    session.rate_limiter = NoRelease()  # pyright: ignore[reportAttributeAccessIssue]  (deliberately lacks release)
 
     monkeypatch.setattr(
         session._http, "request", lambda *a, **k: make_response(json_body={"id": 1})
@@ -1268,13 +1289,13 @@ def test_rate_limiter_notified_of_429_before_release(
     calls = []
 
     class FakeLimiter:
-        def acquire(self, _status):
+        def acquire(self, status):
             calls.append(("acquire",))
 
         def on_rate_limited(self, retry_after):
             calls.append(("on_rate_limited", retry_after))
 
-        def release(self, _status):
+        def release(self, status):
             calls.append(("release",))
 
     session.rate_limiter = FakeLimiter()
@@ -1295,13 +1316,13 @@ def test_rate_limiter_notified_of_429_without_retry_after(
     reported = []
 
     class FakeLimiter:
-        def acquire(self, _status):
+        def acquire(self, status):
             pass
 
         def on_rate_limited(self, retry_after):
             reported.append(retry_after)
 
-        def release(self, _status):
+        def release(self, status):
             pass
 
     session.rate_limiter = FakeLimiter()
@@ -1320,13 +1341,13 @@ def test_rate_limiter_not_notified_of_successful_response(
     reported = []
 
     class FakeLimiter:
-        def acquire(self, _status):
+        def acquire(self, status):
             pass
 
         def on_rate_limited(self, retry_after):
             reported.append(retry_after)
 
-        def release(self, _status):
+        def release(self, status):
             pass
 
     session.rate_limiter = FakeLimiter()
@@ -1347,13 +1368,13 @@ def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
     calls = []
 
     class NoHook:
-        def acquire(self, _status):
+        def acquire(self, status):
             pass
 
-        def release(self, _status):
+        def release(self, status):
             calls.append("release")
 
-    session.rate_limiter = NoHook()
+    session.rate_limiter = NoHook()  # pyright: ignore[reportAttributeAccessIssue]  (deliberately lacks on_rate_limited)
 
     monkeypatch.setattr(
         session._http, "request", lambda *a, **k: make_response(429, headers={"Retry-After": "1"})
@@ -1371,10 +1392,14 @@ def test_rate_limiter_internal_attribute_error_is_not_misreported(
     """An AttributeError raised inside acquire() propagates as-is, not as RateLimiterError."""
 
     class Buggy:
-        def acquire(self, _status):
-            return None.missing
+        def on_rate_limited(self, retry_after):
+            pass
 
-        def release(self, _status):
+        def acquire(self, status):
+            msg = "missing"
+            raise AttributeError(msg)
+
+        def release(self, status):
             pass
 
     session.rate_limiter = Buggy()
@@ -1392,10 +1417,13 @@ def test_rate_limiter_release_failure_does_not_discard_response(
     """An exception from release() is logged and the successful response still returned."""
 
     class FailingRelease:
-        def acquire(self, _status):
+        def on_rate_limited(self, retry_after):
             pass
 
-        def release(self, _status):
+        def acquire(self, status):
+            pass
+
+        def release(self, status):
             msg = "backing store unreachable"
             raise ConnectionError(msg)
 
@@ -1417,14 +1445,14 @@ def test_rate_limiter_on_rate_limited_failure_still_releases(
     calls = []
 
     class FailingHook:
-        def acquire(self, _status):
+        def acquire(self, status):
             pass
 
-        def on_rate_limited(self, _retry_after):
+        def on_rate_limited(self, retry_after):
             msg = "backing store unreachable"
             raise ConnectionError(msg)
 
-        def release(self, _status):
+        def release(self, status):
             calls.append("release")
 
     session.rate_limiter = FailingHook()

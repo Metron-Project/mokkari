@@ -319,7 +319,9 @@ def test_daily_estimate_is_only_tightened(server) -> None:
     limiter.release(_status(daily_remaining=5, daily_reset_in=3600))
     limiter.release(_status(daily_remaining=10, daily_reset_in=3600))
 
-    assert int(client.hget(limiter._daily_key, "remaining")) == 5
+    remaining = client.hget(limiter._daily_key, "remaining")
+    assert remaining is not None
+    assert int(remaining) == 5
 
 
 def test_daily_estimate_ignores_a_window_that_has_reset(server) -> None:

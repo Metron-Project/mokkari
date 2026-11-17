@@ -326,7 +326,7 @@ def test_no_cache_ttl_is_not_stored(
 )
 def test_ttl_resolution_order(
     resource: str,
-    kind: str,
+    kind: CacheKind,
     expected: timedelta | None,
     make_cache: Callable[..., sqlite_cache.SqliteCache],
 ) -> None:
@@ -1082,8 +1082,8 @@ def test_session_caches_detail(
 
     with requests_mock.Mocker() as r:
         r.get(url, json=body)
-        assert m.universe(1).name == "Earth 2"
-        assert m.universe(1).name == "Earth 2"
+        assert universe_name(m) == "Earth 2"
+        assert universe_name(m) == "Earth 2"
         assert r.call_count == 1
 
     row = (
@@ -1311,11 +1311,11 @@ def test_session_write_invalidates_cache(
 
     with requests_mock.Mocker() as r:
         r.get(url, json=body)
-        assert m.universe(1).name == "Earth 2"
+        assert universe_name(m) == "Earth 2"
         r.patch(url, json=patched)
         m.universe_patch(1, UniversePost(name="Earth Two"))
         r.get(url, json={**body, "name": "Earth Two"})
-        assert m.universe(1).name == "Earth Two"
+        assert universe_name(m) == "Earth Two"
         assert r.call_count == 3
 
 
@@ -1343,9 +1343,9 @@ def test_read_during_write_not_stored(
     with requests_mock.Mocker() as r:
         r.patch(url, json={**body, "name": "Earth Two", "publisher": 1})
         r.get(url, json=write_then_answer)
-        assert m.universe(1).name == "Earth 2"
+        assert universe_name(m) == "Earth 2"
         r.get(url, json={**body, "name": "Earth Two"})
-        assert m.universe(1).name == "Earth Two"
+        assert universe_name(m) == "Earth Two"
 
 
 def test_page_read_during_write_not_stored(
@@ -1818,11 +1818,23 @@ def refetched(m: session.Session, matchers: dict[str, Any]) -> set[str]:
     return {path for path, matcher in matchers.items() if matcher.called}
 
 
+def universe_name(m: session.Session) -> str:
+    """Return the name of universe 1, read through ``m``."""
+    universe = m.universe(1)
+    assert universe is not None
+    return universe.name
+
+
 def read_path(m: session.Session, path: str) -> None:
     """Read ``path`` through Session, as a detail or a list."""
     base, _, query = path.partition("?")
     segments: list[str | int] = [s for s in base.split("/") if s]
-    params = dict(pair.split("=") for pair in query.split("&")) if query else None
+    params: dict[str, str | int] | None = None
+    if query:
+        params = {}
+        for pair in query.split("&"):
+            key, _, value = pair.partition("=")
+            params[key] = value
     if len(segments) == 2:
         m._get(segments, params)
     else:

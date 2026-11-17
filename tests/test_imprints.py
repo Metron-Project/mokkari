@@ -15,15 +15,17 @@ from mokkari.session import Session
 
 def test_known_imprints() -> None:
     """Test for a known imprint."""
-    vertigo = Imprint(
-        id=1,
-        name="Vertigo Comics",
-        founded=1993,
-        desc="DC Comics mature-readers imprint.",
-        image="https://static.metron.cloud/media/imprint/2024/08/12/vertigo.jpg",
-        publisher={"id": 2, "name": "DC Comics"},
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/imprint/vertigo-comics/",
+    vertigo = Imprint.model_validate(
+        {
+            "id": 1,
+            "name": "Vertigo Comics",
+            "founded": 1993,
+            "desc": "DC Comics mature-readers imprint.",
+            "image": "https://static.metron.cloud/media/imprint/2024/08/12/vertigo.jpg",
+            "publisher": {"id": 2, "name": "DC Comics"},
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/imprint/vertigo-comics/",
+        }
     )
     assert vertigo.name == "Vertigo Comics"
     assert (

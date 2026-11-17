@@ -16,16 +16,18 @@ from mokkari.session import Session
 
 def test_no_alias() -> None:
     """Test for no alias attribute."""
-    character = Character(
-        id=23843,
-        name="4-D Man",
-        alias=[],
-        desc="An alien from the 4th Dimension.",
-        creators=[],
-        teams=[],
-        cv_id=137999,
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/character/4-d-man/",
+    character = Character.model_validate(
+        {
+            "id": 23843,
+            "name": "4-D Man",
+            "alias": [],
+            "desc": "An alien from the 4th Dimension.",
+            "creators": [],
+            "teams": [],
+            "cv_id": 137999,
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/character/4-d-man/",
+        }
     )
     assert isinstance(character, Character)
     assert character.name == "4-D Man"
@@ -38,25 +40,27 @@ def test_no_alias() -> None:
 
 def test_known_character() -> None:
     """Test for a known character."""
-    black_bolt = Character(
-        id=1,
-        name="Black Bolt",
-        desc="King of the Inhumans.",
-        image="https://static.metron.cloud/media/character/2018/11/11/black-bolt.jpg",
-        creators=[
-            {"id": 1, "name": "Stan Lee", "modified": "2019-06-23T15:13:19.432378-04:00"},
-            {"id": 2, "name": "Jack Kirby", "modified": "2019-06-23T15:13:19.432378-04:00"},
-        ],
-        teams=[
-            {"id": 1, "name": "Inhumans", "modified": "2019-06-23T15:13:19.432378-04:00"},
-            {"id": 2, "name": "Illuminati", "modified": "2019-06-23T15:13:19.432378-04:00"},
-            {"id": 3, "name": "Avengers", "modified": "2019-06-23T15:13:19.432378-04:00"},
-        ],
-        universes=[
-            {"id": 1, "name": "Earth 616", "modified": "2019-06-23T15:13:19.432378-04:00"},
-        ],
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/character/black-bolt/",
+    black_bolt = Character.model_validate(
+        {
+            "id": 1,
+            "name": "Black Bolt",
+            "desc": "King of the Inhumans.",
+            "image": "https://static.metron.cloud/media/character/2018/11/11/black-bolt.jpg",
+            "creators": [
+                {"id": 1, "name": "Stan Lee", "modified": "2019-06-23T15:13:19.432378-04:00"},
+                {"id": 2, "name": "Jack Kirby", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            ],
+            "teams": [
+                {"id": 1, "name": "Inhumans", "modified": "2019-06-23T15:13:19.432378-04:00"},
+                {"id": 2, "name": "Illuminati", "modified": "2019-06-23T15:13:19.432378-04:00"},
+                {"id": 3, "name": "Avengers", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            ],
+            "universes": [
+                {"id": 1, "name": "Earth 616", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            ],
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/character/black-bolt/",
+        }
     )
     assert black_bolt.name == "Black Bolt"
     assert (
