@@ -7,6 +7,10 @@ This module provides the following classes:
 
 __all__ = ["Session"]
 
+# The HEADER_* constants imported from mokkari.rate_limit below lived here until the
+# rate-limit header handling moved there, so they stay importable from here through 5.x.
+# New code should import them from mokkari.rate_limit.
+
 import functools
 import hashlib
 import http.cookiejar
@@ -39,7 +43,17 @@ from mokkari._endpoints import (
 from mokkari._version import __version__
 from mokkari.cache import Cache, CacheKind, ResourceEndpoint, create_tags, update_tags
 from mokkari.exceptions import ApiError, AuthenticationError, RateLimiterError, RateLimitError
-from mokkari.rate_limit import DEFAULT_BURST_PERIOD, RateLimiter, RateLimitStatus
+from mokkari.rate_limit import (
+    DEFAULT_BURST_PERIOD,
+    HEADER_BURST_LIMIT,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_BURST_REMAINING,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_BURST_RESET,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_SUSTAINED_LIMIT,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_SUSTAINED_REMAINING,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_SUSTAINED_RESET,  # noqa: F401 (re-exported, see the note under __all__)
+    RateLimiter,
+    RateLimitStatus,
+)
 from mokkari.schemas.issue import (
     BaseIssue,
 )

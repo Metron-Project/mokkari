@@ -42,11 +42,19 @@ if TYPE_CHECKING:
 __all__ = [
     "DEFAULT_BURST_PERIOD",
     "DEFAULT_BURST_SLACK",
+    "HEADER_BURST_LIMIT",
+    "HEADER_BURST_REMAINING",
+    "HEADER_BURST_RESET",
+    "HEADER_SUSTAINED_LIMIT",
+    "HEADER_SUSTAINED_REMAINING",
+    "HEADER_SUSTAINED_RESET",
     "HeaderPacedRateLimiter",
     "RateLimitStatus",
     "RateLimitWindow",
     "RateLimiter",
     "burst_window",
+    "daily_limit_error",
+    "limit_error",
 ]
 
 # Length in seconds of Metron's burst (per-minute) window.

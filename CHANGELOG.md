@@ -17,8 +17,9 @@ and this project adheres to
 
 ### Changed
 
-- The `HEADER_BURST_*` and `HEADER_SUSTAINED_*` header-name constants moved from
-  `mokkari.session` to `mokkari.rate_limit`.
+- The `HEADER_BURST_*` and `HEADER_SUSTAINED_*` header-name constants are now
+  exported from `mokkari.rate_limit`, along with `limit_error()` and
+  `daily_limit_error()`. They can still be imported from `mokkari.session`.
 - `Session`'s internals have been split up: rate-limit header handling now lives
   in `mokkari.rate_limit`, cache coordination in a private module, and the
   endpoint methods in private mixins. The public API is unchanged, but code that
