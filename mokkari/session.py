@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Final, Self, TypeAlias
+from typing import TYPE_CHECKING, Any, Final, Self, TypeAlias
 from urllib.parse import urlencode
 
 import requests
@@ -30,47 +30,20 @@ from requests.auth import AuthBase
 
 from mokkari import __version__, exceptions, rate_limit, utils
 from mokkari._cache_coordinator import CacheCoordinator
-from mokkari.cache import Cache, CacheKind, ResourceEndpoint, create_tags, update_tags
-from mokkari.schemas.arc import Arc, ArcPost
-from mokkari.schemas.base import BaseResource
-from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
-from mokkari.schemas.collection import (
-    CollectionAddItem,
-    CollectionList,
-    CollectionRead,
-    CollectionStats,
-    CollectionUpdate,
-    CollectionUpdateResponse,
-    MissingIssue,
-    MissingSeries,
-    ScrobbleRequest,
-    ScrobbleResponse,
+from mokkari._endpoints import (
+    CatalogEndpoints,
+    CollectionEndpoints,
+    PullListEndpoints,
+    ReadingListEndpoints,
+    WishListEndpoints,
 )
-from mokkari.schemas.creator import Creator, CreatorPost
-from mokkari.schemas.generic import GenericItem
-from mokkari.schemas.imprint import Imprint
+from mokkari.cache import Cache, CacheKind, ResourceEndpoint, create_tags, update_tags
 from mokkari.schemas.issue import (
     BaseIssue,
-    CreditPost,
-    CreditPostResponse,
-    Issue,
-    IssuePost,
-    IssuePostResponse,
 )
-from mokkari.schemas.publisher import Publisher, PublisherPost
-from mokkari.schemas.pull_list import PullListAddSeries, PullListIssue, PullListRead, PullListSeries
-from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
-from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
-from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
-from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
-from mokkari.schemas.variant import VariantPost, VariantPostResponse
-from mokkari.schemas.wish_list import (
-    AcquireWishListItem,
-    WishList,
-    WishListAddItem,
-    WishListItemList,
-    WishListItemRead,
-)
+
+if TYPE_CHECKING:
+    from mokkari._endpoints._helpers import EndpointHelpers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -187,159 +160,11 @@ def _multipart_payload(
     return files, form
 
 
-class Session:
-    """A comprehensive API client for interacting with the Metron Comics Database.
+class _SessionCore:
+    """The transport, rate limiting, caching and validation every endpoint shares.
 
-    The Session class provides a complete interface for accessing comic book data including
-    creators, characters, publishers, series, issues, teams, arcs, and more. It handles
-    authentication, rate limiting, caching, and response validation automatically.
-
-    Metron enforces two rate-limit windows:
-
-    - A burst limit of at least 20 requests per minute for every user. The server
-      raises it above that floor when load allows, so read it from the headers.
-    - A sustained daily limit that starts at 5,000 requests, and is raised for
-      OpenCollective donors (up to 25,000/day for the highest tier). Because
-      this limit varies per user and can change at any time, Session does not
-      track it locally with a fixed quota. Instead it reads the
-      ``X-RateLimit-*`` headers Metron returns with every response and only
-      pre-empts a request once those headers show the current window is
-      exhausted (see ``rate_limit_status``).
-
-    **Important**: When rate limits are exceeded, a RateLimitError is raised immediately
-    without making the API request. Applications must catch and handle this exception
-    appropriately (see examples below).
-
-    **Thread safety**: A single ``Session`` can be shared across threads. By default its
-    pre-emptive rate-limit check is advisory, not a hard gate: it only raises once the
-    *last known* response headers show a window is exhausted, and that check isn't
-    serialized with sending the request. Concurrent threads can each pass the check and
-    send their requests before a response comes back to update ``rate_limit_status``, so
-    a burst of threads can momentarily exceed the per-minute limit before local state
-    catches up (Metron's server-side limit is still authoritative and will reject the
-    excess requests). If you're calling a shared ``Session`` from multiple threads without
-    a ``rate_limiter``, cap your own concurrency rather than relying on ``Session`` to do
-    it for you — e.g. bound a ``ThreadPoolExecutor`` at or below the burst limit, or gate
-    requests with a ``threading.Semaphore``. Passing a ``rate_limiter`` (see ``Args``)
-    closes this gap: every HTTP send is dispatched through it instead, so it can block
-    concurrent callers until capacity actually frees rather than letting them race.
-
-    Features:
-
-    - Automatic authentication with a Bearer API token
-    - Rate limiting driven by Metron's response headers, with clear error messages
-    - Optional SQLite caching for improved performance
-    - Comprehensive error handling and validation
-    - Support for both read and write operations (write operations require admin permissions)
-    - Automatic pagination handling for large result sets
-    - Image upload support for certain endpoints
-    - Development mode for testing against a local instances of Metron.
-
-    Args:
-        api_token: API token for Bearer-token authentication.
-        cache: Optional response cache (e.g. ``SqliteCache``) to avoid repeat requests.
-        user_agent: Optional custom user agent string to append to the default user agent.
-        dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
-        rate_limiter: Optional pacing gate to dispatch every HTTP send
-            through, in place of the default fail-fast check. See
-            :class:`mokkari.rate_limit.RateLimiter`. Defaults to ``None``,
-            which preserves the default raise-immediately behavior exactly.
-
-    Attributes:
-        api_token (str): The API token used for Bearer-token authentication.
-        header (dict): HTTP headers sent with each request, including User-Agent.
-        api_url (str): The base URL for API requests (production or development).
-        cache (SqliteCache | None): The cache instance if provided.
-        rate_limiter (RateLimiter | None): The injected pacing gate, if provided.
-        rate_limit_status (RateLimitStatus): The most recently observed rate-limit
-            state, parsed from Metron's response headers.
-        last_cache_status (str | None): The ``X-Cache`` value ("HIT" or "MISS")
-            from the most recently completed response, or ``None`` if that
-            endpoint isn't cached and so didn't report one.
-
-    Examples:
-        Basic usage:
-        >>> session = Session("your-api-token")
-        >>> issue = session.issue(1)
-        >>> print(issue)
-
-        With caching:
-        >>> from mokkari.sqlite_cache import SqliteCache
-        >>> cache = SqliteCache("cache.db")
-        >>> session = Session("your-api-token", cache=cache)
-
-        Development mode:
-        >>> session = Session("your-api-token", dev_mode=True)
-
-        Handling rate limits - simple retry:
-        >>> import time
-        >>> from mokkari.exceptions import RateLimitError
-        >>> from mokkari.utils import format_time
-        >>> session = Session("your-api-token")
-        >>> try:
-        ...     issue = session.issue(1)
-        ... except RateLimitError as e:
-        ...     print(f"Rate limited: {e}")
-        ...     print(f"Waiting {format_time(e.retry_after)}...")
-        ...     time.sleep(e.retry_after)
-        ...     issue = session.issue(1)  # Retry after waiting; may raise again, see below
-
-        ``retry_after`` is when the next slot frees. Another client sharing your account can
-        take it first, so the retry can raise ``RateLimitError`` again, which is why the loop
-        below keeps retrying.
-
-        Handling minute vs daily rate limits:
-        >>> import time
-        >>> from mokkari.exceptions import RateLimitError
-        >>> from mokkari.utils import format_time
-        >>> session = Session("your-api-token")
-        >>> def fetch_with_rate_limit_handling(issue_id):
-        ...     while True:
-        ...         try:
-        ...             return session.issue(issue_id)
-        ...         except RateLimitError as e:
-        ...             if "per minute" in str(e):
-        ...                 # Minute limit - automatically wait and retry
-        ...                 print(f"{e}")
-        ...                 print(f"Waiting {format_time(e.retry_after)}...")
-        ...                 time.sleep(e.retry_after)
-        ...                 continue
-        ...             elif "per day" in str(e):
-        ...                 # Daily limit - ask user whether to wait or quit
-        ...                 response = input(f"Wait {format_time(e.retry_after)}? (y/n): ")
-        ...                 if response.lower() == 'y':
-        ...                     time.sleep(e.retry_after)
-        ...                     continue
-        ...                 else:
-        ...                     raise
-        ...             else:
-        ...                 raise
-        >>> issue = fetch_with_rate_limit_handling(1)
-
-        Inspecting the current rate-limit state:
-        >>> session = Session("your-api-token")
-        >>> issue = session.issue(1)
-        >>> status = session.rate_limit_status
-        >>> print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
-
-        Pacing requests instead of raising, under concurrent use:
-        >>> from mokkari.rate_limit import HeaderPacedRateLimiter
-        >>> session = Session("your-api-token", rate_limiter=HeaderPacedRateLimiter())
-        >>> issue = session.issue(1)  # blocks instead of raising if a window is exhausted
-
-        Checking whether the last response was served from Metron's cache:
-        >>> session = Session("your-api-token")
-        >>> issue = session.issue(1)
-        >>> print(session.last_cache_status)  # "HIT" or "MISS"
-
-    Raises:
-        AuthenticationError: If the api_token is missing or empty.
-        ApiError: For general API errors, authentication failures, or network issues.
-        RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
-        CacheError: If an injected ``cache`` object lacks a ``get`` or ``store`` method
-            taking Session's arguments.
-        RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
-        ValidationError: For invalid response data that doesn't match expected schemas.
+    ``Session`` combines this with the endpoint mixins in ``mokkari._endpoints``. Use
+    ``Session`` rather than this class.
     """
 
     def __init__(
@@ -678,7 +503,7 @@ class Session:
         Raises:
             ApiError: If validation fails for any item in the list.
         """
-        return Session._validate_response(resp["results"], list[item_class])
+        return _SessionCore._validate_response(resp["results"], list[item_class])
 
     def _send_void(
         self,
@@ -872,1280 +697,6 @@ class Session:
             [resource_name, _id, "issue_list"], resource=ResourceEndpoint.ISSUE
         )
         return self._validate_list_response(resp, BaseIssue)
-
-    # Creator methods
-    def creator(self, _id: int, if_modified_since: datetime | None = None) -> Creator | None:
-        """Retrieve detailed information about a creator by ID.
-
-        Args:
-            _id: The unique identifier for the creator.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-                Typically you would pass a previously fetched creator's ``modified`` field.
-
-        Returns:
-            A Creator object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the creator is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creator = session.creator(1)
-            >>> print(creator.name)
-            >>> # Later, check if updated:
-            >>> updated = session.creator(1, if_modified_since=creator.modified)
-            >>> if updated is None:
-            ...     print("Not modified")
-        """
-        return self._get_resource(ResourceEndpoint.CREATOR, _id, Creator, if_modified_since)
-
-    def creator_post(self, data: CreatorPost) -> Creator:
-        """Create a new creator in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: CreatorPost object containing the creator information to create.
-
-        Returns:
-            Creator: The newly created Creator object.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
-            >>> new_creator = session.creator_post(creator_data)
-        """
-        return self._post_resource(ResourceEndpoint.CREATOR, data, Creator)
-
-    def creator_patch(self, _id: int, data: CreatorPost) -> Creator:
-        """Update an existing creator in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the creator to update.
-            data: CreatorPost object containing the updated creator information.
-
-        Returns:
-            Creator: The updated Creator object.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
-            >>> updated_creator = session.creator_patch(1, creator_data)
-        """
-        return self._patch_resource(ResourceEndpoint.CREATOR, _id, data, Creator)
-
-    def creators_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of creators with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing creators.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creators = session.creators_list({"name": "Stan Lee"})
-            >>> all_creators = session.creators_list()
-        """
-        return self._list_resources(ResourceEndpoint.CREATOR, params, BaseResource)
-
-    # Character methods
-    def character(self, _id: int, if_modified_since: datetime | None = None) -> Character | None:
-        """Retrieve detailed information about a character by ID.
-
-        Args:
-            _id: The unique identifier for the character.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Character object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the character is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> character = session.character(1)
-            >>> print(character.name)
-        """
-        return self._get_resource(ResourceEndpoint.CHARACTER, _id, Character, if_modified_since)
-
-    def character_post(self, data: CharacterPost) -> CharacterPostResponse:
-        """Create a new character in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: CharacterPost object containing the character information to create.
-
-        Returns:
-            CharacterPostResponse: The newly created character response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-        """
-        return self._post_resource(ResourceEndpoint.CHARACTER, data, CharacterPostResponse)
-
-    def character_patch(self, _id: int, data: CharacterPost) -> CharacterPostResponse:
-        """Update an existing character in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the character to update.
-            data: CharacterPost object containing the updated character information.
-
-        Returns:
-            CharacterPostResponse: The updated character response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-        """
-        return self._patch_resource(ResourceEndpoint.CHARACTER, _id, data, CharacterPostResponse)
-
-    def characters_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of characters with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing characters.
-        """
-        return self._list_resources(ResourceEndpoint.CHARACTER, params, BaseResource)
-
-    def character_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues featuring a specific character.
-
-        Args:
-            _id: The unique identifier for the character.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issues = session.character_issues_list(1)
-            >>> print(f"Character appears in {len(issues)} issues")
-        """
-        return self._get_resource_issues(ResourceEndpoint.CHARACTER, _id)
-
-    # Publisher methods
-    def publisher(self, _id: int, if_modified_since: datetime | None = None) -> Publisher | None:
-        """Retrieve detailed information about a publisher by ID.
-
-        Args:
-            _id: The unique identifier for the publisher.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Publisher object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the publisher is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.PUBLISHER, _id, Publisher, if_modified_since)
-
-    def publisher_post(self, data: PublisherPost) -> Publisher:
-        """Create a new publisher in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: PublisherPost object containing the publisher information to create.
-
-        Returns:
-            Publisher: The newly created Publisher object.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-        """
-        return self._post_resource(ResourceEndpoint.PUBLISHER, data, Publisher)
-
-    def publisher_patch(self, _id: int, data: PublisherPost) -> Publisher:
-        """Update an existing publisher in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the publisher to update.
-            data: PublisherPost object containing the updated publisher information.
-
-        Returns:
-            Publisher: The updated Publisher object.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-        """
-        return self._patch_resource(ResourceEndpoint.PUBLISHER, _id, data, Publisher)
-
-    def publishers_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of publishers with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing publishers.
-        """
-        return self._list_resources(ResourceEndpoint.PUBLISHER, params, BaseResource)
-
-    # Team methods
-    def team(self, _id: int, if_modified_since: datetime | None = None) -> Team | None:
-        """Retrieve detailed information about a team by ID.
-
-        Args:
-            _id: The unique identifier for the team.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Team object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the team is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.TEAM, _id, Team, if_modified_since)
-
-    def team_post(self, data: TeamPost) -> TeamPostResponse:
-        """Create a new team in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: TeamPost object containing the team information to create.
-
-        Returns:
-            TeamPostResponse: The newly created team response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.TEAM, data, TeamPostResponse)
-
-    def team_patch(self, _id: int, data: TeamPost) -> TeamPostResponse:
-        """Update an existing team in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the team to update.
-            data: TeamPost object containing the updated team information.
-
-        Returns:
-            TeamPostResponse: The updated team response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.TEAM, _id, data, TeamPostResponse)
-
-    def teams_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of teams with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing teams.
-        """
-        return self._list_resources(ResourceEndpoint.TEAM, params, BaseResource)
-
-    def team_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues featuring a specific team.
-
-        Args:
-            _id: The unique identifier for the team.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-        """
-        return self._get_resource_issues(ResourceEndpoint.TEAM, _id)
-
-    # Arc methods
-    def arc(self, _id: int, if_modified_since: datetime | None = None) -> Arc | None:
-        """Retrieve detailed information about a story arc by ID.
-
-        Args:
-            _id: The unique identifier for the arc.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            An Arc object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the arc is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.ARC, _id, Arc, if_modified_since)
-
-    def arc_post(self, data: ArcPost) -> Arc:
-        """Create a new story arc in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: ArcPost object containing the arc information to create.
-
-        Returns:
-            Arc: The newly created Arc object.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.ARC, data, Arc)
-
-    def arc_patch(self, _id: int, data: ArcPost) -> Arc:
-        """Update an existing story arc in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the arc to update.
-            data: ArcPost object containing the updated arc information.
-
-        Returns:
-            Arc: The updated Arc object.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.ARC, _id, data, Arc)
-
-    def arcs_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of story arcs with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing arcs.
-        """
-        return self._list_resources(ResourceEndpoint.ARC, params, BaseResource)
-
-    def arc_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues that are part of a specific story arc.
-
-        Args:
-            _id: The unique identifier for the arc.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-        """
-        return self._get_resource_issues(ResourceEndpoint.ARC, _id)
-
-    # Series methods
-    def series(self, _id: int, if_modified_since: datetime | None = None) -> Series | None:
-        """Retrieve detailed information about a series by ID.
-
-        Args:
-            _id: The unique identifier for the series.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Series object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the series is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.SERIES, _id, Series, if_modified_since)
-
-    def series_post(self, data: SeriesPost) -> SeriesPostResponse:
-        """Create a new series in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: SeriesPost object containing the series information to create.
-
-        Returns:
-            SeriesPostResponse: The newly created series response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.SERIES, data, SeriesPostResponse)
-
-    def series_patch(self, _id: int, data: SeriesPost) -> SeriesPostResponse:
-        """Update an existing series in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the series to update.
-            data: SeriesPost object containing the updated series information.
-
-        Returns:
-            SeriesPostResponse: The updated series response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.SERIES, _id, data, SeriesPostResponse)
-
-    def series_list(self, params: dict[str, str | int] | None = None) -> list[BaseSeries]:
-        """Retrieve a list of series with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'publisher', 'year_began', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseSeries]: A list of BaseSeries objects representing series.
-        """
-        return self._list_resources(ResourceEndpoint.SERIES, params, BaseSeries)
-
-    def series_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues that are part of a specific series.
-
-        Args:
-            _id: The unique identifier for the series.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-        """
-        return self._get_resource_issues(ResourceEndpoint.SERIES, _id)
-
-    def series_type_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
-        """Retrieve a list of available series types.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[GenericItem]: A list of GenericItem objects representing series types.
-        """
-        resp = self._get_results([ResourceEndpoint.SERIES_TYPE], params)
-        return self._validate_list_response(resp, GenericItem)
-
-    # Issue methods
-    def issue(self, _id: int, if_modified_since: datetime | None = None) -> Issue | None:
-        """Retrieve detailed information about an issue by ID.
-
-        Args:
-            _id: The unique identifier for the issue.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            An Issue object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issue = session.issue(1)
-            >>> print(f"Issue #{issue.number} of {issue.series.name}")
-            >>> # Later, check if updated:
-            >>> updated = session.issue(1, if_modified_since=issue.modified)
-            >>> if updated is None:
-            ...     print("Not modified")
-        """
-        return self._get_resource(ResourceEndpoint.ISSUE, _id, Issue, if_modified_since)
-
-    def issue_post(self, data: IssuePost) -> IssuePostResponse:
-        """Create a new issue in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: IssuePost object containing the issue information to create.
-
-        Returns:
-            IssuePostResponse: The newly created issue response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.ISSUE, data, IssuePostResponse)
-
-    def issue_patch(self, _id: int, data: IssuePost) -> IssuePostResponse:
-        """Update an existing issue in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the issue to update.
-            data: IssuePost object containing the updated issue information.
-
-        Returns:
-            IssuePostResponse: The updated issue response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.ISSUE, _id, data, IssuePostResponse)
-
-    def issues_list(self, params: dict[str, str | int] | None = None) -> list[BaseIssue]:
-        """Retrieve a list of issues with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'series', 'number', 'cover_date', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects representing issues.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issues = session.issues_list({"series": 1})
-            >>> recent_issues = session.issues_list({"modified_gt": "2023-01-01"})
-        """
-        return self._list_resources(ResourceEndpoint.ISSUE, params, BaseIssue)
-
-    def credits_post(self, data: list[CreditPost]) -> list[CreditPostResponse]:
-        """Create new credits for issues in bulk.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: List of CreditPost objects containing credit information to create.
-
-        Returns:
-            list[CreditPostResponse]: A list of newly created credit responses.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> credits_ = [CreditPost(issue=1, creator=1, role=[1])]
-            >>> new_credits = session.credits_post(credits_)
-        """
-        # Credits are read back as part of their issue.
-        return self._handle_write_request(
-            "POST",
-            ["credit"],
-            data,
-            list[CreditPostResponse],
-            also_invalidates=(ResourceEndpoint.ISSUE,),
-        )
-
-    def variant_post(self, data: VariantPost) -> VariantPostResponse:
-        """Create a new variant cover for an issue.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: VariantPost object containing the variant cover information to create.
-
-        Returns:
-            VariantPostResponse: The newly created variant cover response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        # Variants are read back as part of their issue.
-        return self._handle_write_request(
-            "POST",
-            ["variant"],
-            data,
-            VariantPostResponse,
-            also_invalidates=(ResourceEndpoint.ISSUE,),
-        )
-
-    def role_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
-        """Retrieve a list of available creator roles.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[GenericItem]: A list of GenericItem objects representing creator roles
-                              (e.g., Writer, Artist, Colorist, etc.).
-        """
-        resp = self._get_results([ResourceEndpoint.ROLE], params)
-        return self._validate_list_response(resp, GenericItem)
-
-    # Universe methods
-    def universe(self, _id: int, if_modified_since: datetime | None = None) -> Universe | None:
-        """Retrieve detailed information about a universe by ID.
-
-        Args:
-            _id: The unique identifier for the universe.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Universe object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the universe is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.UNIVERSE, _id, Universe, if_modified_since)
-
-    def universe_post(self, data: UniversePost) -> UniversePostResponse:
-        """Create a new universe in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: UniversePost object containing the universe information to create.
-
-        Returns:
-            UniversePostResponse: The newly created universe response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.UNIVERSE, data, UniversePostResponse)
-
-    def universe_patch(self, _id: int, data: UniversePost) -> UniversePostResponse:
-        """Update an existing universe in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the universe to update.
-            data: UniversePost object containing the updated universe information.
-
-        Returns:
-            UniversePostResponse: The updated universe response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.UNIVERSE, _id, data, UniversePostResponse)
-
-    def universes_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of universes with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing universes.
-        """
-        return self._list_resources(ResourceEndpoint.UNIVERSE, params, BaseResource)
-
-    # Imprint methods
-    def imprint(self, _id: int, if_modified_since: datetime | None = None) -> Imprint | None:
-        """Retrieve detailed information about an imprint by ID.
-
-        Args:
-            _id: The unique identifier for the imprint.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            An Imprint object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the imprint is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.IMPRINT, _id, Imprint, if_modified_since)
-
-    def imprints_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of imprints with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'publisher', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing imprints.
-        """
-        return self._list_resources(ResourceEndpoint.IMPRINT, params, BaseResource)
-
-    # Reading List methods
-    def reading_list(
-        self, _id: int, if_modified_since: datetime | None = None
-    ) -> ReadingListRead | None:
-        """Retrieve detailed information about a reading list by ID.
-
-        Note: This endpoint requires authentication. Users can access:
-        - Authenticated users: Public lists + own lists
-        - Admin users: Public lists + own lists + Metron's lists
-
-        Args:
-            _id: The unique identifier for the reading list.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A ReadingListRead object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the reading list is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(
-            ResourceEndpoint.READING_LIST, _id, ReadingListRead, if_modified_since
-        )
-
-    def reading_lists_list(
-        self, params: dict[str, str | int] | None = None
-    ) -> list[ReadingListList]:
-        """Retrieve a list of reading lists with optional filtering.
-
-        Note: This endpoint requires authentication. Users can access:
-        - Authenticated users: Public lists + own lists
-        - Admin users: Public lists + own lists + Metron's lists
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include:
-                   - 'name': Filter by reading list name
-                   - 'user': Filter by user ID
-                   - 'username': Filter by username
-                   - 'is_private': Filter by privacy status (boolean)
-                   - 'attribution_source': Filter by attribution source (CBRO, CMRO, CBH, etc.)
-                   - 'modified_gt': Filter by modification date (greater than)
-
-        Returns:
-            list[ReadingListList]: A list of ReadingListList objects representing reading lists.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._list_resources(ResourceEndpoint.READING_LIST, params, ReadingListList)
-
-    def reading_list_items(self, _id: int) -> list[ReadingListItem]:
-        """Retrieve a paginated list of items for a specific reading list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            _id: The unique identifier for the reading list.
-
-        Returns:
-            list[ReadingListItem]: A list of ReadingListItem objects representing items
-                                   in the reading list.
-
-        Raises:
-            ApiError: If the reading list is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        resp = self._get_results([ResourceEndpoint.READING_LIST, _id, "items"])
-        return self._validate_list_response(resp, ReadingListItem)
-
-    # Collection methods
-    def collection(
-        self, _id: int, if_modified_since: datetime | None = None
-    ) -> CollectionRead | None:
-        """Retrieve detailed information about a collection item by ID.
-
-        Note: This endpoint requires authentication. Users can only access their own collection items.
-
-        Args:
-            _id: The unique identifier for the collection item.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A CollectionRead object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the collection item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> collection_item = session.collection(1)
-            >>> print(f"Issue: {collection_item.issue.series.name} #{collection_item.issue.number}")
-        """
-        return self._get_resource(
-            ResourceEndpoint.COLLECTION, _id, CollectionRead, if_modified_since
-        )
-
-    def collections_list(self, params: dict[str, str | int] | None = None) -> list[CollectionList]:
-        """Retrieve a list of collection items with optional filtering.
-
-        Note: This endpoint requires authentication. Users can only access their own collection items.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include:
-                   - 'book_format': Filter by format (PRINT, DIGITAL, BOTH)
-                   - 'grade': Filter by comic book grade (CGC scale)
-                   - 'grading_company': Filter by grading company (CGC, CBCS, PGX)
-                   - 'is_read': Filter by read status (boolean)
-                   - 'issue__series': Filter by series ID
-                   - 'modified_gt': Filter by modification date (greater than)
-                   - 'purchase_date': Filter by purchase date
-                   - 'rating': Filter by star rating (1-5)
-
-        Returns:
-            list[CollectionList]: A list of CollectionList objects representing collection items.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> collection = session.collections_list({"is_read": False})
-            >>> unread = [item for item in collection if not item.is_read]
-        """
-        return self._list_resources(ResourceEndpoint.COLLECTION, params, CollectionList)
-
-    def collection_missing_issues(self, series_id: int) -> list[MissingIssue]:
-        """Retrieve a list of missing issues for a specific series.
-
-        Returns issues from a series that are not in the authenticated user's collection.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            series_id: The unique identifier for the series.
-
-        Returns:
-            list[MissingIssue]: A list of MissingIssue objects representing issues
-                               not in the user's collection.
-
-        Raises:
-            ApiError: If the series is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> missing = session.collection_missing_issues(1)
-            >>> print(f"Missing {len(missing)} issues from this series")
-        """
-        resp = self._get_results([ResourceEndpoint.COLLECTION, "missing_issues", series_id])
-        return self._validate_list_response(resp, MissingIssue)
-
-    def collection_missing_series(self) -> list[MissingSeries]:
-        """Retrieve a list of series where the user has some issues but is missing others.
-
-        Returns series where the authenticated user owns at least one issue but not
-        all issues in the series.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            list[MissingSeries]: A list of MissingSeries objects representing series
-                                with incomplete collections.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> incomplete_series = session.collection_missing_series()
-            >>> for series in incomplete_series:
-            ...     print(f"Series: {series.name} ({series.year_began})")
-        """
-        resp = self._get_results([ResourceEndpoint.COLLECTION, "missing_series"])
-        return self._validate_list_response(resp, MissingSeries)
-
-    def collection_stats(self) -> CollectionStats:
-        """Retrieve statistics about the authenticated user's collection.
-
-        Returns comprehensive statistics including total items, total value,
-        read/unread counts, and breakdowns by format.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            CollectionStats: A CollectionStats object containing collection statistics.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> stats = session.collection_stats()
-            >>> print(f"Total items: {stats.total_items}")
-            >>> print(f"Total value: {stats.total_value}")
-            >>> print(f"Read: {stats.read_count}, Unread: {stats.unread_count}")
-        """
-        resp = self._get([ResourceEndpoint.COLLECTION, "stats"])
-        return self._validate_response(resp, CollectionStats)
-
-    def collection_scrobble(self, data: ScrobbleRequest) -> ScrobbleResponse:
-        """Mark an issue as read (scrobble).
-
-        This endpoint marks an issue as read and optionally provides a rating.
-        If the issue is not already in the user's collection, it will be
-        automatically added with default values.
-
-        Note: This endpoint requires authentication. Users can only scrobble issues
-        to their own collection.
-
-        Args:
-            data: ScrobbleRequest object containing the issue_id and optional
-                  date_read and rating.
-
-        Returns:
-            ScrobbleResponse: A ScrobbleResponse object containing the updated
-                            collection item information and a 'created' flag
-                            indicating whether a new collection item was created.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from datetime import datetime
-            >>> scrobble_data = ScrobbleRequest(
-            ...     issue_id=1,
-            ...     date_read=datetime.now(),
-            ...     rating=5
-            ... )
-            >>> result = session.collection_scrobble(scrobble_data)
-            >>> print(f"Issue marked as read: {result.issue.series.name} #{result.issue.number}")
-            >>> print(f"New item created: {result.created}")
-
-            Mark as read without rating:
-            >>> scrobble_data = ScrobbleRequest(issue_id=1)
-            >>> result = session.collection_scrobble(scrobble_data)
-        """
-        return self._handle_write_request(
-            "POST", [ResourceEndpoint.COLLECTION, "scrobble"], data, ScrobbleResponse
-        )
-
-    def collection_patch(self, _id: int, data: CollectionUpdate) -> CollectionUpdateResponse:
-        """Update the rating of an existing collection item.
-
-        Note: Users can only update items in their own collection. Only the rating field can be updated; read-tracking
-        (is_read/date_read) is handled exclusively through the scrobble action.
-
-        Args:
-            _id: The unique identifier for the collection item to update.
-            data: CollectionUpdate object containing the updated rating.
-
-        Returns:
-            CollectionUpdateResponse: The updated collection item's id, rating, and
-                                       modified timestamp.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> update_data = CollectionUpdate(rating=4)
-            >>> result = session.collection_patch(1, update_data)
-            >>> print(f"Rating updated to: {result.rating}")
-        """
-        return self._patch_resource(
-            ResourceEndpoint.COLLECTION, _id, data, CollectionUpdateResponse
-        )
-
-    def collection_add(self, data: CollectionAddItem) -> CollectionRead:
-        """Add an issue to the authenticated user's collection.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            data: CollectionAddItem object containing the issue_id and optional
-                  quantity, grade, and purchase details.
-
-        Returns:
-            CollectionRead: The created (or updated, if the issue was already
-                             in the collection) collection item.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from mokkari.schemas.collection import CollectionAddItem
-            >>> item = session.collection_add(CollectionAddItem(issue_id=1, quantity=2))
-            >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
-        """
-        return self._handle_write_request(
-            "POST", [ResourceEndpoint.COLLECTION, "add"], data, CollectionRead
-        )
-
-    def collection_delete(self, _id: int) -> None:
-        """Remove an item from the authenticated user's collection.
-
-        Note: Users can only remove items from their own collection.
-
-        Args:
-            _id: The unique identifier for the collection item to remove.
-
-        Raises:
-            ApiError: If the collection item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> session.collection_delete(1)
-        """
-        self._send_void("DELETE", [ResourceEndpoint.COLLECTION, _id])
-
-    # Pull list methods
-    def pull_list(self) -> PullListRead:
-        """Retrieve the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            A PullListRead object.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> pl = session.pull_list()
-            >>> print(f"Series: {pl.series_count}")
-        """
-        results = self._list_resources(ResourceEndpoint.PULL_LIST, None, PullListRead)
-        return results[0]
-
-    def pull_list_issues(self, params: dict[str, str | int] | None = None) -> list[PullListIssue]:
-        """Retrieve issues for series on the authenticated user's pull list.
-
-        Optionally filter by store date using store_date_after and store_date_before.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            params: Optional dictionary of query parameters. Supports:
-                - store_date_after: Return issues with a store date on or after this date (YYYY-MM-DD).
-                - store_date_before: Return issues with a store date on or before this date (YYYY-MM-DD).
-
-        Returns:
-            list[PullListIssue]: A list of PullListIssue objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issues = session.pull_list_issues({"store_date_after": "2024-01-01"})
-            >>> for issue in issues:
-            ...     print(f"{issue.series.name} #{issue.number}")
-        """
-        resp = self._get_results([ResourceEndpoint.PULL_LIST, "issues"], params)
-        return self._validate_list_response(resp, PullListIssue)
-
-    def pull_list_series(self, params: dict[str, str | int] | None = None) -> list[PullListSeries]:
-        """Retrieve the series on the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[PullListSeries]: A list of PullListSeries objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> series_list = session.pull_list_series()
-            >>> for entry in series_list:
-            ...     print(entry.series.display_name)
-        """
-        resp = self._get_results([ResourceEndpoint.PULL_LIST, "series"], params)
-        return self._validate_list_response(resp, PullListSeries)
-
-    def pull_list_add_series(self, series_id: int) -> PullListSeries:
-        """Add a series to the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            series_id: The unique identifier of the series to add.
-
-        Returns:
-            PullListSeries: The pull list series entry.
-
-        Raises:
-            ApiError: If the series is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> entry = session.pull_list_add_series(42)
-            >>> print(entry.series.display_name)
-        """
-        return self._handle_write_request(
-            "POST",
-            [ResourceEndpoint.PULL_LIST, "series", "add"],
-            PullListAddSeries(series_id=series_id),
-            PullListSeries,
-        )
-
-    def pull_list_remove_series(self, series_pk: int) -> None:
-        """Remove a series from the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            series_pk: The unique identifier of the pull list series entry to remove.
-
-        Raises:
-            ApiError: If the entry is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> session.pull_list_remove_series(1)
-        """
-        self._send_void("DELETE", [ResourceEndpoint.PULL_LIST, "series", series_pk, "remove"])
-
-    # Wish list methods
-    def wish_list(self) -> WishList:
-        """Retrieve the authenticated user's wish list.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            A WishList object.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> wl = session.wish_list()
-            >>> print(f"Items: {wl.item_count}")
-        """
-        results = self._list_resources(ResourceEndpoint.WISH_LIST, None, WishList)
-        return results[0]
-
-    def wish_list_items(self, params: dict[str, str | int] | None = None) -> list[WishListItemList]:
-        """Retrieve wish list items for the authenticated user.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[WishListItemList]: A list of WishListItemList objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> items = session.wish_list_items()
-            >>> for item in items:
-            ...     print(f"{item.issue.series.name} #{item.issue.number} - {item.status}")
-        """
-        resp = self._get_results([ResourceEndpoint.WISH_LIST, "items"], params)
-        return self._validate_list_response(resp, WishListItemList)
-
-    def wish_list_add_item(self, data: WishListAddItem) -> WishListItemRead:
-        """Add an issue to the authenticated user's wish list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            data: WishListAddItem object containing the issue_id and optional fields.
-
-        Returns:
-            WishListItemRead: The newly created wish list item.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from mokkari.schemas.wish_list import WishListAddItem
-            >>> item = session.wish_list_add_item(WishListAddItem(issue_id=1, priority=2))
-            >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
-        """
-        return self._handle_write_request(
-            "POST", [ResourceEndpoint.WISH_LIST, "items", "add"], data, WishListItemRead
-        )
-
-    def wish_list_acquire_item(self, item_pk: int, data: AcquireWishListItem) -> None:
-        """Mark a wish list item as acquired and create a collection item.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            item_pk: The unique identifier of the wish list item to acquire.
-            data: AcquireWishListItem object with optional purchase details.
-
-        Raises:
-            ApiError: If the item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from mokkari.schemas.wish_list import AcquireWishListItem
-            >>> session.wish_list_acquire_item(1, AcquireWishListItem(purchase_price="9.99"))
-        """
-        # Acquiring the item adds it to the collection.
-        self._send_void(
-            "POST",
-            [ResourceEndpoint.WISH_LIST, "items", item_pk, "acquire"],
-            data,
-            also_invalidates=(ResourceEndpoint.COLLECTION,),
-        )
-
-    def wish_list_remove_item(self, item_pk: int) -> None:
-        """Remove an item from the authenticated user's wish list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            item_pk: The unique identifier of the wish list item to remove.
-
-        Raises:
-            ApiError: If the item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> session.wish_list_remove_item(1)
-        """
-        self._send_void("DELETE", [ResourceEndpoint.WISH_LIST, "items", item_pk, "remove"])
 
     def _get_results(
         self,
@@ -2432,7 +983,7 @@ class Session:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             if response.status_code == requests.codes.too_many:
-                retry_after = Session._retry_after_seconds(response)
+                retry_after = _SessionCore._retry_after_seconds(response)
                 msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
                 raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
@@ -2619,3 +1170,173 @@ class Session:
             return None
 
         return self._handle_http_response(response)
+
+
+class Session(
+    _SessionCore,
+    CatalogEndpoints,
+    ReadingListEndpoints,
+    CollectionEndpoints,
+    PullListEndpoints,
+    WishListEndpoints,
+):
+    """A comprehensive API client for interacting with the Metron Comics Database.
+
+    The Session class provides a complete interface for accessing comic book data including
+    creators, characters, publishers, series, issues, teams, arcs, and more. It handles
+    authentication, rate limiting, caching, and response validation automatically.
+
+    Metron enforces two rate-limit windows:
+
+    - A burst limit of at least 20 requests per minute for every user. The server
+      raises it above that floor when load allows, so read it from the headers.
+    - A sustained daily limit that starts at 5,000 requests, and is raised for
+      OpenCollective donors (up to 25,000/day for the highest tier). Because
+      this limit varies per user and can change at any time, Session does not
+      track it locally with a fixed quota. Instead it reads the
+      ``X-RateLimit-*`` headers Metron returns with every response and only
+      pre-empts a request once those headers show the current window is
+      exhausted (see ``rate_limit_status``).
+
+    **Important**: When rate limits are exceeded, a RateLimitError is raised immediately
+    without making the API request. Applications must catch and handle this exception
+    appropriately (see examples below).
+
+    **Thread safety**: A single ``Session`` can be shared across threads. By default its
+    pre-emptive rate-limit check is advisory, not a hard gate: it only raises once the
+    *last known* response headers show a window is exhausted, and that check isn't
+    serialized with sending the request. Concurrent threads can each pass the check and
+    send their requests before a response comes back to update ``rate_limit_status``, so
+    a burst of threads can momentarily exceed the per-minute limit before local state
+    catches up (Metron's server-side limit is still authoritative and will reject the
+    excess requests). If you're calling a shared ``Session`` from multiple threads without
+    a ``rate_limiter``, cap your own concurrency rather than relying on ``Session`` to do
+    it for you — e.g. bound a ``ThreadPoolExecutor`` at or below the burst limit, or gate
+    requests with a ``threading.Semaphore``. Passing a ``rate_limiter`` (see ``Args``)
+    closes this gap: every HTTP send is dispatched through it instead, so it can block
+    concurrent callers until capacity actually frees rather than letting them race.
+
+    Features:
+
+    - Automatic authentication with a Bearer API token
+    - Rate limiting driven by Metron's response headers, with clear error messages
+    - Optional SQLite caching for improved performance
+    - Comprehensive error handling and validation
+    - Support for both read and write operations (write operations require admin permissions)
+    - Automatic pagination handling for large result sets
+    - Image upload support for certain endpoints
+    - Development mode for testing against a local instances of Metron.
+
+    Args:
+        api_token: API token for Bearer-token authentication.
+        cache: Optional response cache (e.g. ``SqliteCache``) to avoid repeat requests.
+        user_agent: Optional custom user agent string to append to the default user agent.
+        dev_mode: If True, connects to local development instance at 127.0.0.1:8000 instead of production.
+        rate_limiter: Optional pacing gate to dispatch every HTTP send
+            through, in place of the default fail-fast check. See
+            :class:`mokkari.rate_limit.RateLimiter`. Defaults to ``None``,
+            which preserves the default raise-immediately behavior exactly.
+
+    Attributes:
+        api_token (str): The API token used for Bearer-token authentication.
+        header (dict): HTTP headers sent with each request, including User-Agent.
+        api_url (str): The base URL for API requests (production or development).
+        cache (SqliteCache | None): The cache instance if provided.
+        rate_limiter (RateLimiter | None): The injected pacing gate, if provided.
+        rate_limit_status (RateLimitStatus): The most recently observed rate-limit
+            state, parsed from Metron's response headers.
+        last_cache_status (str | None): The ``X-Cache`` value ("HIT" or "MISS")
+            from the most recently completed response, or ``None`` if that
+            endpoint isn't cached and so didn't report one.
+
+    Examples:
+        Basic usage:
+        >>> session = Session("your-api-token")
+        >>> issue = session.issue(1)
+        >>> print(issue)
+
+        With caching:
+        >>> from mokkari.sqlite_cache import SqliteCache
+        >>> cache = SqliteCache("cache.db")
+        >>> session = Session("your-api-token", cache=cache)
+
+        Development mode:
+        >>> session = Session("your-api-token", dev_mode=True)
+
+        Handling rate limits - simple retry:
+        >>> import time
+        >>> from mokkari.exceptions import RateLimitError
+        >>> from mokkari.utils import format_time
+        >>> session = Session("your-api-token")
+        >>> try:
+        ...     issue = session.issue(1)
+        ... except RateLimitError as e:
+        ...     print(f"Rate limited: {e}")
+        ...     print(f"Waiting {format_time(e.retry_after)}...")
+        ...     time.sleep(e.retry_after)
+        ...     issue = session.issue(1)  # Retry after waiting; may raise again, see below
+
+        ``retry_after`` is when the next slot frees. Another client sharing your account can
+        take it first, so the retry can raise ``RateLimitError`` again, which is why the loop
+        below keeps retrying.
+
+        Handling minute vs daily rate limits:
+        >>> import time
+        >>> from mokkari.exceptions import RateLimitError
+        >>> from mokkari.utils import format_time
+        >>> session = Session("your-api-token")
+        >>> def fetch_with_rate_limit_handling(issue_id):
+        ...     while True:
+        ...         try:
+        ...             return session.issue(issue_id)
+        ...         except RateLimitError as e:
+        ...             if "per minute" in str(e):
+        ...                 # Minute limit - automatically wait and retry
+        ...                 print(f"{e}")
+        ...                 print(f"Waiting {format_time(e.retry_after)}...")
+        ...                 time.sleep(e.retry_after)
+        ...                 continue
+        ...             elif "per day" in str(e):
+        ...                 # Daily limit - ask user whether to wait or quit
+        ...                 response = input(f"Wait {format_time(e.retry_after)}? (y/n): ")
+        ...                 if response.lower() == 'y':
+        ...                     time.sleep(e.retry_after)
+        ...                     continue
+        ...                 else:
+        ...                     raise
+        ...             else:
+        ...                 raise
+        >>> issue = fetch_with_rate_limit_handling(1)
+
+        Inspecting the current rate-limit state:
+        >>> session = Session("your-api-token")
+        >>> issue = session.issue(1)
+        >>> status = session.rate_limit_status
+        >>> print(f"Sustained remaining: {status.sustained.remaining}/{status.sustained.limit}")
+
+        Pacing requests instead of raising, under concurrent use:
+        >>> from mokkari.rate_limit import HeaderPacedRateLimiter
+        >>> session = Session("your-api-token", rate_limiter=HeaderPacedRateLimiter())
+        >>> issue = session.issue(1)  # blocks instead of raising if a window is exhausted
+
+        Checking whether the last response was served from Metron's cache:
+        >>> session = Session("your-api-token")
+        >>> issue = session.issue(1)
+        >>> print(session.last_cache_status)  # "HIT" or "MISS"
+
+    Raises:
+        AuthenticationError: If the api_token is missing or empty.
+        ApiError: For general API errors, authentication failures, or network issues.
+        RateLimitError: When API rate limits are exceeded (both local tracking and server-side).
+        CacheError: If an injected ``cache`` object lacks a ``get`` or ``store`` method
+            taking Session's arguments.
+        RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
+        ValidationError: For invalid response data that doesn't match expected schemas.
+    """
+
+
+if TYPE_CHECKING:
+    # The endpoint mixins type-check against EndpointHelpers; fail here if Session stops
+    # providing any of it.
+    def _provides_endpoint_helpers(session: Session) -> EndpointHelpers:
+        return session
