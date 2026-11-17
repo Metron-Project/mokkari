@@ -1636,6 +1636,68 @@ def test_rate_limited_write_does_not_invalidate(dummy_api_token: str) -> None:
     assert cache.invalidated == []
 
 
+class _NoAcquireLimiter:
+    """A rate limiter missing ``acquire``."""
+
+    def on_rate_limited(self, retry_after: float) -> None:
+        pass
+
+    def release(self, status: object) -> None:
+        pass
+
+
+class _FailingAcquireLimiter(_NoAcquireLimiter):
+    """A rate limiter whose ``acquire`` fails, e.g. because its backing store is down."""
+
+    def acquire(self, _status: object) -> None:
+        msg = "store unreachable"
+        raise OSError(msg)
+
+
+@pytest.mark.parametrize(
+    ("limiter", "error"),
+    [
+        (_NoAcquireLimiter(), exceptions.RateLimiterError),
+        (_FailingAcquireLimiter(), OSError),
+    ],
+    ids=["missing_acquire", "failing_acquire"],
+)
+def test_write_stopped_by_rate_limiter_does_not_invalidate(
+    dummy_api_token: str, limiter: object, error: type[Exception]
+) -> None:
+    """Nothing is invalidated when the rate limiter fails before the write is sent."""
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache, rate_limiter=limiter)  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r, pytest.raises(error):
+        m.collection_delete(5)
+
+    assert not r.called
+    assert cache.invalidated == []
+
+
+def test_sent_write_invalidates_when_rate_limiter_fails_after(dummy_api_token: str) -> None:
+    """A write that was sent invalidates even if the limiter then fails on release."""
+
+    class NoReleaseLimiter:
+        def acquire(self, status: object) -> None:
+            pass
+
+        def on_rate_limited(self, retry_after: float) -> None:
+            pass
+
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache, rate_limiter=NoReleaseLimiter())  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.delete("https://metron.cloud/api/collection/5/", status_code=204)
+        with pytest.raises(exceptions.RateLimiterError):
+            m.collection_delete(5)
+
+    assert r.called
+    assert cache.invalidated == ["collection"]
+
+
 @pytest.mark.parametrize(
     "response",
     [

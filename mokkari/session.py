@@ -456,21 +456,19 @@ class _SessionCore:
         Raises:
             ApiError: For connection errors or timeouts.
             RateLimitError: When the API rate limit is exceeded.
+            RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         """
         url = self._url(endpoint)
         LOGGER.debug("Request Method: %s | URL: %s", method, url)
         header, files, data_dict = self._prepare_request_payload(data)
+        # Acquired separately from the send, so a write the limiter refuses (or fails on)
+        # is known never to have been sent and leaves the cache alone.
+        self._acquire_rate_limit_slot()
         response = None
-        unsent = False
         try:
-            response = self._execute_http_request(
+            response = self._send_http_request(
                 method, url, headers=header, data=data_dict, files=files
             )
-        except RateLimitError:
-            # Raised only before the request is sent (a 429 is returned, not raised).
-            unsent = True
-            raise
-        else:
             return response
         finally:
             # A 4xx means Metron rejected the write. Anything else, even a timeout or a 5xx,
@@ -478,7 +476,7 @@ class _SessionCore:
             rejected = response is not None and (
                 HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
             )
-            if not (rejected or unsent):
+            if not rejected:
                 resource = str(endpoint[0])
                 written_tags = None if tags is None else tags(response)
                 self._cache_coordinator.invalidate(
@@ -940,6 +938,41 @@ class _SessionCore:
             RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         """
         self._acquire_rate_limit_slot()
+        return self._send_http_request(
+            method, url, params=params, headers=headers, data=data, files=files
+        )
+
+    def _send_http_request(  # noqa: PLR0913
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, str | int] | None = None,
+        headers: dict[str, str] | None = None,
+        data: str | dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes]] | None = None,
+    ) -> requests.Response:
+        """Send the HTTP request in a rate-limit slot already acquired, then release it.
+
+        Only ``_execute_http_request`` and ``_execute_write`` call this, each right
+        after ``_acquire_rate_limit_slot``. Anything raised before this is called means
+        the request was never sent.
+
+        Args:
+            method: HTTP method to use ("GET", "POST", "PATCH" or "DELETE").
+            url: The complete URL to send the request to.
+            params: Optional query parameters to include in the request.
+            headers: HTTP headers to send with the request. Defaults to ``self.header``.
+            data: The request body (see ``_prepare_request_payload``), or ``None``.
+            files: Optional file uploads.
+
+        Returns:
+            requests.Response: The HTTP response object.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+            RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
+        """
         # The slot is held from here on, so it must be released on every exit path, not just
         # the connection errors we translate. ``status`` stays ``None`` unless the response
         # reported rate-limit headers and they were folded into the session's state.

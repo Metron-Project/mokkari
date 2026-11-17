@@ -37,6 +37,8 @@ and this project adheres to
   response's status when a response has no `X-RateLimit-*` headers. Before,
   `HeaderPacedRateLimiter` re-applied that older state, such as an exhausted
   burst window, as if this response had just reported it.
+- A write that a `rate_limiter` stops before it's sent, because the limiter is
+  missing `acquire()` or `acquire()` raises, no longer drops cached entries.
 - `pull_list()` and `wish_list()` raise `ApiError` rather than `IndexError` if
   Metron returns an empty list.
 - `PublisherPost` now rejects a `country` that isn't a 2-letter code, including
