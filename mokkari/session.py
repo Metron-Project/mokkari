@@ -26,9 +26,9 @@ from urllib.parse import urlencode
 
 import requests
 from pydantic import BaseModel, TypeAdapter, ValidationError
+from requests.adapters import HTTPAdapter
 from requests.auth import AuthBase
 
-from mokkari import __version__, exceptions, rate_limit, utils
 from mokkari._cache_coordinator import CacheCoordinator
 from mokkari._endpoints import (
     CatalogEndpoints,
@@ -37,10 +37,14 @@ from mokkari._endpoints import (
     ReadingListEndpoints,
     WishListEndpoints,
 )
+from mokkari._version import __version__
 from mokkari.cache import Cache, CacheKind, ResourceEndpoint, create_tags, update_tags
+from mokkari.exceptions import ApiError, AuthenticationError, RateLimiterError, RateLimitError
+from mokkari.rate_limit import DEFAULT_BURST_PERIOD, RateLimiter, RateLimitStatus
 from mokkari.schemas.issue import (
     BaseIssue,
 )
+from mokkari.utils import format_time
 
 if TYPE_CHECKING:
     from mokkari._endpoints._helpers import EndpointHelpers
@@ -86,7 +90,7 @@ class _BearerAuth(AuthBase):
         return r
 
 
-class _ServerRateLimitError(exceptions.RateLimitError):
+class _ServerRateLimitError(RateLimitError):
     """A ``RateLimitError`` for a 429 that Metron returned.
 
     Unlike one raised locally before a request is sent, retrying this one after the
@@ -174,7 +178,7 @@ class _SessionCore:
         cache: Cache | None = None,
         user_agent: str | None = None,
         dev_mode: bool = False,
-        rate_limiter: rate_limit.RateLimiter | None = None,
+        rate_limiter: RateLimiter | None = None,
     ) -> None:
         """Initialize a Session object with authentication and configuration.
 
@@ -197,7 +201,7 @@ class _SessionCore:
         # Guards against a token read from an unset environment variable, which the
         # type hint alone won't catch at runtime.
         if not api_token:
-            raise exceptions.AuthenticationError
+            raise AuthenticationError
 
         self.api_token = api_token
         self.header = {
@@ -214,7 +218,7 @@ class _SessionCore:
         self.rate_limiter = rate_limiter
         self._http = self._build_http_session()
         self._rate_limit_lock = threading.Lock()
-        self._rate_limit_status = rate_limit.RateLimitStatus()
+        self._rate_limit_status = RateLimitStatus()
         self._cache_status_lock = threading.Lock()
         self._last_cache_status: str | None = None
 
@@ -244,7 +248,7 @@ class _SessionCore:
         for prefix in ("https://", "http://"):
             http_session.mount(
                 prefix,
-                requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=HTTP_POOL_MAXSIZE),
+                HTTPAdapter(pool_connections=1, pool_maxsize=HTTP_POOL_MAXSIZE),
             )
         http_session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
         return http_session
@@ -273,7 +277,7 @@ class _SessionCore:
         self.close()
 
     @property
-    def rate_limit_status(self) -> rate_limit.RateLimitStatus:
+    def rate_limit_status(self) -> RateLimitStatus:
         """Return the most recently observed rate-limit state.
 
         Populated from the ``X-RateLimit-*`` headers Metron sends with every
@@ -445,10 +449,12 @@ class _SessionCore:
             response = self._execute_http_request(
                 method, url, headers=header, data=data_dict, files=files
             )
-        except exceptions.RateLimitError:
+        except RateLimitError:
             # Raised only before the request is sent (a 429 is returned, not raised).
             unsent = True
             raise
+        else:
+            return response
         finally:
             # A 4xx means Metron rejected the write. Anything else, even a timeout or a 5xx,
             # may have been applied, and dropping the entries only costs a refetch.
@@ -462,7 +468,6 @@ class _SessionCore:
                     (resource, *also_invalidates),
                     tags=None if written_tags is None else {resource: written_tags},
                 )
-        return response
 
     @staticmethod
     def _validate_response(resp: dict[str, Any], adapter_class: type) -> Any:
@@ -484,7 +489,7 @@ class _SessionCore:
         try:
             return _type_adapter(adapter_class).validate_python(resp)
         except ValidationError as error:
-            raise exceptions.ApiError(error) from error
+            raise ApiError(error) from error
 
     @staticmethod
     def _validate_list_response(resp: dict[str, Any], item_class: type) -> list[Any]:
@@ -806,7 +811,7 @@ class _SessionCore:
             invalidations = self._cache_coordinator.invalidation_count(resource)
             try:
                 response = self._request_data("GET", next_page)
-            except exceptions.RateLimitError as e:
+            except RateLimitError as e:
                 # A rate limiter that refuses the request itself (an exhausted daily window)
                 # is deliberately not waited out here: the caller decides whether to wait.
                 if self.rate_limiter is not None and not isinstance(e, _ServerRateLimitError):
@@ -824,7 +829,7 @@ class _SessionCore:
                 if self.rate_limiter is None:
                     # Floor a missing Retry-After at the burst window, as the limiter does,
                     # so the capped retries are still spaced out rather than back-to-back.
-                    delay = e.retry_after if e.retry_after > 0 else rate_limit.DEFAULT_BURST_PERIOD
+                    delay = e.retry_after if e.retry_after > 0 else DEFAULT_BURST_PERIOD
                     LOGGER.warning("Rate limit during pagination; retrying page in %ss", delay)
                     time.sleep(delay)
                 else:
@@ -915,7 +920,7 @@ class _SessionCore:
         # The slot is held from here on, so it must be released on every exit path, not just
         # the connection errors we translate. ``status`` stays ``None`` unless headers were
         # received and folded into the session's rate-limit state.
-        status: rate_limit.RateLimitStatus | None = None
+        status: RateLimitStatus | None = None
         try:
             response = self._http.request(
                 method,
@@ -937,7 +942,7 @@ class _SessionCore:
             requests.exceptions.ReadTimeout,
         ) as err:
             msg = f"Connection error: {err!r}"
-            raise exceptions.ApiError(msg) from err
+            raise ApiError(msg) from err
         finally:
             self._release_rate_limit_slot(status)
         return response
@@ -961,10 +966,10 @@ class _SessionCore:
             resp = response.json()
         except ValueError as err:
             msg = f"Invalid JSON response: {err!r}"
-            raise exceptions.ApiError(msg) from err
+            raise ApiError(msg) from err
 
         if "detail" in resp:
-            raise exceptions.ApiError(resp["detail"])
+            raise ApiError(resp["detail"])
 
         return resp
 
@@ -984,10 +989,12 @@ class _SessionCore:
         except requests.exceptions.HTTPError as err:
             if response.status_code == requests.codes.too_many:
                 retry_after = _SessionCore._retry_after_seconds(response)
-                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
+                msg = (
+                    f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
+                )
                 raise _ServerRateLimitError(msg, retry_after=retry_after) from err
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
-            raise exceptions.ApiError(msg) from err
+            raise ApiError(msg) from err
 
     def _update_rate_limit_status(self, headers: Mapping[str, str]) -> None:
         """Update the session's rate-limit state from a response's headers."""
@@ -1036,7 +1043,7 @@ class _SessionCore:
             return getattr(self.rate_limiter, name)
         except AttributeError as e:
             msg = f"Rate limiter object passed in is missing attribute: {e!r}"
-            raise exceptions.RateLimiterError(msg) from e
+            raise RateLimiterError(msg) from e
 
     @staticmethod
     def _retry_after_seconds(response: requests.Response) -> float:
@@ -1062,7 +1069,7 @@ class _SessionCore:
         except Exception:
             LOGGER.exception("Rate limiter on_rate_limited() failed; ignoring")
 
-    def _release_rate_limit_slot(self, status: rate_limit.RateLimitStatus | None) -> None:
+    def _release_rate_limit_slot(self, status: RateLimitStatus | None) -> None:
         """Release the slot reserved by ``_acquire_rate_limit_slot``, if a limiter is set.
 
         Args:

@@ -17,8 +17,8 @@ import threading
 from collections import Counter, defaultdict, deque
 from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
-from mokkari import exceptions
 from mokkari.cache import NO_CACHE, Cache, ResourceEndpoint, TtlPolicy, entry_tags
+from mokkari.exceptions import CacheError
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
@@ -62,7 +62,7 @@ def check_cache(cache: object) -> None:
     """
     if not isinstance(cache, Cache):
         msg = f"Cache must have get() and store() methods: {cache!r}"
-        raise exceptions.CacheError(msg)
+        raise CacheError(msg)
     store_kwargs: dict[str, Any] = {"resource": "series", "kind": "detail"}
     # A cache invalidated by tag is passed each entry's tags to store.
     if isinstance(cache, _TaggedCache):
@@ -79,12 +79,12 @@ def check_cache(cache: object) -> None:
             continue
         except TypeError as e:
             msg = f"Cache {name} must be a method: {cache!r}"
-            raise exceptions.CacheError(msg) from e
+            raise CacheError(msg) from e
         try:
             signature.bind(*args, **kwargs)
         except TypeError as e:
             msg = f"Cache must have a {expected} method, not {name}{signature}: {cache!r}"
-            raise exceptions.CacheError(msg) from e
+            raise CacheError(msg) from e
 
 
 class CacheCoordinator:

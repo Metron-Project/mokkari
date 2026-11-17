@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, Literal, Protocol
 
-from mokkari import exceptions
+from mokkari.exceptions import RateLimitError
 from mokkari.utils import format_time
 
 if TYPE_CHECKING:
@@ -199,7 +199,7 @@ class RateLimitStatus:
             return self
         return RateLimitStatus(burst=burst or self.burst, sustained=sustained or self.sustained)
 
-    def exhausted_error(self, now: datetime) -> exceptions.RateLimitError | None:
+    def exhausted_error(self, now: datetime) -> RateLimitError | None:
         """Return the error for a request sent at ``now``, if a window is exhausted.
 
         Args:
@@ -281,7 +281,7 @@ class RateLimiter(Protocol):
 
 def limit_error(
     limit: int | None, retry_after: float, *, per: Literal["minute", "day"]
-) -> exceptions.RateLimitError:
+) -> RateLimitError:
     """Build the ``RateLimitError`` for an exhausted rate-limit window.
 
     Args:
@@ -294,10 +294,10 @@ def limit_error(
         f"Rate limit exceeded: You have reached the {limit_str} requests per {per} limit. "
         f"Please wait {format_time(retry_after)} before making another request."
     )
-    return exceptions.RateLimitError(msg, retry_after=retry_after)
+    return RateLimitError(msg, retry_after=retry_after)
 
 
-def daily_limit_error(limit: int | None, retry_after: float) -> exceptions.RateLimitError:
+def daily_limit_error(limit: int | None, retry_after: float) -> RateLimitError:
     """Build the ``RateLimitError`` a limiter raises when the daily window is exhausted.
 
     Args:

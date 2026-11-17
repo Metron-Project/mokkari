@@ -15,10 +15,6 @@ from __future__ import annotations
 class ApiError(Exception):
     """Class for any api errors."""
 
-    def __init__(self: ApiError, *args, **kwargs: dict[str, any]) -> None:
-        """Initialize an ApiError."""
-        Exception.__init__(self, *args, **kwargs)
-
 
 class RateLimitError(Exception):
     """Exception raised when API rate limits are exceeded.
@@ -93,14 +89,6 @@ class AuthenticationError(Exception):
 class CacheError(Exception):
     """Class for any database cache errors."""
 
-    def __init__(self: CacheError, *args, **kwargs: dict[str, any]) -> None:
-        """Initialize an CacheError."""
-        Exception.__init__(self, *args, **kwargs)
-
 
 class RateLimiterError(Exception):
     """Class for any errors raised by an injected rate limiter object."""
-
-    def __init__(self: RateLimiterError, *args, **kwargs: dict[str, any]) -> None:
-        """Initialize a RateLimiterError."""
-        Exception.__init__(self, *args, **kwargs)

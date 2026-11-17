@@ -60,7 +60,9 @@ class UniversePost(BaseModel):
     image: str | None = None
 
 
-class UniversePostResponse(BaseResource, UniversePost):
+# BaseResource comes first, so ``name`` is its required ``str``, not UniversePost's optional
+# one: a created resource always has a name.
+class UniversePostResponse(BaseResource, UniversePost):  # pyright: ignore[reportIncompatibleVariableOverride]
     """A data model representing the response from creating a universe.
 
     Attributes:
