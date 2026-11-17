@@ -5,7 +5,9 @@ This module contains tests for Session objects.
 """
 
 import datetime as dt
+import inspect
 import json
+import typing
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -1043,3 +1045,28 @@ def test_user_list_raises_api_error_when_empty(
         r.get(session.api_url.format(endpoint), json={"next": None, "results": []})
         with pytest.raises(exceptions.ApiError, match="Metron returned no"):
             getattr(session, method)()
+
+
+def test_public_method_annotations_resolve_at_runtime() -> None:
+    """Every public method's type hints resolve, for tools that inspect them at runtime."""
+    methods = [
+        member
+        for name, member in inspect.getmembers(Session, inspect.isfunction)
+        if not name.startswith("_")
+    ]
+    assert methods
+    for method in methods:
+        typing.get_type_hints(method)
+
+
+def test_rate_limit_header_names_still_importable_from_session() -> None:
+    """The header-name constants that moved to rate_limit can still be imported from session."""
+    for name in (
+        "HEADER_BURST_LIMIT",
+        "HEADER_BURST_REMAINING",
+        "HEADER_BURST_RESET",
+        "HEADER_SUSTAINED_LIMIT",
+        "HEADER_SUSTAINED_REMAINING",
+        "HEADER_SUSTAINED_RESET",
+    ):
+        assert getattr(session_module, name) == getattr(rate_limit, name)

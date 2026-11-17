@@ -9,14 +9,15 @@ from __future__ import annotations
 
 __all__ = ["ReadingListEndpoints"]
 
+# Imported at runtime, not only for type checking, so typing.get_type_hints() can
+# resolve the detail methods' if_modified_since annotations.
+from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING, overload
 
 from mokkari.cache import ResourceEndpoint
 from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from mokkari._endpoints._helpers import EndpointHelpers as _Base
 else:
     _Base = object
