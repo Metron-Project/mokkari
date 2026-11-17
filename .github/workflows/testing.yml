@@ -9,6 +9,29 @@ on:
       - main
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # pyright needs the redis extra to check mokkari.redis_rate_limit.
+      - name: Install project
+        run: uv sync --python 3.13 --no-default-groups --group lint --all-extras
+      - name: Install npm packages
+        run: npm ci
+      - name: Lint
+        run: ./bin/lint-backend.sh
+        env:
+          # Keep uv run from re-syncing the default dependency groups.
+          UV_NO_SYNC: "1"
   tox:
     name: Tests
     strategy:
