@@ -12,8 +12,10 @@ __all__ = ["EndpointHelpers"]
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
 
+    import requests
     from pydantic import BaseModel
 
     from mokkari.cache import CacheKind
@@ -65,7 +67,7 @@ class EndpointHelpers(Protocol):
 
     def _get_resource_issues(self, resource_name: str, _id: int) -> list[BaseIssue]: ...
 
-    def _handle_write_request(
+    def _handle_write_request(  # noqa: PLR0913
         self,
         method: str,
         endpoint: list[str | int],
@@ -73,6 +75,7 @@ class EndpointHelpers(Protocol):
         response_class: type,
         *,
         also_invalidates: tuple[str, ...] = (),
+        tags: Callable[[requests.Response | None], frozenset[str] | None] | None = None,
     ) -> Any: ...
 
     def _send_void(
