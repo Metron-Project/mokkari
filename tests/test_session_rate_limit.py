@@ -53,7 +53,7 @@ def test_update_rate_limit_status_ignores_response_without_headers(session: Sess
     """A response missing rate-limit headers shouldn't erase previously observed state."""
     session._update_rate_limit_status({"X-RateLimit-Burst-Limit": "20"})
 
-    session._update_rate_limit_status({})
+    assert session._update_rate_limit_status({}) is None
 
     assert session.rate_limit_status.burst.limit == 20
 
@@ -361,6 +361,69 @@ def test_rate_limiter_release_called_when_status_update_raises(
         session._request_data("GET", "https://test.com/api/issue/1")
 
     assert [call for call, _ in calls] == ["acquire", "release"]
+
+
+def test_rate_limiter_release_called_with_none_without_rate_limit_headers(
+    session: Session,
+    monkeypatch,
+    make_response,
+) -> None:
+    """A response without rate-limit headers releases with None, not the previous status."""
+    calls = []
+
+    class FakeLimiter:
+        def on_rate_limited(self, retry_after):
+            pass
+
+        def acquire(self, status):
+            calls.append(("acquire", status))
+
+        def release(self, status):
+            calls.append(("release", status))
+
+    session._update_rate_limit_status({"X-RateLimit-Burst-Remaining": "0"})
+    session.rate_limiter = FakeLimiter()
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"id": 1})
+    )
+
+    session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert calls[-1] == ("release", None)
+    assert session.rate_limit_status.burst.remaining == 0
+
+
+def test_rate_limiter_release_called_with_status_from_response(
+    session: Session,
+    monkeypatch,
+    make_response,
+) -> None:
+    """A response with rate-limit headers releases with the status they produce."""
+    calls = []
+
+    class FakeLimiter:
+        def on_rate_limited(self, retry_after):
+            pass
+
+        def acquire(self, status):
+            pass
+
+        def release(self, status):
+            calls.append(status)
+
+    session.rate_limiter = FakeLimiter()
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(
+            json_body={"id": 1}, headers={"X-RateLimit-Burst-Remaining": "7"}
+        ),
+    )
+
+    session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert calls == [session.rate_limit_status]
+    assert calls[0].burst.remaining == 7
 
 
 def test_rate_limiter_not_released_when_acquire_fails(session: Session, monkeypatch) -> None:

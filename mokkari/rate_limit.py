@@ -203,7 +203,8 @@ class RateLimitStatus:
     def merge_headers(self, headers: Mapping[str, str]) -> RateLimitStatus:
         """Return this status updated from a response's ``X-RateLimit-*`` headers.
 
-        A window the response doesn't report keeps its current value.
+        A window the response doesn't report keeps its current value. If it reports
+        neither window, this same status object is returned.
         """
         burst = RateLimitWindow.from_headers(
             headers,
@@ -291,7 +292,8 @@ class RateLimiter(Protocol):
         failed to connect. ``status`` is the freshly updated
         ``RateLimitStatus`` reflecting that response's headers, or ``None``
         if the request failed before any headers were received (a connection
-        error or timeout). This is the hook for decrementing an in-flight
+        error or timeout) or the response reported no ``X-RateLimit-*``
+        headers. This is the hook for decrementing an in-flight
         request count and reconciling a local remaining-capacity estimate. An
         exception raised here is logged and ignored rather than allowed to
         discard the response or mask the request's own error, so an

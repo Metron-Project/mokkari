@@ -941,8 +941,8 @@ class _SessionCore:
         """
         self._acquire_rate_limit_slot()
         # The slot is held from here on, so it must be released on every exit path, not just
-        # the connection errors we translate. ``status`` stays ``None`` unless headers were
-        # received and folded into the session's rate-limit state.
+        # the connection errors we translate. ``status`` stays ``None`` unless the response
+        # reported rate-limit headers and they were folded into the session's state.
         status: RateLimitStatus | None = None
         try:
             response = self._http.request(
@@ -1018,16 +1018,21 @@ class _SessionCore:
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise ApiError(msg) from err
 
-    def _update_rate_limit_status(self, headers: Mapping[str, str]) -> RateLimitStatus:
+    def _update_rate_limit_status(self, headers: Mapping[str, str]) -> RateLimitStatus | None:
         """Update the session's rate-limit state from a response's headers.
 
         Returns:
             The updated state, as merged under the lock, so the caller gets this
             response's headers even if another thread updates the state right after.
+            ``None`` if the response reported no rate-limit headers, so the previous
+            response's state isn't passed on as this one's.
         """
         with self._rate_limit_lock:
-            self._rate_limit_status = self._rate_limit_status.merge_headers(headers)
-            return self._rate_limit_status
+            merged = self._rate_limit_status.merge_headers(headers)
+            if merged is self._rate_limit_status:
+                return None
+            self._rate_limit_status = merged
+            return merged
 
     def _update_cache_status(self, headers: Any) -> None:
         """Update the session's last-observed ``X-Cache`` status from response headers.
@@ -1102,7 +1107,8 @@ class _SessionCore:
 
         Args:
             status: The freshly updated rate-limit status after the request
-                completed, or ``None`` if it failed before headers were received.
+                completed, or ``None`` if it failed before headers were received or
+                the response reported no rate-limit headers.
 
         Raises:
             RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
