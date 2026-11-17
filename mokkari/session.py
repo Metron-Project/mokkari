@@ -7,6 +7,7 @@ This module provides the following classes:
 
 __all__ = ["Session"]
 
+import functools
 import hashlib
 import http.cookiejar
 import inspect
@@ -21,11 +22,11 @@ from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Final, Protocol, Self, TypeVar, runtime_checkable
+from typing import Any, Final, Protocol, Self, runtime_checkable
 from urllib.parse import urlencode
 
 import requests
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from requests.auth import AuthBase
 
 from mokkari import __version__, exceptions, rate_limit, utils
@@ -220,6 +221,45 @@ _PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
 # as stale.
 _WRITE_LOG_SIZE: Final[int] = 64
 
+_JSON_CONTENT_TYPE: Final[str] = "application/json;charset=utf-8"
+
+
+@functools.cache
+def _type_adapter(tp: Any) -> TypeAdapter[Any]:
+    """Return a ``TypeAdapter`` for ``tp``, built once rather than on every validation."""
+    return TypeAdapter(tp)
+
+
+def _multipart_payload(
+    fields: dict[str, Any],
+) -> tuple[dict[str, tuple[str, bytes]] | None, dict[str, Any]]:
+    """Split a model's fields into multipart/form-data file uploads and form fields.
+
+    The ``image`` field, a path, becomes the file upload if the file exists. ``None`` values
+    are dropped, since form data can't represent them, and nested dicts are JSON-encoded.
+    Lists are sent as repeated form fields by ``requests``.
+
+    Args:
+        fields: The model's dumped fields, including ``image``. It's modified.
+
+    Returns:
+        The file uploads (``None`` if there's no image to send), and the form fields.
+    """
+    files = None
+    if img := fields.pop("image"):
+        img_path = Path(img)
+        if img_path.exists():
+            files = {"image": (img_path.name, img_path.read_bytes())}
+            LOGGER.debug("Image File: %s", img)
+        else:
+            LOGGER.warning("Image file not found: %s", img)
+    form = {
+        k: json.dumps(v, default=str) if isinstance(v, dict) else v
+        for k, v in fields.items()
+        if v is not None
+    }
+    return files, form
+
 
 class Session:
     """A comprehensive API client for interacting with the Metron Comics Database.
@@ -375,21 +415,6 @@ class Session:
         RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
-
-    T = TypeVar(
-        "T",
-        ArcPost,
-        CharacterPost,
-        CreatorPost,
-        list[CreditPost],
-        VariantPost,
-        IssuePost,
-        PublisherPost,
-        ScrobbleRequest,
-        SeriesPost,
-        TeamPost,
-        UniversePost,
-    )
 
     def __init__(
         self,
@@ -604,10 +629,6 @@ class Session:
 
         invalidations = self._invalidations[resource]
         data = self._request_data("GET", url, params)
-
-        if "detail" in data:
-            raise exceptions.ApiError(data["detail"])
-
         self._save_results_to_cache(cache_key, data, resource, kind, invalidations=invalidations)
 
         return data, False
@@ -620,15 +641,12 @@ class Session:
         self,
         method: str,
         endpoint: list[str | int],
-        data: T,
+        data: BaseModel | list[BaseModel],
         *,
         also_invalidates: tuple[str, ...] = (),
         tags: _WriteTags | None = None,
     ) -> Any:
-        """Send a request with data to the specified endpoint.
-
-        This internal method handles POST and PATCH requests with data payloads.
-        It supports both single objects and lists of objects, as well as file uploads.
+        """Send a write request with a body and return its parsed JSON response.
 
         Args:
             method: HTTP method to use ("POST" or "PATCH").
@@ -644,17 +662,16 @@ class Session:
         Raises:
             ApiError: If there is an error during the API call.
         """
-        return self._handle_http_response(
-            self._execute_write(
-                method, endpoint, data, also_invalidates=also_invalidates, tags=tags
-            )
+        response = self._execute_write(
+            method, endpoint, data, also_invalidates=also_invalidates, tags=tags
         )
+        return self._handle_http_response(response)
 
     def _execute_write(
         self,
         method: str,
         endpoint: list[str | int],
-        data: Any,
+        data: BaseModel | list[BaseModel] | None,
         *,
         also_invalidates: tuple[str, ...] = (),
         tags: _WriteTags | None = None,
@@ -685,7 +702,9 @@ class Session:
         response = None
         unsent = False
         try:
-            response = self._execute_http_request(method, url, {}, header, data_dict, files)
+            response = self._execute_http_request(
+                method, url, headers=header, data=data_dict, files=files
+            )
         except exceptions.RateLimitError:
             # Raised only before the request is sent (a 429 is returned, not raised).
             unsent = True
@@ -722,9 +741,8 @@ class Session:
         Raises:
             ApiError: If validation fails due to schema mismatch.
         """
-        adapter = TypeAdapter(adapter_class)
         try:
-            return adapter.validate_python(resp)
+            return _type_adapter(adapter_class).validate_python(resp)
         except ValidationError as error:
             raise exceptions.ApiError(error) from error
 
@@ -745,17 +763,13 @@ class Session:
         Raises:
             ApiError: If validation fails for any item in the list.
         """
-        adapter = TypeAdapter(list[item_class])
-        try:
-            return adapter.validate_python(resp["results"])
-        except ValidationError as error:
-            raise exceptions.ApiError(error) from error
+        return Session._validate_response(resp["results"], list[item_class])
 
     def _send_void(
         self,
         method: str,
         endpoint: list[str | int],
-        data: Any = None,
+        data: BaseModel | None = None,
         *,
         also_invalidates: tuple[str, ...] = (),
     ) -> None:
@@ -772,21 +786,13 @@ class Session:
             RateLimitError: If the Metron API rate limit has been exceeded.
         """
         response = self._execute_write(method, endpoint, data, also_invalidates=also_invalidates)
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == requests.codes.too_many:
-                retry_after = self._retry_after_seconds(response)
-                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
-                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
-            msg = f"HTTP error: {err!r} | Response body: {response.text}"
-            raise exceptions.ApiError(msg) from err
+        self._raise_for_status(response)
 
     def _handle_write_request(  # noqa: PLR0913
         self,
         method: str,
         endpoint: list[str | int],
-        data: Any,
+        data: BaseModel | list[BaseModel],
         response_class: type,
         *,
         also_invalidates: tuple[str, ...] = (),
@@ -853,14 +859,12 @@ class Session:
             data = self._fetch_detail(url, header_value)
             if data is None:
                 return None
-            if "detail" in data:
-                raise exceptions.ApiError(data["detail"])
             return self._validate_response(data, response_class)
 
         resp = self._get([resource_name, _id])
         return self._validate_response(resp, response_class)
 
-    def _post_resource(self, resource_name: str, data: Any, response_class: type) -> Any:
+    def _post_resource(self, resource_name: str, data: BaseModel, response_class: type) -> Any:
         """Create a new resource in the database.
 
         Generic method for creating any resource type via POST request.
@@ -882,7 +886,9 @@ class Session:
             "POST", [resource_name], data, response_class, tags=_created_tags(resource_name)
         )
 
-    def _patch_resource(self, resource_name: str, _id: int, data: Any, response_class: type) -> Any:
+    def _patch_resource(
+        self, resource_name: str, _id: int, data: BaseModel, response_class: type
+    ) -> Any:
         """Update an existing resource in the database.
 
         Generic method for updating any resource type via PATCH request.
@@ -2326,12 +2332,11 @@ class Session:
                 refuses a request (its daily window is exhausted).
         """
         results = list(data["results"])
-        has_next_page = True
         next_page = data["next"]
         untimed_retries = 0
         limited_retries = 0
 
-        while has_next_page:
+        while next_page:
             invalidations = self._invalidations[resource]
             try:
                 response = self._request_data("GET", next_page)
@@ -2368,16 +2373,12 @@ class Session:
             self._save_results_to_cache(
                 next_page, response, resource, "list", invalidations=invalidations
             )
-
-            if response["next"]:
-                next_page = response["next"]
-            else:
-                has_next_page = False
+            next_page = response["next"]
 
         return {**data, "results": results}
 
     def _prepare_request_payload(
-        self, data: T | None
+        self, data: BaseModel | list[BaseModel] | None
     ) -> tuple[dict[str, str], dict[str, tuple[str, bytes]] | None, str | dict[str, Any] | None]:
         """Prepare request payload, handling data serialization and file uploads.
 
@@ -2385,75 +2386,55 @@ class Session:
             data: Optional data to include in the request body.
 
         Returns:
-            tuple: A tuple of (header, files, data_dict) where header contains HTTP headers,
-                  files contains file uploads, and data_dict contains the request body data.
+            tuple: A tuple of (header, files, body) where header contains HTTP headers,
+                  files contains file uploads, and body is the request body: a JSON string,
+                  multipart form fields, or ``None``.
         """
-        files = None
-        data_dict = None
         header = self.header.copy()
+        files = None
+        body: str | dict[str, Any] | None = None
 
         if isinstance(data, list):
             # Handle list data (e.g., credits)
-            lst = [item.model_dump() for item in data]
-            data_dict = json.dumps(lst)
-            header["Content-Type"] = "application/json;charset=utf-8"
+            body = json.dumps([item.model_dump() for item in data])
         elif data is not None:
-            # Handle single object data
-            data_dict = data.model_dump()
-
-            # Determine whether this model type supports file uploads.
-            # Endpoints that have an `image` field (creator, issue, team, character, arc)
-            # require multipart/form-data even when no file is present.
-            # Endpoints without an `image` field (series, universe, etc.) require JSON.
-            has_image_field = bool(data_dict) and "image" in data_dict
-            if has_image_field:
-                img = data_dict.pop("image")
-                if img:
-                    img_path = Path(img)
-                    if img_path.exists():
-                        files = {"image": (img_path.name, img_path.read_bytes())}
-                        LOGGER.debug("Image File: %s", img)
-                    else:
-                        LOGGER.warning("Image file not found: %s", img)
-
-            if has_image_field:
-                # Multipart form data: strip None values (can't be represented in form
-                # data) and JSON-encode any nested dicts.
-                # Lists are sent as repeated form fields by requests.
-                data_dict = {k: v for k, v in data_dict.items() if v is not None}
-                for key, value in data_dict.items():
-                    if isinstance(value, dict):
-                        data_dict[key] = json.dumps(value, default=str)
+            fields = data.model_dump()
+            # Endpoints whose model has an `image` field (creator, issue, team, character,
+            # arc) require multipart/form-data even when no file is present. The others
+            # (series, universe, etc.) require JSON.
+            if "image" in fields:
+                files, body = _multipart_payload(fields)
             else:
-                # No image field — send as JSON, stripping None values so PATCH
-                # requests don't overwrite existing data with nulls.
-                data_dict = json.dumps(
-                    {k: v for k, v in data_dict.items() if v is not None}, default=str
-                )
-                header["Content-Type"] = "application/json;charset=utf-8"
+                # None values are stripped so PATCH requests don't overwrite existing data
+                # with nulls.
+                body = json.dumps({k: v for k, v in fields.items() if v is not None}, default=str)
+
+        if isinstance(body, str):
+            header["Content-Type"] = _JSON_CONTENT_TYPE
 
         LOGGER.debug("Header: %s", header)
-        LOGGER.debug("Data: %s", data_dict)
+        LOGGER.debug("Data: %s", body)
 
-        return header, files, data_dict
+        return header, files, body
 
-    def _execute_http_request(  # noqa: PLR0913, PLR0917
+    def _execute_http_request(  # noqa: PLR0913
         self,
         method: str,
         url: str,
-        params: dict[str, str | int],
-        header: dict[str, str],
-        data_dict: str | dict[str, Any] | None,
-        files: dict[str, tuple[str, bytes]] | None,
+        *,
+        params: dict[str, str | int] | None = None,
+        headers: dict[str, str] | None = None,
+        data: str | dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes]] | None = None,
     ) -> requests.Response:
         """Execute the HTTP request with proper error handling.
 
         Args:
-            method: HTTP method to use ("GET", "POST", "PATCH").
+            method: HTTP method to use ("GET", "POST", "PATCH" or "DELETE").
             url: The complete URL to send the request to.
-            params: Query parameters to include in the request.
-            header: HTTP headers to send with the request.
-            data_dict: The request body data.
+            params: Optional query parameters to include in the request.
+            headers: HTTP headers to send with the request. Defaults to ``self.header``.
+            data: The request body (see ``_prepare_request_payload``), or ``None``.
             files: Optional file uploads.
 
         Returns:
@@ -2476,8 +2457,8 @@ class Session:
                 params=params,
                 timeout=REQUEST_TIMEOUT,
                 auth=self._auth,
-                headers=header,
-                data=data_dict,
+                headers=self.header if headers is None else headers,
+                data=data,
                 files=files,
             )
             self._update_rate_limit_status(response.headers)
@@ -2508,15 +2489,7 @@ class Session:
             RateLimitError: When the API rate limit is exceeded.
             ApiError: For HTTP errors, invalid JSON, or API error responses.
         """
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == requests.codes.too_many:
-                retry_after = self._retry_after_seconds(response)
-                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
-                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
-            msg = f"HTTP error: {err!r} | Response body: {response.text}"
-            raise exceptions.ApiError(msg) from err
+        self._raise_for_status(response)
 
         try:
             resp = response.json()
@@ -2528,6 +2501,27 @@ class Session:
             raise exceptions.ApiError(resp["detail"])
 
         return resp
+
+    @staticmethod
+    def _raise_for_status(response: requests.Response) -> None:
+        """Raise the error for an unsuccessful (4xx or 5xx) response.
+
+        Args:
+            response: The HTTP response to check.
+
+        Raises:
+            RateLimitError: For a 429, as a ``_ServerRateLimitError``.
+            ApiError: For any other HTTP error.
+        """
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            if response.status_code == requests.codes.too_many:
+                retry_after = Session._retry_after_seconds(response)
+                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
+                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
+            msg = f"HTTP error: {err!r} | Response body: {response.text}"
+            raise exceptions.ApiError(msg) from err
 
     @staticmethod
     def _parse_rate_limit_window(
@@ -2710,19 +2704,15 @@ class Session:
         method: str,
         url: str,
         params: dict[str, str | int] | None = None,
-        data: T | None = None,
     ) -> Any:
-        """Send an HTTP request to the API with comprehensive error handling.
+        """Send a request without a body and return its parsed JSON response.
 
-        This internal method handles all HTTP communication with the Metron API, including
-        authentication, rate limiting, error handling, and response parsing. It supports
-        both simple data requests and file uploads.
+        Writes, which send a body, go through ``_execute_write`` instead.
 
         Args:
-            method: HTTP method to use ("GET", "POST", "PATCH").
+            method: HTTP method to use (normally "GET").
             url: The complete URL to send the request to.
             params: Optional query parameters to include in the request.
-            data: Optional data to include in the request body.
 
         Returns:
             Any: The parsed JSON response from the API.
@@ -2730,27 +2720,10 @@ class Session:
         Raises:
             ApiError: For connection errors, HTTP errors, or invalid JSON responses.
             RateLimitError: When the API rate limit is exceeded (either locally or by the server).
-
-        Notes:
-            - Automatically handles image file uploads when 'image' field is present in data
-            - Implements local rate limiting to prevent exceeding API quotas
-            - Supports both single objects and lists of objects for POST requests
         """
-        LOGGER.debug("Request Method: %s | URL: %s", method, url)
-        LOGGER.debug("Original Header: %s", self.header)
-
-        if params is None:
-            params = {}
-
-        # Prepare request payload (data serialization and file handling)
-        header, files, data_dict = self._prepare_request_payload(data)
-
-        LOGGER.debug("Params: %s", params)
-
-        # Execute HTTP request
-        response = self._execute_http_request(method, url, params, header, data_dict, files)
-
-        # Handle response (parse JSON and check for errors)
+        LOGGER.debug("Request Method: %s | URL: %s | Params: %s", method, url, params)
+        LOGGER.debug("Header: %s", self.header)
+        response = self._execute_http_request(method, url, params=params)
         return self._handle_http_response(response)
 
     def _fetch_detail(
@@ -2780,7 +2753,7 @@ class Session:
         if if_modified_since:
             header["If-Modified-Since"] = if_modified_since
 
-        response = self._execute_http_request("GET", url, {}, header, None, None)
+        response = self._execute_http_request("GET", url, headers=header)
 
         if response.status_code == HTTPStatus.NOT_MODIFIED:
             return None

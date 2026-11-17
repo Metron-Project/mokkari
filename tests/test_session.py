@@ -123,7 +123,7 @@ def test_execute_http_request_sends_bearer_header() -> None:
     with requests_mock.Mocker() as r:
         r.get("https://test.com/api/issue/1", json={})
         token_session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
+            "GET", "https://test.com/api/issue/1", headers=token_session.header
         )
 
     assert r.last_request.headers["Authorization"] == "Bearer abc123"
@@ -140,7 +140,7 @@ def test_execute_http_request_ignores_netrc(tmp_path: Path, monkeypatch) -> None
     with requests_mock.Mocker() as r:
         r.get("https://test.com/api/issue/1", json={})
         token_session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
+            "GET", "https://test.com/api/issue/1", headers=token_session.header
         )
 
     assert r.last_request.headers["Authorization"] == "Bearer abc123"
@@ -154,8 +154,8 @@ def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> 
     module_level_request = MagicMock()
     monkeypatch.setattr(requests, "request", module_level_request)
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-    session._execute_http_request("GET", "https://test.com/api/issue/2", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
+    session._execute_http_request("GET", "https://test.com/api/issue/2")
 
     assert session._http is http_session
     assert mock_request.call_count == 2
@@ -282,11 +282,10 @@ def test__get_returns_cached(session: Session) -> None:
 
 
 def test__get_raises_api_error_on_detail(session: Session) -> None:
-    # Arrange
-    with (  # noqa: SIM117
-        patch.object(session, "_get_results_from_cache", return_value=None),
-        patch.object(session, "_request_data", return_value={"detail": "fail"}),
-    ):
+    # Arrange: a 200 whose body is an error detail
+    with requests_mock.Mocker() as r:
+        r.get(session.api_url.format("creator/1"), json={"detail": "fail"})
+        # Act / Assert
         with pytest.raises(exceptions.ApiError):
             session._get(["creator", 1])
 
@@ -2351,7 +2350,7 @@ def test__request_data_get(monkeypatch, session):
     assert out == {"foo": "bar"}
 
 
-def test__request_data_post_list(monkeypatch, session):
+def test__execute_write_post_list(monkeypatch, session):
     # Arrange
     class DummyResp:
         def __init__(self, status_code=201):
@@ -2368,12 +2367,12 @@ def test__request_data_post_list(monkeypatch, session):
     monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
     # Act
     data = [MagicMock(model_dump=lambda: {"a": 1})]
-    out = session._request_data("POST", "url", data=data)
+    out = session._execute_write("POST", ["credit"], data)
     # Assert
-    assert out == {"foo": "bar"}
+    assert out.json() == {"foo": "bar"}
 
 
-def test__request_data_post_with_image(monkeypatch, session, tmp_path):
+def test__execute_write_post_with_image(monkeypatch, session, tmp_path):
     # Arrange
     class DummyResp:
         def __init__(self, status_code=201):
@@ -2392,9 +2391,9 @@ def test__request_data_post_with_image(monkeypatch, session, tmp_path):
     img_file.write_bytes(b"abc")
     data = MagicMock(model_dump=lambda: {"image": str(img_file)})
     # Act
-    out = session._request_data("POST", "url", data=data)
+    out = session._execute_write("POST", ["creator"], data)
     # Assert
-    assert out == {"foo": "bar"}
+    assert out.json() == {"foo": "bar"}
 
 
 def test__request_data_connection_error(monkeypatch, session):
@@ -3054,11 +3053,9 @@ def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatc
 
     monkeypatch.setattr(paced_session._http, "request", fake_request)
 
-    paced_session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    paced_session._execute_http_request("GET", "https://test.com/api/issue/1")
     with pytest.raises(exceptions.RateLimitError) as exc_info:
-        paced_session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, {}, None, None
-        )
+        paced_session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert len(sent) == 1
     assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
@@ -3088,7 +3085,7 @@ def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypat
 
     monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert calls == [("acquire",), ("on_rate_limited", 12.0), ("release",)]
 
@@ -3116,7 +3113,7 @@ def test_rate_limiter_notified_of_429_without_retry_after(session: Session, monk
 
     monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert reported == [0.0]
 
@@ -3144,7 +3141,7 @@ def test_rate_limiter_not_notified_of_successful_response(session: Session, monk
 
     monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert reported == []
 
@@ -3172,7 +3169,7 @@ def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
     monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
 
     with pytest.raises(exceptions.RateLimiterError):
-        session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+        session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert calls == ["release"]
 
@@ -3216,9 +3213,7 @@ def test_rate_limiter_release_failure_does_not_discard_response(
     monkeypatch.setattr(session._http, "request", lambda *a, **k: response)
 
     with caplog.at_level(logging.ERROR, logger="mokkari.session"):
-        result = session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, {}, None, None
-        )
+        result = session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert result is response
     assert "release() failed" in caplog.text
@@ -3246,9 +3241,7 @@ def test_rate_limiter_on_rate_limited_failure_still_releases(
     monkeypatch.setattr(session._http, "request", lambda *a, **k: response)
 
     with caplog.at_level(logging.ERROR, logger="mokkari.session"):
-        result = session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, {}, None, None
-        )
+        result = session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert result is response
     assert calls == ["release"]

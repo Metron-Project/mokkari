@@ -375,7 +375,7 @@ def test_session_reports_429_to_redis(server, dummy_api_token: str, monkeypatch)
     response = MagicMock(status_code=429, headers={"Retry-After": "30"})
     monkeypatch.setattr(session._http, "request", lambda *_a, **_k: response)
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert client.pttl(limiter._blocked_key) == pytest.approx(30_000, abs=1000)
 
@@ -396,6 +396,6 @@ def test_session_reports_exhausted_burst_window_to_redis(
     response = MagicMock(status_code=200, headers=headers)
     monkeypatch.setattr(session._http, "request", lambda *_a, **_k: response)
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert client.pttl(limiter._blocked_key) == pytest.approx(30_000, abs=1500)
