@@ -7,9 +7,10 @@ import json
 
 import pytest
 import requests_mock
+from pydantic import ValidationError
 
 from mokkari import exceptions
-from mokkari.schemas.publisher import Publisher
+from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.session import Session
 
 
@@ -116,3 +117,29 @@ def test_bad_publisher_validate(talker: Session) -> None:
 
         with pytest.raises(exceptions.ApiError):
             talker.publisher(15)
+
+
+@pytest.mark.parametrize("country", ["GB", ""], ids=["two_letters", "empty"])
+def test_publisher_post_accepts_country(country: str) -> None:
+    """A 2-letter country code, or none at all, is accepted."""
+    assert PublisherPost(name="Titan", country=country).country == country
+
+
+@pytest.mark.parametrize("country", ["USA", "U"], ids=["too_long", "too_short"])
+def test_publisher_post_rejects_country_of_wrong_length(country: str) -> None:
+    """A country code that isn't 2 letters is rejected before anything is sent."""
+    with pytest.raises(ValidationError, match="Country code must be 2 characters long"):
+        PublisherPost(name="Titan", country=country)
+
+
+def test_publisher_keeps_country_from_metron() -> None:
+    """A publisher read from Metron isn't rejected for an unexpected country value."""
+    publisher = Publisher(
+        id=1,
+        name="Titan",
+        country="GBR",
+        desc="",
+        modified="2019-06-23T15:13:19.432378-04:00",
+        resource_url="https://metron.cloud/publisher/titan/",
+    )
+    assert publisher.country == "GBR"

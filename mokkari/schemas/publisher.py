@@ -10,13 +10,13 @@ __all__ = ["Publisher", "PublisherPost"]
 
 from typing import Annotated
 
-from pydantic import HttpUrl
+from pydantic import AfterValidator, HttpUrl
 
 from mokkari.schemas import BaseModel
 from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 
-COUNTY_CODE_LENGTH = 2
+COUNTRY_CODE_LENGTH = 2
 
 
 def ensure_country_code_length(value: str) -> str:
@@ -24,8 +24,8 @@ def ensure_country_code_length(value: str) -> str:
     # Should verify it's a valid country code, but checking its length should suffice for now.
     if not value:
         return value
-    if len(value) != COUNTY_CODE_LENGTH:
-        msg = f"Country code must be {COUNTY_CODE_LENGTH} characters long."
+    if len(value) != COUNTRY_CODE_LENGTH:
+        msg = f"Country code must be {COUNTRY_CODE_LENGTH} characters long."
         raise ValueError(msg)
     return value
 
@@ -47,7 +47,7 @@ class Publisher(BaseResource):
 
     alt_names: list[str] = []
     founded: int | None = None
-    country: Annotated[str, ensure_country_code_length]
+    country: str
     desc: str
     image: HttpUrl | None = None
     cv_id: int | None = None
@@ -73,7 +73,8 @@ class PublisherPost(BaseModel):
     name: str | None = None
     alt_names: list[str] | None = None
     founded: int | None = None
-    country: Annotated[str, ensure_country_code_length] = "US"
+    # Checked only here, on input: a Publisher read from Metron keeps whatever it stores.
+    country: Annotated[str, AfterValidator(ensure_country_code_length)] = "US"
     desc: str | None = None
     image: str | None = None
     cv_id: int | None = None
