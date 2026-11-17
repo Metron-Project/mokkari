@@ -50,3 +50,9 @@ def dummy_api_token() -> str:
 def talker(dummy_api_token: str) -> Session:
     """Mokkari api fixture."""
     return api(dummy_api_token)
+
+
+@pytest.fixture
+def session() -> Session:
+    """Return a Session with dummy credentials and no cache."""
+    return Session("abc123", cache=None, user_agent="pytest", dev_mode=False)
