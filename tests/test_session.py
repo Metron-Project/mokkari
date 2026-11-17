@@ -1072,17 +1072,38 @@ def test_rate_limit_header_names_still_importable_from_session() -> None:
         assert getattr(session_module, name) == getattr(rate_limit, name)
 
 
-def test_list_validation_uses_overridden_validate_response() -> None:
+_SEEN_ADAPTERS: list[Any] = []
+
+
+class _StaticOverrideSession(Session):
+    @staticmethod
+    def _validate_response(resp: Any, adapter_class: type) -> Any:
+        _SEEN_ADAPTERS.append(adapter_class)
+        return Session._validate_response(resp, adapter_class)
+
+
+class _ClassOverrideSession(Session):
+    @classmethod
+    def _validate_response(cls, resp: Any, adapter_class: type) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
+        _SEEN_ADAPTERS.append(adapter_class)
+        return Session._validate_response(resp, adapter_class)
+
+
+class _InstanceOverrideSession(Session):
+    def _validate_response(self, resp: Any, adapter_class: type) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
+        _SEEN_ADAPTERS.append(adapter_class)
+        return Session._validate_response(resp, adapter_class)
+
+
+@pytest.mark.parametrize(
+    "session_class",
+    [_StaticOverrideSession, _ClassOverrideSession, _InstanceOverrideSession],
+    ids=["staticmethod", "classmethod", "instance_method"],
+)
+def test_list_validation_uses_overridden_validate_response(session_class: type[Session]) -> None:
     """A subclass's _validate_response is used for list calls, as for detail calls."""
-    seen: list[Any] = []
-
-    class LoggingSession(Session):
-        @staticmethod
-        def _validate_response(resp: Any, adapter_class: type) -> Any:
-            seen.append(adapter_class)
-            return Session._validate_response(resp, adapter_class)
-
-    s = LoggingSession("abc123", cache=None, user_agent="pytest", dev_mode=False)
+    _SEEN_ADAPTERS.clear()
+    s = session_class("abc123", cache=None, user_agent="pytest", dev_mode=False)
 
     with requests_mock.Mocker() as r:
         r.get(
@@ -1092,5 +1113,5 @@ def test_list_validation_uses_overridden_validate_response() -> None:
         result = s.series_type_list()
 
     assert [item.name for item in result] == ["A"]
-    assert len(seen) == 1
-    assert typing.get_origin(seen[0]) is list
+    assert len(_SEEN_ADAPTERS) == 1
+    assert typing.get_origin(_SEEN_ADAPTERS[0]) is list
