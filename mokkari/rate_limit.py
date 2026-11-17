@@ -9,15 +9,18 @@ This module provides the following classes:
 - HeaderPacedRateLimiter: A ``RateLimiter`` that paces requests from the
   ``X-RateLimit-*`` headers Metron returns with every response
 
-the following function:
+the following functions:
 
 - burst_window: How long a limiter holds each send in its burst window
+- limit_error: The ``RateLimitError`` for an exhausted window
+- daily_limit_error: The ``RateLimitError`` for an exhausted daily window
 
 and the following constants:
 
 - DEFAULT_BURST_PERIOD: Length in seconds of Metron's burst window
 - DEFAULT_BURST_SLACK: Extra seconds each send is held beyond the default
   burst period
+- HEADER_*: The names of the ``X-RateLimit-*`` response headers
 """
 
 from __future__ import annotations
@@ -28,19 +31,30 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Final, Protocol
+from typing import TYPE_CHECKING, Final, Literal, Protocol
 
-from mokkari import exceptions
+from mokkari.exceptions import RateLimitError
 from mokkari.utils import format_time
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 __all__ = [
     "DEFAULT_BURST_PERIOD",
     "DEFAULT_BURST_SLACK",
+    "HEADER_BURST_LIMIT",
+    "HEADER_BURST_REMAINING",
+    "HEADER_BURST_RESET",
+    "HEADER_SUSTAINED_LIMIT",
+    "HEADER_SUSTAINED_REMAINING",
+    "HEADER_SUSTAINED_RESET",
     "HeaderPacedRateLimiter",
     "RateLimitStatus",
     "RateLimitWindow",
     "RateLimiter",
     "burst_window",
+    "daily_limit_error",
+    "limit_error",
 ]
 
 # Length in seconds of Metron's burst (per-minute) window.
@@ -54,6 +68,37 @@ DEFAULT_BURST_PERIOD: Final[float] = 60.0
 # caller who sets their own period may already have padded it, so they opt in to
 # slack by passing it explicitly.
 DEFAULT_BURST_SLACK: Final[float] = 2.0
+
+# Metron reports rate-limit state via these response headers rather than a
+# fixed quota: the "sustained" (daily) limit varies per user based on
+# OpenCollective donor tier, so it can only be known by reading the headers
+# Metron sends back, not by hardcoding a value locally.
+HEADER_BURST_LIMIT: Final[str] = "X-RateLimit-Burst-Limit"
+HEADER_BURST_REMAINING: Final[str] = "X-RateLimit-Burst-Remaining"
+HEADER_BURST_RESET: Final[str] = "X-RateLimit-Burst-Reset"
+HEADER_SUSTAINED_LIMIT: Final[str] = "X-RateLimit-Sustained-Limit"
+HEADER_SUSTAINED_REMAINING: Final[str] = "X-RateLimit-Sustained-Remaining"
+HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
+
+
+def _parse_count(value: str | None) -> int | None:
+    """Parse a rate-limit count header, returning ``None`` if it's missing or malformed."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    """Parse a Unix-timestamp header as a UTC datetime, or ``None`` if missing or malformed."""
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(value), tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def _is_finite(value: float) -> bool:
@@ -102,6 +147,41 @@ class RateLimitWindow:
     remaining: int | None = None
     reset: datetime | None = None
 
+    @classmethod
+    def from_headers(
+        cls, headers: Mapping[str, str], *, limit: str, remaining: str, reset: str
+    ) -> RateLimitWindow | None:
+        """Parse one window out of a response's headers.
+
+        Args:
+            headers: The response headers.
+            limit: The name of the header holding the window's limit.
+            remaining: The name of the header holding the window's remaining count.
+            reset: The name of the header holding the window's reset, as a Unix timestamp.
+
+        Returns:
+            The window, or ``None`` when none of its three headers are present and
+            parseable, so a response missing rate-limit headers doesn't clobber
+            previously observed state. A malformed header value is treated as missing
+            rather than raising, since the response itself has already arrived.
+        """
+        limit_value = _parse_count(headers.get(limit))
+        remaining_value = _parse_count(headers.get(remaining))
+        reset_value = _parse_timestamp(headers.get(reset))
+        if limit_value is None and remaining_value is None and reset_value is None:
+            return None
+        return cls(limit=limit_value, remaining=remaining_value, reset=reset_value)
+
+    def seconds_until_reset(self, now: datetime) -> float:
+        """Seconds until this window allows another request, or 0 if it already does.
+
+        A window is only exhausted if it's known to have no requests remaining and a
+        reset still to come.
+        """
+        if self.remaining is None or self.remaining > 0 or self.reset is None:
+            return 0.0
+        return max(0.0, (self.reset - now).total_seconds())
+
 
 @dataclass(frozen=True)
 class RateLimitStatus:
@@ -119,6 +199,47 @@ class RateLimitStatus:
 
     burst: RateLimitWindow = field(default_factory=RateLimitWindow)
     sustained: RateLimitWindow = field(default_factory=RateLimitWindow)
+
+    def merge_headers(self, headers: Mapping[str, str]) -> RateLimitStatus:
+        """Return this status updated from a response's ``X-RateLimit-*`` headers.
+
+        A window the response doesn't report keeps its current value. If it reports
+        neither window, this same status object is returned.
+        """
+        burst = RateLimitWindow.from_headers(
+            headers,
+            limit=HEADER_BURST_LIMIT,
+            remaining=HEADER_BURST_REMAINING,
+            reset=HEADER_BURST_RESET,
+        )
+        sustained = RateLimitWindow.from_headers(
+            headers,
+            limit=HEADER_SUSTAINED_LIMIT,
+            remaining=HEADER_SUSTAINED_REMAINING,
+            reset=HEADER_SUSTAINED_RESET,
+        )
+        if burst is None and sustained is None:
+            return self
+        return RateLimitStatus(burst=burst or self.burst, sustained=sustained or self.sustained)
+
+    def exhausted_error(self, now: datetime) -> RateLimitError | None:
+        """Return the error for a request sent at ``now``, if a window is exhausted.
+
+        Args:
+            now: The current time, as a UTC datetime.
+
+        Returns:
+            A ``RateLimitError`` naming the window with the longer wait, whose
+            ``retry_after`` is the time until that window's reported reset, or ``None``
+            if neither window is exhausted.
+        """
+        burst_wait = self.burst.seconds_until_reset(now)
+        sustained_wait = self.sustained.seconds_until_reset(now)
+        if max(burst_wait, sustained_wait) <= 0:
+            return None
+        if sustained_wait >= burst_wait:
+            return limit_error(self.sustained.limit, sustained_wait, per="day")
+        return limit_error(self.burst.limit, burst_wait, per="minute")
 
 
 class RateLimiter(Protocol):
@@ -171,7 +292,8 @@ class RateLimiter(Protocol):
         failed to connect. ``status`` is the freshly updated
         ``RateLimitStatus`` reflecting that response's headers, or ``None``
         if the request failed before any headers were received (a connection
-        error or timeout). This is the hook for decrementing an in-flight
+        error or timeout) or the response reported no ``X-RateLimit-*``
+        headers. This is the hook for decrementing an in-flight
         request count and reconciling a local remaining-capacity estimate. An
         exception raised here is logged and ignored rather than allowed to
         discard the response or mask the request's own error, so an
@@ -181,19 +303,32 @@ class RateLimiter(Protocol):
         ...
 
 
-def daily_limit_error(limit: int | None, retry_after: float) -> exceptions.RateLimitError:
+def limit_error(
+    limit: int | None, retry_after: float, *, per: Literal["minute", "day"]
+) -> RateLimitError:
+    """Build the ``RateLimitError`` for an exhausted rate-limit window.
+
+    Args:
+        limit: The window's request limit last reported by Metron, if known.
+        retry_after: Seconds until the window resets.
+        per: Which window is exhausted: the burst (``"minute"``) or sustained (``"day"``).
+    """
+    limit_str = f"{limit:,}" if limit is not None else "your"
+    msg = (
+        f"Rate limit exceeded: You have reached the {limit_str} requests per {per} limit. "
+        f"Please wait {format_time(retry_after)} before making another request."
+    )
+    return RateLimitError(msg, retry_after=retry_after)
+
+
+def daily_limit_error(limit: int | None, retry_after: float) -> RateLimitError:
     """Build the ``RateLimitError`` a limiter raises when the daily window is exhausted.
 
     Args:
         limit: The daily request limit last reported by Metron, if known.
         retry_after: Seconds until the daily window resets.
     """
-    limit_str = f"{limit:,}" if limit is not None else "your"
-    msg = (
-        f"Rate limit exceeded: You have reached the {limit_str} requests per day limit. "
-        f"Please wait {format_time(retry_after)} before making another request."
-    )
-    return exceptions.RateLimitError(msg, retry_after=retry_after)
+    return limit_error(limit, retry_after, per="day")
 
 
 @dataclass
@@ -421,9 +556,8 @@ class HeaderPacedRateLimiter:
             self._sustained_limit = status.sustained.limit
         now = datetime.now(UTC)
         self._sustained.tighten(status.sustained.remaining, status.sustained.reset, now)
-        if burst.remaining is not None and burst.remaining <= 0 and burst.reset is not None:
-            # A reset more than a window away can only come from a clock that disagrees
-            # with Metron's, so the wait is capped at one window.
-            wait = min((burst.reset - now).total_seconds(), self._burst.period)
-            if wait > 0:
-                self._blocked_until = max(self._blocked_until, time.monotonic() + wait)
+        # A reset more than a window away can only come from a clock that disagrees with
+        # Metron's, so the wait is capped at one window.
+        wait = min(burst.seconds_until_reset(now), self._burst.period)
+        if wait > 0:
+            self._blocked_until = max(self._blocked_until, time.monotonic() + wait)

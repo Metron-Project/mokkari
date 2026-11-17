@@ -5,82 +5,35 @@ This module contains tests for Session objects.
 """
 
 import datetime as dt
+import inspect
 import json
-import logging
-import time
-from concurrent.futures import ThreadPoolExecutor
+import typing
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 import requests_mock
-from pydantic import HttpUrl, ValidationError
-from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
+from requests.adapters import DEFAULT_POOLSIZE, HTTPAdapter
+from requests.exceptions import ConnectionError as ConnError
 
 import mokkari.session as session_module
 from mokkari import exceptions, rate_limit
 from mokkari.rate_limit import HeaderPacedRateLimiter
-from mokkari.schemas.arc import Arc, ArcPost
-from mokkari.schemas.base import BaseResource
-from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
+from mokkari.schemas.arc import Arc
+from mokkari.schemas.character import CharacterPost
 from mokkari.schemas.collection import (
     CollectionAddItem,
-    CollectionFormatStat,
-    CollectionIssue,
-    CollectionList,
-    CollectionRead,
-    CollectionStats,
     CollectionUpdate,
-    CollectionUpdateResponse,
-    MissingIssue,
-    MissingSeries,
-    ScrobbleRequest,
-    ScrobbleResponse,
 )
-from mokkari.schemas.creator import Creator, CreatorPost
-from mokkari.schemas.generic import GenericItem
-from mokkari.schemas.imprint import Imprint
-from mokkari.schemas.issue import (
-    BaseIssue,
-    BasicSeries,
-    CreditPost,
-    CreditPostResponse,
-    Issue,
-    IssuePost,
-    IssuePostResponse,
-    IssueSeries,
-)
-from mokkari.schemas.publisher import Publisher, PublisherPost
-from mokkari.schemas.reading_list import (
-    AttributionSource,
-    ReadingListIssue,
-    ReadingListItem,
-    ReadingListList,
-    ReadingListRead,
-)
-from mokkari.schemas.series import Series, SeriesPost, SeriesPostResponse
-from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
-from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
-from mokkari.schemas.user import User
-from mokkari.schemas.variant import VariantPost, VariantPostResponse
+from mokkari.schemas.creator import CreatorPost
+from mokkari.schemas.series import SeriesPost
 from mokkari.schemas.wish_list import (
     AcquireWishListItem,
-    Priority,
-    WishList,
-    WishListAddItem,
-    WishListItemList,
-    WishListItemRead,
 )
 from mokkari.session import Session
-
-
-@pytest.fixture
-def session() -> Session:
-    # Arrange
-    # Provide a Session with dummy credentials and no cache
-    return Session("abc123", cache=None, user_agent="pytest", dev_mode=False)
 
 
 @pytest.fixture
@@ -94,7 +47,7 @@ def dummy_cache():
         def get(self, key):
             return self._store.get(key)
 
-        def store(self, key, value, *, resource, kind):  # noqa: ARG002
+        def store(self, key, value, *, resource, kind):
             self._store[key] = value
 
     return DummyCache()
@@ -123,7 +76,7 @@ def test_execute_http_request_sends_bearer_header() -> None:
     with requests_mock.Mocker() as r:
         r.get("https://test.com/api/issue/1", json={})
         token_session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
+            "GET", "https://test.com/api/issue/1", headers=token_session.header
         )
 
     assert r.last_request.headers["Authorization"] == "Bearer abc123"
@@ -140,7 +93,7 @@ def test_execute_http_request_ignores_netrc(tmp_path: Path, monkeypatch) -> None
     with requests_mock.Mocker() as r:
         r.get("https://test.com/api/issue/1", json={})
         token_session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, token_session.header, None, None
+            "GET", "https://test.com/api/issue/1", headers=token_session.header
         )
 
     assert r.last_request.headers["Authorization"] == "Bearer abc123"
@@ -154,8 +107,8 @@ def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> 
     module_level_request = MagicMock()
     monkeypatch.setattr(requests, "request", module_level_request)
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-    session._execute_http_request("GET", "https://test.com/api/issue/2", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
+    session._execute_http_request("GET", "https://test.com/api/issue/2")
 
     assert session._http is http_session
     assert mock_request.call_count == 2
@@ -165,10 +118,12 @@ def test_session_reuses_a_single_http_session(session: Session, monkeypatch) -> 
 @pytest.mark.parametrize("url", ["https://test.com/api/", "http://127.0.0.1:8000/api/"])
 def test_http_session_pool_fits_concurrent_threads(session: Session, url: str) -> None:
     """Test that the pool holds enough connections that threads sharing a Session reuse them."""
-    pool_kw = session._http.get_adapter(url).poolmanager.connection_pool_kw
+    adapter = session._http.get_adapter(url)
+    assert isinstance(adapter, HTTPAdapter)
+    pool_kw = adapter.poolmanager.connection_pool_kw
 
     assert pool_kw["maxsize"] == session_module.HTTP_POOL_MAXSIZE
-    assert session_module.HTTP_POOL_MAXSIZE > requests.adapters.DEFAULT_POOLSIZE
+    assert session_module.HTTP_POOL_MAXSIZE > DEFAULT_POOLSIZE
 
 
 def test_http_session_drops_cookies(session: Session) -> None:
@@ -253,16 +208,16 @@ def test_session_usable_after_close(session: Session) -> None:
 def test__get_happy_path(  # noqa: PLR0913, PLR0917
     session: Session,
     endpoint: list[str | int],
-    params: dict[str, str] | None,
+    params: dict[str, str | int] | None,
     resp: dict[str, str | int],
     expected: dict[str, str | int],
     case_id: str,
 ) -> None:
     # Arrange
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", return_value=resp),
-        patch.object(session, "_save_results_to_cache") as save_cache,
+        patch.object(session._cache_coordinator, "store") as save_cache,
     ):
         # Act
         result = session._get(endpoint, params)
@@ -274,7 +229,7 @@ def test__get_happy_path(  # noqa: PLR0913, PLR0917
 def test__get_returns_cached(session: Session) -> None:
     # Arrange
     cached = {"id": 99, "name": "Cached"}
-    with patch.object(session, "_get_results_from_cache", return_value=cached):
+    with patch.object(session._cache_coordinator, "get", return_value=cached):
         # Act
         result = session._get(["creator", 99])
         # Assert
@@ -282,11 +237,10 @@ def test__get_returns_cached(session: Session) -> None:
 
 
 def test__get_raises_api_error_on_detail(session: Session) -> None:
-    # Arrange
-    with (  # noqa: SIM117
-        patch.object(session, "_get_results_from_cache", return_value=None),
-        patch.object(session, "_request_data", return_value={"detail": "fail"}),
-    ):
+    # Arrange: a 200 whose body is an error detail
+    with requests_mock.Mocker() as r:
+        r.get(session.api_url.format("creator/1"), json={"detail": "fail"})
+        # Act / Assert
         with pytest.raises(exceptions.ApiError):
             session._get(["creator", 1])
 
@@ -302,13 +256,13 @@ def test__get_raises_api_error_on_detail(session: Session) -> None:
 def test__send(  # noqa: PLR0913, PLR0917
     session: Session,
     method: str,
-    endpoint: list[str],
+    endpoint: list[str | int],
     data: CreatorPost,
     resp: dict[str, int],
     case_id: str,
 ) -> None:
     # Arrange
-    url = session.api_url.format("/".join(endpoint))
+    url = session._url(endpoint)
     with requests_mock.Mocker() as r:
         r.register_uri(method, url, json=resp)
         # Act
@@ -319,1662 +273,26 @@ def test__send(  # noqa: PLR0913, PLR0917
 
 
 @pytest.mark.parametrize(
-    ("resp", "valid", "case_id"),
+    ("helper", "call"),
     [
-        ({"id": 1, "name": "John"}, True, "valid_creator"),
-        # ({"id": 1}, False, "invalid_creator"),
+        ("_send", lambda s: s.creator_post(CreatorPost(name="John"))),
+        ("_send", lambda s: s.creator_patch(1, CreatorPost(name="John"))),
+        ("_send", lambda s: s.character_post(CharacterPost(name="Batman"))),
+        ("_send", lambda s: s.character_patch(1, CharacterPost(name="Batman"))),
+        ("_get_results", lambda s: s.character_issues_list(1)),
     ],
-    ids=lambda x: x if isinstance(x, str) else None,
+    ids=["creator_post", "creator_patch", "character_post", "character_patch", "issues_list"],
 )
-def test_creator(session: Session, resp: dict[str, str | int], valid: bool, case_id: str) -> None:
-    # Arrange
-    with patch.object(session, "_get", return_value=resp):
-        # Act & Assert
-        if valid:
-            with patch(
-                "mokkari.session.TypeAdapter.validate_python",
-                return_value=Creator(
-                    id=1,
-                    name="John",
-                    desc="",
-                    resource_url=HttpUrl("https://foo.bar"),
-                    modified=dt.datetime.now(),
-                ),
-            ) as val:
-                result = session.creator(1)
-                assert isinstance(result, Creator)
-                val.assert_called_once()
-        else:
-            with (
-                patch(
-                    "mokkari.session.TypeAdapter.validate_python",
-                    side_effect=ValidationError([], Creator),
-                ),
-                pytest.raises(exceptions.ApiError),
-            ):
-                session.creator(1)
-
-
-def test_creator_post_happy_path(session: Session) -> None:
-    # Arrange
-    data = CreatorPost(name="John")
+def test_invalid_response_raises_api_error(session: Session, helper: str, call) -> None:
+    """A response missing required fields fails validation and is reported as an ApiError."""
+    # Arrange: what Metron sent back lacks every field but the id
+    resp = {"results": [{"id": 1}], "next": None} if helper == "_get_results" else {"id": 1}
     with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "John"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Creator(
-                id=1,
-                name="John",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.creator_post(data)
-        # Assert
-        assert isinstance(result, Creator)
-
-
-def test_creator_post_api_error(session: Session) -> None:
-    # Arrange
-    data = CreatorPost(name="John")
-    with (
-        patch.object(session, "_send", side_effect=exceptions.ApiError("fail")),
+        patch.object(session, helper, return_value=resp),
         pytest.raises(exceptions.ApiError),
     ):
-        session.creator_post(data)
-
-
-# def test_creator_post_validation_error(session: Session) -> None:
-#     # Arrange
-#     data = CreatorPost(name="John")
-#     with (
-#         patch.object(session, "_send", return_value={"id": 1, "name": "John"}),
-#         patch(
-#             "mokkari.session.TypeAdapter.validate_python",
-#             side_effect=ValidationError([], Creator),
-#         ),
-#     ):
-#         with pytest.raises(exceptions.ApiError):
-#             session.creator_post(data)
-
-
-def test_creator_patch_happy_path(session: Session) -> None:
-    # Arrange
-    data = CreatorPost(name="John")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "John"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Creator(
-                id=1,
-                name="John",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
         # Act
-        result = session.creator_patch(1, data)
-        # Assert
-        assert isinstance(result, Creator)
-
-
-def test_creator_patch_api_error(session: Session) -> None:
-    # Arrange
-    data = CreatorPost(name="John")
-    with (
-        patch.object(session, "_send", side_effect=exceptions.ApiError("fail")),
-        pytest.raises(exceptions.ApiError),
-    ):
-        session.creator_patch(1, data)
-
-
-# def test_creator_patch_validation_error(session:Session) -> None:
-#     # Arrange
-#     data = CreatorPost(name="John")
-#     with (
-#         patch.object(session, "_send", return_value={"id": 1, "name": "John"}),
-#         patch(
-#             "mokkari.session.TypeAdapter.validate_python", side_effect=ValidationError([], Creator)
-#         ),
-#     ):
-#         # Act & Assert
-#         with pytest.raises(exceptions.ApiError):
-#             session.creator_patch(1, data)
-
-
-@pytest.mark.parametrize(
-    ("resp", "valid", "case_id"),
-    [
-        ({"results": [{"id": 1, "name": "John"}], "next": None}, True, "valid_list"),
-        # ({"results": [{}], "next": None}, False, "invalid_list"),
-    ],
-    ids=lambda x: x if isinstance(x, str) else None,
-)
-def test_creators_list(
-    session: Session, resp: dict[str, list[dict[str, int | str]] | None], valid: bool, case_id: str
-) -> None:
-    # Arrange
-    with patch.object(session, "_get_results", return_value=resp):
-        # Act & Assert
-        if valid:
-            with patch(
-                "mokkari.session.TypeAdapter.validate_python",
-                return_value=[BaseResource(id=1, name="John", modified=dt.datetime.now())],
-            ) as val:
-                result = session.creators_list()
-                assert isinstance(result, list)
-                val.assert_called_once()
-        else:
-            with (
-                patch(
-                    "mokkari.session.TypeAdapter.validate_python",
-                    side_effect=ValidationError([], list),
-                ),
-                pytest.raises(exceptions.ApiError),
-            ):
-                session.creators_list()
-
-
-@pytest.mark.parametrize(
-    ("resp", "valid", "case_id"),
-    [
-        ({"id": 1, "name": "Batman"}, True, "valid_character"),
-        # ({"id": 1}, False, "invalid_character"),
-    ],
-    ids=lambda x: x if isinstance(x, str) else None,
-)
-def test_character(session: Session, resp: dict[str, str | int], valid: bool, case_id: str) -> None:
-    # Arrange
-    with patch.object(session, "_get", return_value=resp):
-        # Act & Assert
-        if valid:
-            with patch(
-                "mokkari.session.TypeAdapter.validate_python",
-                return_value=Character(
-                    id=1,
-                    name="Batman",
-                    desc="",
-                    resource_url=HttpUrl("https://foo.bar"),
-                    modified=dt.datetime.now(),
-                ),
-            ) as val:
-                result = session.character(1)
-                assert isinstance(result, Character)
-                val.assert_called_once()
-        else:
-            with (
-                patch(
-                    "mokkari.session.TypeAdapter.validate_python",
-                    side_effect=ValidationError([], Character),
-                ),
-                pytest.raises(exceptions.ApiError),
-            ):
-                session.character(1)
-
-
-def test_character_post_happy_path(session: Session) -> None:
-    # Arrange
-    data = CharacterPost(name="Batman")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Batman"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=CharacterPostResponse(id=1, name="Batman", modified=dt.datetime.now()),
-        ),
-    ):
-        # Act
-        result = session.character_post(data)
-        # Assert
-        assert isinstance(result, CharacterPostResponse)
-
-
-def test_character_post_api_error(session: Session) -> None:
-    # Arrange
-    data = CharacterPost(name="Batman")
-    with (
-        patch.object(session, "_send", side_effect=exceptions.ApiError("fail")),
-        pytest.raises(exceptions.ApiError),
-    ):
-        session.character_post(data)
-
-
-# def test_character_post_validation_error(session:Session) -> None:
-#     # Arrange
-#     data = CharacterPost(name="Batman")
-#     with (
-#         patch.object(session, "_send", return_value={"id": 1, "name": "Batman"}),
-#         patch(
-#             "mokkari.session.TypeAdapter.validate_python",
-#             side_effect=ValidationError([], CharacterPostResponse),
-#         ),
-#     ):
-#         # Act & Assert
-#         with pytest.raises(exceptions.ApiError):
-#             session.character_post(data)
-
-
-def test_character_patch_happy_path(session: Session) -> None:
-    # Arrange
-    data = CharacterPost(name="Batman")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Batman"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=CharacterPostResponse(id=1, name="Batman", modified=dt.datetime.now()),
-        ),
-    ):
-        # Act
-        result = session.character_patch(1, data)
-        # Assert
-        assert isinstance(result, CharacterPostResponse)
-
-
-def test_character_patch_api_error(session: Session) -> None:
-    # Arrange
-    data = CharacterPost(name="Batman")
-    with (
-        patch.object(session, "_send", side_effect=exceptions.ApiError("fail")),
-        pytest.raises(exceptions.ApiError),
-    ):
-        session.character_patch(1, data)
-
-
-# def test_character_patch_validation_error(session:Session) -> None:
-#     # Arrange
-#     data = CharacterPost(name="Batman")
-#     with (
-#         patch.object(session, "_send", return_value={"id": 1, "name": "Batman"}),
-#         patch(
-#             "mokkari.session.TypeAdapter.validate_python",
-#             side_effect=ValidationError([], CharacterPostResponse),
-#         ),
-#     ):
-#         # Act & Assert
-#         with pytest.raises(exceptions.ApiError):
-#             session.character_patch(1, data)
-
-
-@pytest.mark.parametrize(
-    ("resp", "valid", "case_id"),
-    [
-        ({"results": [{"id": 1, "name": "Batman"}], "next": None}, True, "valid_list"),
-        # ({"results": [{}], "next": None}, False, "invalid_list"),
-    ],
-    ids=lambda x: x if isinstance(x, str) else None,
-)
-def test_characters_list(
-    session: Session, resp: dict[str, list[dict[str, int | str]] | None], valid: bool, case_id: str
-) -> None:
-    # Arrange
-    with patch.object(session, "_get_results", return_value=resp):
-        # Act & Assert
-        if valid:
-            with patch(
-                "mokkari.session.TypeAdapter.validate_python",
-                return_value=[BaseResource(id=1, name="Batman", modified=dt.datetime.now())],
-            ) as val:
-                result = session.characters_list()
-                assert isinstance(result, list)
-                val.assert_called_once()
-        else:
-            with (
-                patch(
-                    "mokkari.session.TypeAdapter.validate_python",
-                    side_effect=ValidationError([], list),
-                ),
-                pytest.raises(exceptions.ApiError),
-            ):
-                session.characters_list()
-
-
-def test_character_issues_list_happy_path(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                BaseIssue(
-                    id=1,
-                    number="1",
-                    cover_date=dt.date(2005, 5, 1),
-                    store_date=None,
-                    modified=dt.datetime.now(),
-                    issue="",
-                    series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
-                ),
-            ],
-        ),
-    ):
-        # Act
-        result = session.character_issues_list(1)
-        # Assert
-        assert isinstance(result, list)
-
-
-# def test_character_issues_list_validation_error(session:Session) -> None:
-#     # Arrange
-#     resp = {"results": [{}], "next": None}
-#     with (
-#         patch.object(session, "_get_results", return_value=resp),
-#         patch("mokkari.session.TypeAdapter.validate_python", side_effect=ValidationError([], list)),
-#     ):
-#         # Act & Assert
-#         with pytest.raises(exceptions.ApiError):
-#             session.character_issues_list(1)
-
-
-def test_publisher(session: Session) -> None:
-    # Arrange
-    resp = {"id": 1, "name": "Marvel"}
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Publisher(
-                id=1,
-                name="Marvel",
-                modified=dt.datetime.now(),
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                country="US",
-            ),
-        ),
-    ):
-        # Act
-        result = session.publisher(1)
-        # Assert
-        assert isinstance(result, Publisher)
-
-
-def test_publisher_post(session: Session) -> None:
-    # Arrange
-    data = PublisherPost(name="Marvel")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Marvel"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Publisher(
-                id=1,
-                name="Marvel",
-                modified=dt.datetime.now(),
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                country="US",
-            ),
-        ),
-    ):
-        # Act
-        result = session.publisher_post(data)
-        # Assert
-        assert isinstance(result, Publisher)
-
-
-def test_publisher_patch(session: Session) -> None:
-    # Arrange
-    data = PublisherPost(name="Marvel")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Marvel"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Publisher(
-                id=1,
-                name="Marvel",
-                modified=dt.datetime.now(),
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                country="US",
-            ),
-        ),
-    ):
-        # Act
-        result = session.publisher_patch(1, data)
-        # Assert
-        assert isinstance(result, Publisher)
-
-
-def test_publishers_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Marvel"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="Marvel", modified=dt.datetime.now())],
-        ),
-    ):
-        # Act
-        result = session.publishers_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_team(session: Session) -> None:
-    # Arrange
-    resp = {"id": 1, "name": "X-Men"}
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Team(
-                id=1,
-                name="X-Men",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.team(1)
-        # Assert
-        assert isinstance(result, Team)
-
-
-def test_team_post(session: Session) -> None:
-    # Arrange
-    data = TeamPost(name="X-Men")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "X-Men"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=TeamPostResponse(id=1, name="X-Men", modified=dt.datetime.now()),
-        ),
-    ):
-        # Act
-        result = session.team_post(data)
-        # Assert
-        assert isinstance(result, TeamPostResponse)
-
-
-def test_team_patch(session: Session) -> None:
-    # Arrange
-    data = TeamPost(name="X-Men")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "X-Men"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=TeamPostResponse(id=1, name="X-Men", modified=dt.datetime.now()),
-        ),
-    ):
-        # Act
-        result = session.team_patch(1, data)
-        # Assert
-        assert isinstance(result, TeamPostResponse)
-
-
-def test_teams_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "X-Men"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="X-Men", modified=dt.datetime.now())],
-        ),
-    ):
-        # Act
-        result = session.teams_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_team_issues_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                BaseIssue(
-                    id=1,
-                    number="1",
-                    cover_date=dt.date(2005, 5, 1),
-                    store_date=None,
-                    modified=dt.datetime.now(),
-                    issue="",
-                    series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
-                ),
-            ],
-        ),
-    ):
-        # Act
-        result = session.team_issues_list(1)
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_arc(session: Session) -> None:
-    # Arrange
-    resp = {"id": 1, "name": "Dark Phoenix"}
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Arc(
-                id=1,
-                name="Dark Phoenix",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.arc(1)
-        # Assert
-        assert isinstance(result, Arc)
-
-
-def test_arc_post(session: Session) -> None:
-    # Arrange
-    data = ArcPost(name="Dark Phoenix")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Dark Phoenix"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Arc(
-                id=1,
-                name="Dark Phoenix",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.arc_post(data)
-        # Assert
-        assert isinstance(result, Arc)
-
-
-def test_arc_patch(session: Session) -> None:
-    # Arrange
-    data = ArcPost(name="Dark Phoenix")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Dark Phoenix"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Arc(
-                id=1,
-                name="Dark Phoenix",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.arc_patch(1, data)
-        # Assert
-        assert isinstance(result, Arc)
-
-
-def test_arcs_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Dark Phoenix"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="Dark Phoenix", modified=dt.datetime.now())],
-        ),
-    ):
-        # Act
-        result = session.arcs_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_arc_issues_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                BaseIssue(
-                    id=1,
-                    number="1",
-                    cover_date=dt.date(2005, 5, 1),
-                    store_date=None,
-                    modified=dt.datetime.now(),
-                    issue="",
-                    series=BasicSeries(id=1, name="Series 1", volume=1, year_began=2025),
-                ),
-            ],
-        ),
-    ):
-        # Act
-        result = session.arc_issues_list(1)
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_series(session: Session) -> None:
-    # Arrange
-    resp = {"id": 1, "name": "Uncanny X-Men"}
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Series(
-                id=1,
-                name="Uncanny X-Men",
-                sort_name="Uncanny X-Men",
-                year_began=2025,
-                issue_count=1,
-                modified=dt.datetime.now(),
-                volume=1,
-                series_type=GenericItem(id=1, name="One Shot"),
-                status="Completed",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                publisher=GenericItem(id=1, name="Marvel"),
-            ),
-        ),
-    ):
-        # Act
-        result = session.series(1)
-        # Assert
-        assert isinstance(result, Series)
-
-
-def test_series_post(session: Session) -> None:
-    # Arrange
-    data = SeriesPost(name="Uncanny X-Men")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Uncanny X-Men"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=SeriesPostResponse(id=1, name="Uncanny X-Men", modified=dt.datetime.now()),
-        ),
-    ):
-        # Act
-        result = session.series_post(data)
-        # Assert
-        assert isinstance(result, SeriesPostResponse)
-
-
-def test_series_patch(session: Session) -> None:
-    # Arrange
-    data = SeriesPost(name="Uncanny X-Men")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Uncanny X-Men"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=SeriesPostResponse(id=1, name="Uncanny X-Men", modified=dt.datetime.now()),
-        ),
-    ):
-        # Act
-        result = session.series_patch(1, data)
-        # Assert
-        assert isinstance(result, SeriesPostResponse)
-
-
-def test_series_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Uncanny X-Men"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="Uncanny X-Men", modified=dt.datetime.now())],
-        ),
-    ):
-        # Act
-        result = session.series_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_series_type_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Ongoing"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[GenericItem(id=1, name="Ongoing")],
-        ),
-    ):
-        # Act
-        result = session.series_type_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_issue(session: Session) -> None:
-    # Arrange
-    resp = {"id": 1, "name": "Issue #1"}
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Issue(
-                id=1,
-                name=["Issue #1"],
-                number="1",
-                alt_number="529",
-                modified=dt.datetime.now(),
-                resource_url=HttpUrl("https://foo.bar"),
-                cover_date=dt.date(2025, 5, 1),
-                title="",
-                rating=GenericItem(id=1, name="Teen"),
-                series=IssueSeries(
-                    id=1,
-                    name="Foo Bar",
-                    sort_name="Foo Bar",
-                    year_began=2025,
-                    volume=1,
-                    series_type=GenericItem(id=1, name="One Shot"),
-                ),
-                publisher=GenericItem(id=1, name="DC"),
-                price=None,
-                price_currency="",
-                sku="",
-                isbn="",
-                upc="",
-                desc="",
-                rating_count=0,
-            ),
-        ),
-    ):
-        # Act
-        result = session.issue(1)
-        # Assert
-        assert isinstance(result, Issue)
-
-
-def test_issue_post(session: Session) -> None:
-    # Arrange
-    data = IssuePost(name=["Issue #1"])
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Issue #1"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=IssuePostResponse(
-                id=1, name=["Issue #1"], resource_url=HttpUrl("https://foo.bar")
-            ),
-        ),
-    ):
-        # Act
-        result = session.issue_post(data)
-        # Assert
-        assert isinstance(result, IssuePostResponse)
-
-
-def test_issue_patch(session: Session) -> None:
-    # Arrange
-    data = IssuePost(name=["Issue #1"])
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": ["Issue #1"]}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=IssuePostResponse(
-                id=1, name=["Issue #1"], resource_url=HttpUrl("https://foo.bar")
-            ),
-        ),
-    ):
-        # Act
-        result = session.issue_patch(1, data)
-        # Assert
-        assert isinstance(result, IssuePostResponse)
-
-
-def test_issues_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Issue #1"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                BaseIssue(
-                    id=1,
-                    issue="Issue #1",
-                    number="1",
-                    modified=dt.datetime.now(),
-                    series=BasicSeries(id=1, name="Foo Bar", volume=1, year_began=2025),
-                    cover_date=dt.date(2025, 5, 1),
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.issues_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_credits_post(session: Session) -> None:
-    # Arrange
-    data = [CreditPost(creator=1, issue=1, role=[1])]
-    with (
-        patch.object(session, "_send", return_value=[{"id": 1, "name": "Writer"}]),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                CreditPostResponse(id=1, issue=1, creator=1, role=[1], modified=dt.datetime.now())
-            ],
-        ),
-    ):
-        # Act
-        result = session.credits_post(data)
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_variant_post(session: Session) -> None:
-    # Arrange
-    data = VariantPost(
-        name="Variant A", issue=1, image="/home/test/image.jpg", price=Decimal("3.99")
-    )
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Variant A"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=VariantPostResponse(
-                id=1,
-                name="Variant A",
-                issue=1,
-                image="/home/test/image.jpg",
-                price=Decimal("3.99"),
-                price_currency="USD",
-            ),
-        ),
-    ):
-        # Act
-        result = session.variant_post(data)
-        # Assert
-        assert isinstance(result, VariantPostResponse)
-
-
-def test_role_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Writer"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[GenericItem(id=1, name="Writer")],
-        ),
-    ):
-        # Act
-        result = session.role_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_universe(session: Session) -> None:
-    # Arrange
-    resp = {"id": 1, "name": "Marvel Universe"}
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Universe(
-                id=1,
-                name="Marvel Universe",
-                publisher=GenericItem(id=1, name="Marvel"),
-                designation="Earth 616",
-                resource_url=HttpUrl("https://foo.bar"),
-                desc="",
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.universe(1)
-        # Assert
-        assert isinstance(result, Universe)
-
-
-def test_universe_post(session: Session) -> None:
-    # Arrange
-    data = UniversePost(name="Marvel Universe")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Marvel Universe"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=UniversePostResponse(
-                id=1, name="Marvel Universe", modified=dt.datetime.now()
-            ),
-        ),
-    ):
-        # Act
-        result = session.universe_post(data)
-        # Assert
-        assert isinstance(result, UniversePostResponse)
-
-
-def test_universe_patch(session: Session) -> None:
-    # Arrange
-    data = UniversePost(name="Marvel Universe")
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "name": "Marvel Universe"}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=UniversePostResponse(
-                id=1, name="Marvel Universe", modified=dt.datetime.now()
-            ),
-        ),
-    ):
-        # Act
-        result = session.universe_patch(1, data)
-        # Assert
-        assert isinstance(result, UniversePostResponse)
-
-
-def test_universes_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Marvel Universe"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="Marvel Universe", modified=dt.datetime.now())],
-        ),
-    ):
-        # Act
-        result = session.universes_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_imprint(session: Session) -> None:
-    # Arrange
-    resp = {"id": 1, "name": "Epic"}
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=Imprint(
-                id=1,
-                name="Epic",
-                desc="",
-                resource_url=HttpUrl("https://foo.bar"),
-                modified=dt.datetime.now(),
-                publisher=GenericItem(id=1, name="Marvel"),
-            ),
-        ),
-    ):
-        # Act
-        result = session.imprint(1)
-        # Assert
-        assert isinstance(result, Imprint)
-
-
-def test_imprints_list(session: Session) -> None:
-    # Arrange
-    resp = {"results": [{"id": 1, "name": "Epic"}], "next": None}
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[BaseResource(id=1, name="Epic", modified=dt.datetime.now())],
-        ),
-    ):
-        # Act
-        result = session.imprints_list()
-        # Assert
-        assert isinstance(result, list)
-
-
-def test_reading_list(session: Session) -> None:
-    # Arrange
-    resp = {
-        "id": 1,
-        "name": "My Reading List",
-        "slug": "my-reading-list",
-        "user": {"id": 1, "username": "testuser"},
-        "desc": "A test reading list",
-        "is_private": False,
-        "attribution_source": "CBRO",
-        "attribution_url": "https://example.com/list",
-        "average_rating": 4.5,
-        "rating_count": 10,
-        "items_url": "https://api.example.com/reading_list/1/items/",
-        "resource_url": "https://api.example.com/reading_list/1/",
-        "modified": "2023-01-01T12:00:00Z",
-    }
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=ReadingListRead(
-                id=1,
-                name="My Reading List",
-                slug="my-reading-list",
-                user=User(id=1, username="testuser"),
-                desc="A test reading list",
-                list_type="EVENT",
-                is_private=False,
-                attribution_source="CBRO",
-                attribution_url=HttpUrl("https://example.com/list"),
-                average_rating=4.5,
-                rating_count=10,
-                items_url="https://api.example.com/reading_list/1/items/",
-                resource_url="https://api.example.com/reading_list/1/",
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.reading_list(1)
-        # Assert
-        assert isinstance(result, ReadingListRead)
-        assert result.name == "My Reading List"
-
-
-def test_reading_lists_list(session: Session) -> None:
-    # Arrange
-    resp = {
-        "results": [
-            {
-                "id": 1,
-                "name": "My Reading List",
-                "slug": "my-reading-list",
-                "user": {"id": 1, "username": "testuser"},
-                "is_private": False,
-                "attribution_source": AttributionSource.CBRO,
-                "average_rating": 4.5,
-                "rating_count": 10,
-                "modified": "2023-01-01T12:00:00Z",
-            }
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                ReadingListList(
-                    id=1,
-                    name="My Reading List",
-                    slug="my-reading-list",
-                    user=User(id=1, username="testuser"),
-                    list_type="EVENT",
-                    is_private=False,
-                    attribution_source=AttributionSource.CBRO,
-                    average_rating=4.5,
-                    rating_count=10,
-                    modified=dt.datetime.now(),
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.reading_lists_list()
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0].name == "My Reading List"
-
-
-def test_reading_lists_list_with_params(session: Session) -> None:
-    # Arrange
-    params = {"username": "testuser", "is_private": False}
-    resp = {
-        "results": [
-            {
-                "id": 1,
-                "name": "Public List",
-                "slug": "public-list",
-                "user": {"id": 1, "username": "testuser"},
-                "is_private": False,
-                "average_rating": 4.5,
-                "rating_count": 10,
-                "modified": "2023-01-01T12:00:00Z",
-            }
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                ReadingListList(
-                    id=1,
-                    name="Public List",
-                    slug="public-list",
-                    user=User(id=1, username="testuser"),
-                    list_type="EVENT",
-                    is_private=False,
-                    average_rating=4.5,
-                    rating_count=10,
-                    modified=dt.datetime.now(),
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.reading_lists_list(params)
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 1
-
-
-def test_reading_list_items(session: Session) -> None:
-    # Arrange
-    resp = {
-        "results": [
-            {
-                "id": 1,
-                "issue": {
-                    "id": 100,
-                    "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-                    "number": "1",
-                    "cover_date": "2023-01-01",
-                    "modified": "2023-01-01T12:00:00Z",
-                },
-                "order": 1,
-            }
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                ReadingListItem(
-                    id=1,
-                    issue=ReadingListIssue(
-                        id=100,
-                        series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                        number="1",
-                        cover_date=dt.date(2023, 1, 1),
-                        modified=dt.datetime.now(),
-                    ),
-                    order=1,
-                    issue_type="Core Issue",
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.reading_list_items(1)
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0].order == 1
-        assert result[0].issue.number == "1"
-
-
-def test_collection(session: Session) -> None:
-    # Arrange
-    resp = {
-        "id": 1,
-        "user": {"id": 1, "username": "testuser"},
-        "issue": {
-            "id": 100,
-            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-            "number": "1",
-            "cover_date": "2023-01-01",
-            "modified": "2023-01-01T12:00:00Z",
-        },
-        "quantity": 1,
-        "book_format": "PRINT",
-        "grade": 9.8,
-        "grading_company": "CGC",
-        "purchase_date": "2023-01-15",
-        "purchase_price": "49.99",
-        "purchase_store": "Local Comic Shop",
-        "storage_location": "Box 1",
-        "notes": "First appearance",
-        "is_read": True,
-        "date_read": "2023-01-20",
-        "rating": 5,
-        "resource_url": "https://api.example.com/collection/1/",
-        "created_on": "2023-01-01T10:00:00Z",
-        "modified": "2023-01-01T12:00:00Z",
-    }
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=CollectionRead(
-                id=1,
-                user=User(id=1, username="testuser"),
-                issue=CollectionIssue(
-                    id=100,
-                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                    number="1",
-                    cover_date=dt.date(2023, 1, 1),
-                    modified=dt.datetime.now(),
-                ),
-                quantity=1,
-                book_format="PRINT",
-                grade=9.8,
-                grading_company="CGC",
-                purchase_date=dt.date(2023, 1, 15),
-                purchase_price=Decimal("49.99"),
-                purchase_store="Local Comic Shop",
-                storage_location="Box 1",
-                notes="First appearance",
-                is_read=True,
-                date_read=dt.datetime(2023, 1, 20, tzinfo=dt.UTC),
-                rating=5,
-                resource_url="https://api.example.com/collection/1/",
-                created_on=dt.datetime.now(),
-                modified=dt.datetime.now(),
-            ),
-        ),
-    ):
-        # Act
-        result = session.collection(1)
-        # Assert
-        assert isinstance(result, CollectionRead)
-        assert result.id == 1
-        assert result.book_format == "PRINT"
-
-
-def test_collections_list(session: Session) -> None:
-    # Arrange
-    resp = {
-        "results": [
-            {
-                "id": 1,
-                "user": {"id": 1, "username": "testuser"},
-                "issue": {
-                    "id": 100,
-                    "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-                    "number": "1",
-                    "cover_date": "2023-01-01",
-                    "modified": "2023-01-01T12:00:00Z",
-                },
-                "quantity": 1,
-                "book_format": "PRINT",
-                "grading_company": "CGC",
-                "is_read": True,
-                "modified": "2023-01-01T12:00:00Z",
-            }
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                CollectionList(
-                    id=1,
-                    user=User(id=1, username="testuser"),
-                    issue=CollectionIssue(
-                        id=100,
-                        series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                        number="1",
-                        cover_date=dt.date(2023, 1, 1),
-                        modified=dt.datetime.now(),
-                    ),
-                    quantity=1,
-                    book_format="PRINT",
-                    grading_company="CGC",
-                    is_read=True,
-                    modified=dt.datetime.now(),
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.collections_list()
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0].book_format == "PRINT"
-
-
-def test_collections_list_with_params(session: Session) -> None:
-    # Arrange
-    params = {"is_read": False, "book_format": "DIGITAL"}
-    resp = {
-        "results": [
-            {
-                "id": 2,
-                "user": {"id": 1, "username": "testuser"},
-                "issue": {
-                    "id": 101,
-                    "series": {"id": 1, "name": "Superman", "volume": 1, "year_began": 1938},
-                    "number": "1",
-                    "cover_date": "2023-02-01",
-                    "modified": "2023-02-01T12:00:00Z",
-                },
-                "quantity": 1,
-                "book_format": "DIGITAL",
-                "grading_company": "",
-                "is_read": False,
-                "modified": "2023-02-01T12:00:00Z",
-            }
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                CollectionList(
-                    id=2,
-                    user=User(id=1, username="testuser"),
-                    issue=CollectionIssue(
-                        id=101,
-                        series=BasicSeries(id=1, name="Superman", volume=1, year_began=1938),
-                        number="1",
-                        cover_date=dt.date(2023, 2, 1),
-                        modified=dt.datetime.now(),
-                    ),
-                    quantity=1,
-                    book_format="DIGITAL",
-                    grading_company="",
-                    is_read=False,
-                    modified=dt.datetime.now(),
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.collections_list(params)
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0].book_format == "DIGITAL"
-        assert result[0].is_read is False
-
-
-def test_collection_missing_issues(session: Session) -> None:
-    # Arrange
-    resp = {
-        "results": [
-            {
-                "id": 200,
-                "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-                "number": "2",
-                "cover_date": "2023-02-01",
-                "store_date": "2023-01-15",
-            },
-            {
-                "id": 201,
-                "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-                "number": "3",
-                "cover_date": "2023-03-01",
-            },
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                MissingIssue(
-                    id=200,
-                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                    number="2",
-                    cover_date=dt.date(2023, 2, 1),
-                    store_date=dt.date(2023, 1, 15),
-                ),
-                MissingIssue(
-                    id=201,
-                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                    number="3",
-                    cover_date=dt.date(2023, 3, 1),
-                ),
-            ],
-        ),
-    ):
-        # Act
-        result = session.collection_missing_issues(1)
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0].number == "2"
-        assert result[1].number == "3"
-
-
-def test_collection_missing_series(session: Session) -> None:
-    # Arrange
-    resp = {
-        "results": [
-            {
-                "id": 1,
-                "name": "Batman",
-                "sort_name": "Batman",
-                "year_began": 1940,
-                "year_end": 2011,
-                "publisher": {"id": 1, "name": "DC Comics"},
-                "series_type": {"id": 1, "name": "Ongoing Series"},
-                "total_issues": 713,
-                "owned_issues": 500,
-                "missing_count": 213,
-                "completion_percentage": 70.12,
-            },
-            {
-                "id": 2,
-                "name": "Superman",
-                "sort_name": "Superman",
-                "year_began": 1938,
-                "publisher": {"id": 1, "name": "DC Comics"},
-                "series_type": {"id": 1, "name": "Ongoing Series"},
-                "total_issues": 500,
-                "owned_issues": 200,
-                "missing_count": 300,
-                "completion_percentage": 40.0,
-            },
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                MissingSeries(
-                    id=1,
-                    name="Batman",
-                    sort_name="Batman",
-                    year_began=1940,
-                    year_end=2011,
-                    publisher=GenericItem(id=1, name="DC Comics"),
-                    series_type=GenericItem(id=1, name="Ongoing Series"),
-                    total_issues=713,
-                    owned_issues=500,
-                    missing_count=213,
-                    completion_percentage=70.12,
-                ),
-                MissingSeries(
-                    id=2,
-                    name="Superman",
-                    sort_name="Superman",
-                    year_began=1938,
-                    publisher=GenericItem(id=1, name="DC Comics"),
-                    series_type=GenericItem(id=1, name="Ongoing Series"),
-                    total_issues=500,
-                    owned_issues=200,
-                    missing_count=300,
-                    completion_percentage=40.0,
-                ),
-            ],
-        ),
-    ):
-        # Act
-        result = session.collection_missing_series()
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0].name == "Batman"
-        assert result[1].name == "Superman"
-
-
-def test_collection_stats(session: Session) -> None:
-    # Arrange
-    resp = {
-        "total_items": 200,
-        "total_quantity": 250,
-        "total_value": "5000.00",
-        "read_count": 150,
-        "unread_count": 50,
-        "by_format": [
-            {"book_format": "PRINT", "count": 180},
-            {"book_format": "DIGITAL", "count": 20},
-        ],
-    }
-    with (
-        patch.object(session, "_get", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=CollectionStats(
-                total_items=200,
-                total_quantity=250,
-                total_value="5000.00",
-                read_count=150,
-                unread_count=50,
-                by_format=[
-                    CollectionFormatStat(book_format="PRINT", count=180),
-                    CollectionFormatStat(book_format="DIGITAL", count=20),
-                ],
-            ),
-        ),
-    ):
-        # Act
-        result = session.collection_stats()
-        # Assert
-        assert isinstance(result, CollectionStats)
-        assert result.total_items == 200
-        assert result.total_quantity == 250
-        assert result.read_count == 150
-        assert result.unread_count == 50
-        assert len(result.by_format) == 2
-
-
-def test_collection_scrobble(session: Session) -> None:
-    # Arrange
-    scrobble_request = ScrobbleRequest(
-        issue_id=1,
-        date_read=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
-        rating=5,
-    )
-    resp = {
-        "id": 100,
-        "issue": {
-            "id": 1,
-            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-            "number": "1",
-            "cover_date": "2024-01-01",
-            "store_date": "2023-12-15",
-            "modified": "2024-01-01T12:00:00Z",
-        },
-        "is_read": True,
-        "date_read": "2024-01-20T14:30:00Z",
-        "rating": 5,
-        "created": True,
-        "modified": "2024-01-20T14:30:00Z",
-    }
-    with (
-        patch.object(session, "_send", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=ScrobbleResponse(
-                id=100,
-                issue=CollectionIssue(
-                    id=1,
-                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                    number="1",
-                    cover_date=dt.date(2024, 1, 1),
-                    store_date=dt.date(2023, 12, 15),
-                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                ),
-                is_read=True,
-                date_read=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
-                rating=5,
-                created=True,
-                modified=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
-            ),
-        ),
-    ):
-        # Act
-        result = session.collection_scrobble(scrobble_request)
-        # Assert
-        assert isinstance(result, ScrobbleResponse)
-        assert result.id == 100
-        assert result.issue.id == 1
-        assert result.is_read is True
-        assert result.rating == 5
-        assert result.created is True
-
-
-def test_collection_scrobble_minimal(session: Session) -> None:
-    # Arrange
-    scrobble_request = ScrobbleRequest(issue_id=1, rating=None)
-    resp = {
-        "id": 100,
-        "issue": {
-            "id": 1,
-            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-            "number": "1",
-            "cover_date": "2024-01-01",
-            "modified": "2024-01-01T12:00:00Z",
-        },
-        "is_read": True,
-        "created": False,
-        "modified": "2024-01-20T14:30:00Z",
-    }
-    with (
-        patch.object(session, "_send", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=ScrobbleResponse(
-                id=100,
-                issue=CollectionIssue(
-                    id=1,
-                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                    number="1",
-                    cover_date=dt.date(2024, 1, 1),
-                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                ),
-                is_read=True,
-                created=False,
-                modified=dt.datetime(2024, 1, 20, 14, 30, 0, tzinfo=dt.UTC),
-            ),
-        ),
-    ):
-        # Act
-        result = session.collection_scrobble(scrobble_request)
-        # Assert
-        assert isinstance(result, ScrobbleResponse)
-        assert result.id == 100
-        assert result.is_read is True
-        assert result.created is False
-        assert result.date_read is None
-        assert result.rating is None
-
-
-def test_collection_patch(session: Session) -> None:
-    # Arrange
-    data = CollectionUpdate(rating=4)
-    with (
-        patch.object(session, "_send", return_value={"id": 1, "rating": 4}),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=CollectionUpdateResponse(id=1, rating=4, modified=dt.datetime.now()),
-        ),
-    ):
-        # Act
-        result = session.collection_patch(1, data)
-        # Assert
-        assert isinstance(result, CollectionUpdateResponse)
-        assert result.id == 1
-        assert result.rating == 4
+        call(session)
 
 
 def test_collection_patch_api_error(session: Session) -> None:
@@ -1985,59 +303,6 @@ def test_collection_patch_api_error(session: Session) -> None:
         pytest.raises(exceptions.ApiError),
     ):
         session.collection_patch(1, data)
-
-
-def test_collection_add(session: Session) -> None:
-    # Arrange
-    add_request = CollectionAddItem(issue_id=1, quantity=2, purchase_price=Decimal("3.99"))
-    resp = {
-        "id": 100,
-        "user": {"id": 1, "username": "test"},
-        "issue": {
-            "id": 1,
-            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-            "number": "1",
-            "cover_date": "2024-01-01",
-            "modified": "2024-01-01T12:00:00Z",
-        },
-        "quantity": 2,
-        "book_format": "PRINT",
-        "grading_company": "",
-        "is_read": False,
-        "resource_url": "https://api.example.com/collection/100/",
-        "created_on": "2024-01-01T12:00:00Z",
-        "modified": "2024-01-01T12:00:00Z",
-    }
-    with (
-        patch.object(session, "_send", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=CollectionRead(
-                id=100,
-                user=User(id=1, username="test"),
-                issue=CollectionIssue(
-                    id=1,
-                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                    number="1",
-                    cover_date=dt.date(2024, 1, 1),
-                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                ),
-                quantity=2,
-                book_format="PRINT",
-                grading_company="",
-                is_read=False,
-                resource_url="https://api.example.com/collection/100/",
-                created_on=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-            ),
-        ),
-    ):
-        # Act
-        result = session.collection_add(add_request)
-        # Assert
-        assert isinstance(result, CollectionRead)
-        assert result.id == 100
-        assert result.quantity == 2
 
 
 def test_collection_add_api_error(session: Session) -> None:
@@ -2091,9 +356,9 @@ def test__retrieve_all_results_skips_cache_reads(session: Session) -> None:
     data = {"results": [1], "next": "url2"}
     resp2 = {"results": [2], "next": None}
     with (
-        patch.object(session, "_get_results_from_cache") as cache_get,
+        patch.object(session._cache_coordinator, "get") as cache_get,
         patch.object(session, "_request_data", return_value=resp2),
-        patch.object(session, "_save_results_to_cache") as cache_store,
+        patch.object(session._cache_coordinator, "store") as cache_store,
     ):
         # Act
         out = session._retrieve_all_results(data, "foo")
@@ -2108,9 +373,9 @@ def test__retrieve_all_results_without_cache(session: Session) -> None:
     data = {"results": [1], "next": "url2"}
     resp2 = {"results": [2], "next": None}
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", return_value=resp2),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
     ):
         # Act
         out = session._retrieve_all_results(data, "foo")
@@ -2125,7 +390,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_without_retry_after(
     data = {"results": [1], "next": "url2"}
     error = exceptions.RateLimitError("limited", retry_after=0)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2149,9 +414,9 @@ def test__retrieve_all_results_untimed_retry_count_resets_after_a_page(session: 
     page3 = {"results": [3], "next": None}
     responses = [error, error, error, page2, error, error, error, page3]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
         patch("mokkari.session.time.sleep"),
     ):
         # Act
@@ -2170,9 +435,9 @@ def test__retrieve_all_results_keeps_retrying_429s_that_have_retry_after(
     attempts = session_module.MAX_UNTIMED_RATE_LIMIT_RETRIES + 3
     responses = [error] * attempts + [{"results": [2], "next": None}]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
@@ -2189,7 +454,7 @@ def test__retrieve_all_results_raises_after_repeated_429s_with_retry_after(
     data = {"results": [1], "next": "url2"}
     error = exceptions.RateLimitError("limited", retry_after=5)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2210,9 +475,9 @@ def test__retrieve_all_results_with_rate_limiter_retries_429_without_sleeping(
     error = session_module._ServerRateLimitError("limited", retry_after=5)
     responses = [error, {"results": [2], "next": None}]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses) as request,
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
         patch("mokkari.session.time.sleep") as sleep,
     ):
         # Act
@@ -2231,7 +496,7 @@ def test__retrieve_all_results_with_rate_limiter_caps_retries_of_a_non_blocking_
     data = {"results": [1], "next": "url2"}
     error = session_module._ServerRateLimitError("limited", retry_after=5)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2253,9 +518,9 @@ def test__retrieve_all_results_with_rate_limiter_retry_cap_resets_after_a_page(
     run = [error] * session_module.MAX_RATE_LIMIT_RETRIES
     responses = [*run, {"results": [2], "next": "url3"}, *run, {"results": [3], "next": None}]
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=responses),
-        patch.object(session, "_save_results_to_cache"),
+        patch.object(session._cache_coordinator, "store"),
     ):
         # Act
         out = session._retrieve_all_results(data, "foo")
@@ -2271,7 +536,7 @@ def test__retrieve_all_results_with_rate_limiter_propagates_limiter_refusal(
     data = {"results": [1], "next": "url2"}
     error = exceptions.RateLimitError("daily limit", retry_after=3600)
     with (
-        patch.object(session, "_get_results_from_cache", return_value=None),
+        patch.object(session._cache_coordinator, "get", return_value=None),
         patch.object(session, "_request_data", side_effect=error) as request,
         patch("mokkari.session.time.sleep") as sleep,
     ):
@@ -2330,71 +595,41 @@ def test__send_void_raises_server_rate_limit_error_on_429(session: Session, monk
     assert exc_info.value.retry_after == 7
 
 
-def test__request_data_get(monkeypatch, session):
+def test__request_data_get(monkeypatch, session, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=200):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self._json
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"foo": "bar"})
+    )
     # Act
     out = session._request_data("GET", "url")
     # Assert
     assert out == {"foo": "bar"}
 
 
-def test__request_data_post_list(monkeypatch, session):
+def test__execute_write_post_list(monkeypatch, session, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=201):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self._json
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(201, json_body={"foo": "bar"})
+    )
     # Act
     data = [MagicMock(model_dump=lambda: {"a": 1})]
-    out = session._request_data("POST", "url", data=data)
+    out = session._execute_write("POST", ["credit"], data)
     # Assert
-    assert out == {"foo": "bar"}
+    assert out.json() == {"foo": "bar"}
 
 
-def test__request_data_post_with_image(monkeypatch, session, tmp_path):
+def test__execute_write_post_with_image(monkeypatch, session, tmp_path, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=201):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self._json
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(201, json_body={"foo": "bar"})
+    )
     img_file = tmp_path / "img.png"
     img_file.write_bytes(b"abc")
     data = MagicMock(model_dump=lambda: {"image": str(img_file)})
     # Act
-    out = session._request_data("POST", "url", data=data)
+    out = session._execute_write("POST", ["creator"], data)
     # Assert
-    assert out == {"foo": "bar"}
+    assert out.json() == {"foo": "bar"}
 
 
 def test__request_data_connection_error(monkeypatch, session):
@@ -2408,41 +643,33 @@ def test__request_data_connection_error(monkeypatch, session):
         session._request_data("GET", "url")
 
 
-def test__request_data_detail(monkeypatch, session):
+def test__request_data_detail(monkeypatch, session, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=200):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            if self.status_code >= 400:
-                msg = f"HTTP {self.status_code} Error"
-                raise HTTPError(msg)
-
-        def json(self):
-            return self._json
-
     # Test successful request (200)
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(200))
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"foo": "bar"})
+    )
     out = session._request_data("GET", "url")
     assert out == {"foo": "bar"}
 
     # Test another successful status code (201)
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(201))
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(201, json_body={"foo": "bar"})
+    )
     out = session._request_data("GET", "url")
     assert out == {"foo": "bar"}
 
-    # # Test client error (400) - should raise ApiError
-    # monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(400))
-    # with pytest.raises(exceptions.ApiError):
-    #     session._request_data("GET", "url")
+    # Test client error (400) - should raise ApiError
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(400, json_body={"foo": "bar"})
+    )
+    with pytest.raises(exceptions.ApiError):
+        session._request_data("GET", "url")
 
 
-def test__get_results_from_cache_none(session: Session) -> None:
+def test_cache_coordinator_get_without_cache(session: Session) -> None:
     # Act
-    out = session._get_results_from_cache("key", "series")
+    out = session._cache_coordinator.get("key", "series")
     # Assert
     assert out is None
 
@@ -2464,6 +691,7 @@ def test__prepare_request_payload_json_excludes_none_fields(session: Session) ->
     data = SeriesPost(gcd_id=12345)
     _, files, data_dict = session._prepare_request_payload(data)
     assert files is None
+    assert isinstance(data_dict, str)
     parsed = json.loads(data_dict)
     assert parsed == {"gcd_id": 12345}
 
@@ -2478,6 +706,7 @@ def test__prepare_request_payload_partial_series_patch_only_sends_set_field(
     """
     data = SeriesPost(gcd_id=99)
     _, _, data_dict = session._prepare_request_payload(data)
+    assert isinstance(data_dict, str)
     parsed = json.loads(data_dict)
     assert parsed == {"gcd_id": 99}
 
@@ -2486,6 +715,7 @@ def test__prepare_request_payload_all_set_fields_are_included(session: Session) 
     """Fields that are explicitly set must be present in the JSON body."""
     data = SeriesPost(name="Batman", sort_name="Batman", volume=1, year_began=1940, gcd_id=7)
     _, _, data_dict = session._prepare_request_payload(data)
+    assert isinstance(data_dict, str)
     parsed = json.loads(data_dict)
     assert parsed["name"] == "Batman"
     assert parsed["sort_name"] == "Batman"
@@ -2522,50 +752,8 @@ def test__prepare_request_payload_image_model_no_image_file(session: Session) ->
 
 
 # ============================================================================
-# Rate Limiting Tests
+# Cache Status (X-Cache) Tests
 # ============================================================================
-#
-# Metron's sustained (daily) limit is dynamic per user (higher for
-# OpenCollective donors), so Session tracks rate limits reactively from the
-# X-RateLimit-* response headers instead of a fixed local quota.
-
-
-def test_rate_limit_status_defaults_to_unknown(session: Session) -> None:
-    """A fresh session has no observed rate-limit state until a request completes."""
-    status = session.rate_limit_status
-    assert status.burst == rate_limit.RateLimitWindow()
-    assert status.sustained == rate_limit.RateLimitWindow()
-
-
-def test_update_rate_limit_status_parses_headers(session: Session) -> None:
-    """Headers from a response are parsed into the session's rate-limit status."""
-    headers = {
-        "X-RateLimit-Burst-Limit": "20",
-        "X-RateLimit-Burst-Remaining": "19",
-        "X-RateLimit-Burst-Reset": "1700000060",
-        "X-RateLimit-Sustained-Limit": "10000",
-        "X-RateLimit-Sustained-Remaining": "9999",
-        "X-RateLimit-Sustained-Reset": "1700086400",
-    }
-
-    session._update_rate_limit_status(headers)
-
-    status = session.rate_limit_status
-    assert status.burst.limit == 20
-    assert status.burst.remaining == 19
-    assert status.burst.reset == dt.datetime.fromtimestamp(1700000060, tz=dt.UTC)
-    assert status.sustained.limit == 10_000
-    assert status.sustained.remaining == 9_999
-    assert status.sustained.reset == dt.datetime.fromtimestamp(1700086400, tz=dt.UTC)
-
-
-def test_update_rate_limit_status_ignores_response_without_headers(session: Session) -> None:
-    """A response missing rate-limit headers shouldn't erase previously observed state."""
-    session._update_rate_limit_status({"X-RateLimit-Burst-Limit": "20"})
-
-    session._update_rate_limit_status({})
-
-    assert session.rate_limit_status.burst.limit == 20
 
 
 def test_last_cache_status_defaults_to_none(session: Session) -> None:
@@ -2594,152 +782,17 @@ def test_update_cache_status_resets_when_header_absent(session: Session) -> None
     assert session.last_cache_status is None
 
 
-def test_check_rate_limit_allows_request_when_no_state_observed(session: Session) -> None:
-    """Nothing is known yet, so the first request is never pre-emptively blocked."""
-    session._check_rate_limit()  # should not raise
-
-
-def test_check_rate_limit_allows_request_when_remaining_positive(session: Session) -> None:
-    """Test that a window with remaining quota does not block."""
-    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=30)
-    session._rate_limit_status = rate_limit.RateLimitStatus(
-        burst=rate_limit.RateLimitWindow(limit=20, remaining=5, reset=reset)
-    )
-
-    session._check_rate_limit()  # should not raise
-
-
-def test_check_rate_limit_raises_when_burst_exhausted(session: Session) -> None:
-    """Test that an exhausted burst (minute) window raises RateLimitError."""
-    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
-    session._rate_limit_status = rate_limit.RateLimitStatus(
-        burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
-    )
-
-    with pytest.raises(exceptions.RateLimitError) as excinfo:
-        session._check_rate_limit()
-
-    error_msg = str(excinfo.value)
-    assert "Rate limit exceeded" in error_msg
-    assert "20 requests per minute" in error_msg
-    assert "Please wait" in error_msg
-    assert excinfo.value.retry_after == pytest.approx(60, abs=2)
-
-
-def test_check_rate_limit_raises_when_sustained_exhausted(session: Session) -> None:
-    """Test that an exhausted sustained (daily) window raises RateLimitError.
-
-    The sustained limit here (10,000) reflects an elevated OpenCollective donor
-    tier rather than the default 5,000/day, since it's read straight from
-    whatever the server last reported.
-    """
-    reset = dt.datetime.now(dt.UTC) + dt.timedelta(days=1)
-    session._rate_limit_status = rate_limit.RateLimitStatus(
-        sustained=rate_limit.RateLimitWindow(limit=10_000, remaining=0, reset=reset)
-    )
-
-    with pytest.raises(exceptions.RateLimitError) as excinfo:
-        session._check_rate_limit()
-
-    error_msg = str(excinfo.value)
-    assert "Rate limit exceeded" in error_msg
-    assert "10,000 requests per day" in error_msg
-    assert "Please wait" in error_msg
-    assert excinfo.value.retry_after == pytest.approx(86_400, abs=2)
-
-
-def test_check_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
-    """Test that an exhausted window prevents the HTTP request from being made."""
-    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
-    session._rate_limit_status = rate_limit.RateLimitStatus(
-        burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
-    )
-
-    mock_request_called = {"called": False}
-
-    def mock_request(*args, **kwargs):
-        mock_request_called["called"] = True
-        return MagicMock()
-
-    monkeypatch.setattr(session._http, "request", mock_request)
-
-    with pytest.raises(exceptions.RateLimitError):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert not mock_request_called["called"], "HTTP request should not be made when rate limited"
-
-
-def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> None:
-    """Test that requests proceed normally when no rate limit is exhausted."""
-
-    # Arrange
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    # Act
-    result = session._request_data("GET", "https://test.com/api/issue/1")
-
-    # Assert
-    assert result == {"id": 1, "name": "Test"}
-
-
-def test_request_data_updates_rate_limit_status_from_response(
-    session: Session, monkeypatch
+def test_request_data_updates_cache_status_from_response(
+    session: Session, monkeypatch, make_response
 ) -> None:
-    """A successful response's headers should update the session's rate-limit status."""
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {
-                "X-RateLimit-Burst-Limit": "20",
-                "X-RateLimit-Burst-Remaining": "18",
-                "X-RateLimit-Burst-Reset": "1700000060",
-                "X-RateLimit-Sustained-Limit": "5000",
-                "X-RateLimit-Sustained-Remaining": "4998",
-                "X-RateLimit-Sustained-Reset": "1700086400",
-            }
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    result = session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert result == {"id": 1, "name": "Test"}
-    assert session.rate_limit_status.burst.remaining == 18
-    assert session.rate_limit_status.sustained.remaining == 4998
-
-
-def test_request_data_updates_cache_status_from_response(session: Session, monkeypatch) -> None:
     """A successful response's X-Cache header should update the session's cache status."""
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-Cache": "MISS"}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(
+            json_body={"id": 1, "name": "Test"}, headers={"X-Cache": "MISS"}
+        ),
+    )
 
     result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2747,532 +800,17 @@ def test_request_data_updates_cache_status_from_response(session: Session, monke
     assert session.last_cache_status == "MISS"
 
 
-def test_session_rate_limiter_defaults_to_none() -> None:
-    """A Session with no rate_limiter argument has one set to None."""
-    session = Session("abc123")
-
-    assert session.rate_limiter is None
-
-
-def test_execute_http_request_dispatches_to_rate_limiter_when_set(
-    session: Session, monkeypatch
-) -> None:
-    """When a rate_limiter is configured, it gates and observes every HTTP send."""
-    calls = []
-
-    class FakeLimiter:
-        def acquire(self, status):
-            calls.append(("acquire", status))
-
-        def release(self, status):
-            calls.append(("release", status))
-
-    session.rate_limiter = FakeLimiter()
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-RateLimit-Burst-Remaining": "19"}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    result = session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert result == {"id": 1}
-    assert [call for call, _ in calls] == ["acquire", "release"]
-    # release is called with the status as updated by this response.
-    assert calls[1][1].burst.remaining == 19
-
-
-def test_execute_http_request_falls_back_to_check_rate_limit_when_no_limiter(
-    session: Session, monkeypatch
-) -> None:
-    """With no rate_limiter set (the default), behavior is unchanged: fail fast."""
-    reset = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
-    session._rate_limit_status = rate_limit.RateLimitStatus(
-        burst=rate_limit.RateLimitWindow(limit=20, remaining=0, reset=reset)
-    )
-
-    mock_request_called = {"called": False}
-
-    def mock_request(*args, **kwargs):
-        mock_request_called["called"] = True
-        return MagicMock()
-
-    monkeypatch.setattr(session._http, "request", mock_request)
-
-    with pytest.raises(exceptions.RateLimitError):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert not mock_request_called["called"]
-
-
-def test_rate_limiter_release_called_with_none_on_connection_error(
-    session: Session, monkeypatch
-) -> None:
-    """A connection error releases the limiter's slot with status=None."""
-    calls = []
-
-    class FakeLimiter:
-        def acquire(self, status):
-            calls.append(("acquire", status))
-
-        def release(self, status):
-            calls.append(("release", status))
-
-    session.rate_limiter = FakeLimiter()
-
-    def mock_request(*args, **kwargs):
-        msg = "boom"
-        raise ConnError(msg)
-
-    monkeypatch.setattr(session._http, "request", mock_request)
-
-    with pytest.raises(exceptions.ApiError):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert calls == [("acquire", rate_limit.RateLimitStatus()), ("release", None)]
-
-
-def test_rate_limiter_release_called_on_unhandled_request_exception(
-    session: Session, monkeypatch
-) -> None:
-    """An exception other than ConnectionError/ReadTimeout still releases the slot."""
-    calls = []
-
-    class FakeLimiter:
-        def acquire(self, status):
-            calls.append(("acquire", status))
-
-        def release(self, status):
-            calls.append(("release", status))
-
-    session.rate_limiter = FakeLimiter()
-
-    def mock_request(*args, **kwargs):
-        msg = "too many redirects"
-        raise TooManyRedirects(msg)
-
-    monkeypatch.setattr(session._http, "request", mock_request)
-
-    with pytest.raises(TooManyRedirects):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert calls == [("acquire", rate_limit.RateLimitStatus()), ("release", None)]
-
-
-def test_rate_limiter_release_called_when_status_update_raises(
-    session: Session, monkeypatch
-) -> None:
-    """A failure while processing response headers still releases the slot."""
-    calls = []
-
-    class FakeLimiter:
-        def acquire(self, status):
-            calls.append(("acquire", status))
-
-        def release(self, status):
-            calls.append(("release", status))
-
-    session.rate_limiter = FakeLimiter()
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-RateLimit-Burst-Remaining": "not-an-int"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    with pytest.raises(ValueError, match="invalid literal"):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert [call for call, _ in calls] == ["acquire", "release"]
-
-
-def test_rate_limiter_not_released_when_acquire_fails(session: Session, monkeypatch) -> None:
-    """If acquire() raises, no slot was reserved, so release() must not be called."""
-    calls = []
-
-    class FakeLimiter:
-        def acquire(self, _status):
-            calls.append("acquire")
-            msg = "no capacity"
-            raise RuntimeError(msg)
-
-        def release(self, _status):
-            calls.append("release")
-
-    session.rate_limiter = FakeLimiter()
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: MagicMock())
-
-    with pytest.raises(RuntimeError, match="no capacity"):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert calls == ["acquire"]
-
-
-def test_rate_limiter_missing_acquire_raises_rate_limiter_error(
-    session: Session, monkeypatch
-) -> None:
-    """A rate_limiter object missing acquire() raises RateLimiterError."""
-
-    class NoAcquire:
-        def release(self, status):
-            pass
-
-    session.rate_limiter = NoAcquire()
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: MagicMock())
-
-    with pytest.raises(exceptions.RateLimiterError):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-
-def test_rate_limiter_missing_release_raises_rate_limiter_error(
-    session: Session, monkeypatch
-) -> None:
-    """A rate_limiter object missing release() raises RateLimiterError."""
-
-    class NoRelease:
-        def acquire(self, status):
-            pass
-
-    session.rate_limiter = NoRelease()
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    with pytest.raises(exceptions.RateLimiterError):
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-
-def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
-    """A real HeaderPacedRateLimiter shared across threads never exceeds its window."""
-    period = 0.3
-    limiter = HeaderPacedRateLimiter(burst_period=period)
-    paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
-    sent: list[float] = []
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-RateLimit-Burst-Limit": "3", "X-RateLimit-Burst-Remaining": "3"}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1}
-
-    def mock_request(*args, **kwargs):
-        sent.append(time.monotonic())
-        time.sleep(0.02)  # widen the window so concurrent callers actually overlap
-        return DummyResp()
-
-    monkeypatch.setattr(paced_session._http, "request", mock_request)
-
-    # Prime the limiter's burst limit before the concurrent batch starts: with
-    # nothing observed yet it would let every caller straight through, since
-    # a gate with no prior information can't restrict anything (the same
-    # "gate opens" behavior a real client sees on its very first request).
-    limiter.acquire(rate_limit.RateLimitStatus(burst=rate_limit.RateLimitWindow(limit=3)))
-    limiter.release(None)
-
-    def worker(_):
-        paced_session._request_data("GET", "https://test.com/api/issue/1")
-
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        list(executor.map(worker, range(10)))
-
-    # The primed send counts against the window too, so it's part of the log
-    # even though it never went through requests.request.
-    assert len(sent) == 10
-    sent.sort()
-    for t in sent:
-        assert len([x for x in sent if t <= x < t + period - 0.01]) <= 3
-    assert limiter._in_flight == 0
-
-
-def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
-    monkeypatch,
-) -> None:
-    """An exhausted daily window surfaces as RateLimitError and no HTTP request is sent."""
-    limiter = HeaderPacedRateLimiter()
-    paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
-    reset = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
-    paced_session._rate_limit_status = rate_limit.RateLimitStatus(
-        sustained=rate_limit.RateLimitWindow(limit=5000, remaining=0, reset=reset)
-    )
-    sent = []
-    monkeypatch.setattr(paced_session._http, "request", lambda *a, **k: sent.append(1))
-
-    with pytest.raises(exceptions.RateLimitError) as exc_info:
-        paced_session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
-    assert sent == []
-    assert limiter._in_flight == 0
-
-
-def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatch) -> None:
-    """A 429 carrying an exhausted daily window stops the next request before it is sent."""
-    limiter = HeaderPacedRateLimiter()
-    paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
-    reset = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
-    sent = []
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {
-                "Retry-After": "3600",
-                "X-RateLimit-Sustained-Limit": "5000",
-                "X-RateLimit-Sustained-Remaining": "0",
-                "X-RateLimit-Sustained-Reset": str(int(reset.timestamp())),
-            }
-
-    def fake_request(*args, **kwargs):
-        sent.append(1)
-        return DummyResp()
-
-    monkeypatch.setattr(paced_session._http, "request", fake_request)
-
-    paced_session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-    with pytest.raises(exceptions.RateLimitError) as exc_info:
-        paced_session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, {}, None, None
-        )
-
-    assert len(sent) == 1
-    assert exc_info.value.retry_after == pytest.approx(3600, abs=5)
-    assert limiter._in_flight == 0
-
-
-def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypatch) -> None:
-    """A 429 response reports its Retry-After to the limiter, then releases the slot."""
-    calls = []
-
-    class FakeLimiter:
-        def acquire(self, _status):
-            calls.append(("acquire",))
-
-        def on_rate_limited(self, retry_after):
-            calls.append(("on_rate_limited", retry_after))
-
-        def release(self, _status):
-            calls.append(("release",))
-
-    session.rate_limiter = FakeLimiter()
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {"Retry-After": "12"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-
-    assert calls == [("acquire",), ("on_rate_limited", 12.0), ("release",)]
-
-
-def test_rate_limiter_notified_of_429_without_retry_after(session: Session, monkeypatch) -> None:
-    """A 429 with no Retry-After header reports 0 to the limiter."""
-    reported = []
-
-    class FakeLimiter:
-        def acquire(self, _status):
-            pass
-
-        def on_rate_limited(self, retry_after):
-            reported.append(retry_after)
-
-        def release(self, _status):
-            pass
-
-    session.rate_limiter = FakeLimiter()
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-
-    assert reported == [0.0]
-
-
-def test_rate_limiter_not_notified_of_successful_response(session: Session, monkeypatch) -> None:
-    """Non-429 responses never trigger the on_rate_limited hook."""
-    reported = []
-
-    class FakeLimiter:
-        def acquire(self, _status):
-            pass
-
-        def on_rate_limited(self, retry_after):
-            reported.append(retry_after)
-
-        def release(self, _status):
-            pass
-
-    session.rate_limiter = FakeLimiter()
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-
-    assert reported == []
-
-
-def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
-    session: Session, monkeypatch
-) -> None:
-    """A rate_limiter missing on_rate_limited() raises RateLimiterError on a 429, still releasing."""
-    calls = []
-
-    class NoHook:
-        def acquire(self, _status):
-            pass
-
-        def release(self, _status):
-            calls.append("release")
-
-    session.rate_limiter = NoHook()
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {"Retry-After": "1"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    with pytest.raises(exceptions.RateLimiterError):
-        session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
-
-    assert calls == ["release"]
-
-
-def test_rate_limiter_internal_attribute_error_is_not_misreported(
-    session: Session, monkeypatch
-) -> None:
-    """An AttributeError raised inside acquire() propagates as-is, not as RateLimiterError."""
-
-    class Buggy:
-        def acquire(self, _status):
-            return None.missing
-
-        def release(self, _status):
-            pass
-
-    session.rate_limiter = Buggy()
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: MagicMock())
-
-    with pytest.raises(AttributeError) as exc_info:
-        session._request_data("GET", "https://test.com/api/issue/1")
-
-    assert not isinstance(exc_info.value, exceptions.RateLimiterError)
-
-
-def test_rate_limiter_release_failure_does_not_discard_response(
-    session: Session, monkeypatch, caplog
-) -> None:
-    """An exception from release() is logged and the successful response still returned."""
-
-    class FailingRelease:
-        def acquire(self, _status):
-            pass
-
-        def release(self, _status):
-            msg = "backing store unreachable"
-            raise ConnectionError(msg)
-
-    session.rate_limiter = FailingRelease()
-    response = MagicMock(status_code=200, headers={})
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: response)
-
-    with caplog.at_level(logging.ERROR, logger="mokkari.session"):
-        result = session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, {}, None, None
-        )
-
-    assert result is response
-    assert "release() failed" in caplog.text
-
-
-def test_rate_limiter_on_rate_limited_failure_still_releases(
-    session: Session, monkeypatch, caplog
-) -> None:
-    """An exception from on_rate_limited() is logged, and the slot is still released."""
-    calls = []
-
-    class FailingHook:
-        def acquire(self, _status):
-            pass
-
-        def on_rate_limited(self, _retry_after):
-            msg = "backing store unreachable"
-            raise ConnectionError(msg)
-
-        def release(self, _status):
-            calls.append("release")
-
-    session.rate_limiter = FailingHook()
-    response = MagicMock(status_code=429, headers={"Retry-After": "1"})
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: response)
-
-    with caplog.at_level(logging.ERROR, logger="mokkari.session"):
-        result = session._execute_http_request(
-            "GET", "https://test.com/api/issue/1", {}, {}, None, None
-        )
-
-    assert result is response
-    assert calls == ["release"]
-    assert "on_rate_limited() failed" in caplog.text
-
-
 def test_request_data_resets_cache_status_for_uncached_endpoint(
-    session: Session, monkeypatch
+    session: Session,
+    monkeypatch,
+    make_response,
 ) -> None:
     """A subsequent request to an uncached endpoint should clear a prior HIT/MISS."""
     session._last_cache_status = "HIT"
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"id": 1, "name": "Test"})
+    )
 
     session._request_data("GET", "https://test.com/api/pull_list")
 
@@ -3284,19 +822,12 @@ def test_request_data_resets_cache_status_for_uncached_endpoint(
 # ============================================================================
 
 
-def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) -> None:
+def test_if_modified_since_returns_none_on_304(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Test that passing if_modified_since returns None when server responds 304."""
-
     # Arrange
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: make_response(304))
 
     # Act
     result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
@@ -3305,57 +836,14 @@ def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) ->
     assert result is None
 
 
-def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch) -> None:
-    """Test that passing if_modified_since returns the resource when data has changed."""
-
-    # Arrange
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Updated Arc"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    with patch(
-        "mokkari.session.TypeAdapter.validate_python",
-        return_value=Arc(
-            id=1,
-            name="Updated Arc",
-            desc="",
-            resource_url=HttpUrl("https://foo.bar"),
-            modified=dt.datetime.now(),
-        ),
-    ):
-        # Act
-        result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
-
-    # Assert
-    assert isinstance(result, Arc)
-    assert result.name == "Updated Arc"
-
-
-def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
+def test_if_modified_since_sends_header(session: Session, monkeypatch, make_response) -> None:
     """Test that if_modified_since sends the correctly formatted If-Modified-Since header."""
     # Arrange
     captured_kwargs = {}
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
     def mock_request(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        return DummyResp()
+        return make_response(304)
 
     monkeypatch.setattr(session._http, "request", mock_request)
 
@@ -3369,22 +857,16 @@ def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
 
 
-def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monkeypatch) -> None:
+def test_if_modified_since_naive_datetime_treated_as_utc(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Test that a naive datetime (no tzinfo) is treated as UTC."""
     # Arrange
     captured_kwargs = {}
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
     def mock_request(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        return DummyResp()
+        return make_response(304)
 
     monkeypatch.setattr(session._http, "request", mock_request)
 
@@ -3395,22 +877,16 @@ def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monke
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Sun, 15 Jun 2025 08:30:00 GMT"
 
 
-def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypatch) -> None:
+def test_if_modified_since_non_utc_timezone_converted(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Test that a non-UTC timezone-aware datetime is converted to UTC for the header."""
     # Arrange
     captured_kwargs = {}
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
     def mock_request(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        return DummyResp()
+        return make_response(304)
 
     monkeypatch.setattr(session._http, "request", mock_request)
 
@@ -3426,203 +902,71 @@ def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypa
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
 
 
-def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeypatch) -> None:
-    """Test that if_modified_since skips the cache entirely."""
+def _arc_json(name: str) -> dict[str, object]:
+    """Return a valid arc detail response named ``name``."""
+    return {
+        "id": 1,
+        "name": name,
+        "desc": "",
+        "resource_url": "https://metron.cloud/arc/1/",
+        "modified": "2025-01-01T00:00:00Z",
+    }
+
+
+def test_if_modified_since_returns_resource_on_200(
+    session: Session, monkeypatch, make_response
+) -> None:
+    """Test that passing if_modified_since returns the resource when data has changed."""
     # Arrange
-    session.cache = dummy_cache
-    # Pre-populate cache
-    cache_key = "https://metron.cloud/api/arc/1/"
-    dummy_cache.store(cache_key, {"id": 1, "name": "Cached"}, resource="arc", kind="detail")
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body=_arc_json("Updated"))
+    )
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Fresh"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
-
-    with patch(
-        "mokkari.session.TypeAdapter.validate_python",
-        return_value=Arc(
-            id=1,
-            name="Fresh",
-            desc="",
-            resource_url=HttpUrl("https://foo.bar"),
-            modified=dt.datetime.now(),
-        ),
-    ):
-        # Act — with if_modified_since, cache should be ignored
-        result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
-
-    # Assert — got the fresh data, not the cached
-    assert isinstance(result, Arc)
-    assert result.name == "Fresh"
-
-
-def test_without_if_modified_since_uses_cache(session: Session, dummy_cache) -> None:
-    """Test that without if_modified_since, the normal cache flow is used."""
-    # Arrange
-    session.cache = dummy_cache
-    cache_key = "https://metron.cloud/api/arc/1/"
-    dummy_cache.store(cache_key, {"id": 1, "name": "Cached Arc"}, resource="arc", kind="detail")
-
-    with patch(
-        "mokkari.session.TypeAdapter.validate_python",
-        return_value=Arc(
-            id=1,
-            name="Cached Arc",
-            desc="",
-            resource_url=HttpUrl("https://foo.bar"),
-            modified=dt.datetime.now(),
-        ),
-    ):
-        # Act — no if_modified_since, should use cache
-        result = session.arc(1)
+    # Act
+    result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
 
     # Assert
     assert isinstance(result, Arc)
-    assert result.name == "Cached Arc"
+    assert result.name == "Updated"
 
 
-def test_wish_list(session: Session) -> None:
+def test_if_modified_since_bypasses_cache(
+    session: Session, dummy_cache, monkeypatch, make_response
+) -> None:
+    """Test that if_modified_since skips the cache entirely."""
     # Arrange
-    resp = {
-        "results": [
-            {
-                "id": 1,
-                "item_count": 5,
-                "items_url": "https://metron.cloud/api/wish_list/1/items/",
-                "modified": "2024-01-01T12:00:00Z",
-            }
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                WishList(
-                    id=1,
-                    item_count=5,
-                    items_url="https://metron.cloud/api/wish_list/1/items/",
-                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.wish_list()
-        # Assert
-        assert isinstance(result, WishList)
-        assert result.id == 1
-        assert result.item_count == 5
+    session.cache = dummy_cache
+    dummy_cache.store(
+        "https://metron.cloud/api/arc/1/", _arc_json("Cached"), resource="arc", kind="detail"
+    )
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body=_arc_json("Fresh"))
+    )
+
+    # Act
+    result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
+
+    # Assert — got the fresh data, not the cached
+    assert result is not None
+    assert result.name == "Fresh"
 
 
-def test_wish_list_items(session: Session) -> None:
+def test_without_if_modified_since_uses_cache(session: Session, dummy_cache, monkeypatch) -> None:
+    """Test that without if_modified_since, the normal cache flow is used."""
     # Arrange
-    resp = {
-        "results": [
-            {
-                "id": 10,
-                "issue": {
-                    "id": 1,
-                    "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-                    "number": "1",
-                    "cover_date": "2024-01-01",
-                    "modified": "2024-01-01T12:00:00Z",
-                },
-                "status": "Wanted",
-                "priority": 3,
-                "modified": "2024-01-01T12:00:00Z",
-            }
-        ],
-        "next": None,
-    }
-    with (
-        patch.object(session, "_get_results", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=[
-                WishListItemList(
-                    id=10,
-                    issue=CollectionIssue(
-                        id=1,
-                        series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                        number="1",
-                        cover_date=dt.date(2024, 1, 1),
-                        modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                    ),
-                    status="Wanted",
-                    priority=Priority.THREE,
-                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                )
-            ],
-        ),
-    ):
-        # Act
-        result = session.wish_list_items()
-        # Assert
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0].id == 10
-        assert result[0].status == "Wanted"
+    session.cache = dummy_cache
+    dummy_cache.store(
+        "https://metron.cloud/api/arc/1/", _arc_json("Cached"), resource="arc", kind="detail"
+    )
+    request = MagicMock()
+    monkeypatch.setattr(session._http, "request", request)
 
+    # Act
+    result = session.arc(1)
 
-def test_wish_list_add_item(session: Session) -> None:
-    # Arrange
-    add_request = WishListAddItem(issue_id=1, priority=2, notes="High priority")
-    resp = {
-        "id": 10,
-        "issue": {
-            "id": 1,
-            "series": {"id": 1, "name": "Batman", "volume": 1, "year_began": 1940},
-            "number": "1",
-            "cover_date": "2024-01-01",
-            "modified": "2024-01-01T12:00:00Z",
-        },
-        "status": "Wanted",
-        "priority": 2,
-        "max_price_currency": None,
-        "notes": "High priority",
-        "added_on": "2024-01-01T10:00:00Z",
-        "modified": "2024-01-01T12:00:00Z",
-    }
-    with (
-        patch.object(session, "_send", return_value=resp),
-        patch(
-            "mokkari.session.TypeAdapter.validate_python",
-            return_value=WishListItemRead(
-                id=10,
-                issue=CollectionIssue(
-                    id=1,
-                    series=BasicSeries(id=1, name="Batman", volume=1, year_began=1940),
-                    number="1",
-                    cover_date=dt.date(2024, 1, 1),
-                    modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-                ),
-                status="Wanted",
-                priority=Priority.TWO,
-                max_price_currency=None,
-                notes="High priority",
-                added_on=dt.datetime(2024, 1, 1, 10, 0, 0, tzinfo=dt.UTC),
-                modified=dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
-            ),
-        ),
-    ):
-        # Act
-        result = session.wish_list_add_item(add_request)
-        # Assert
-        assert isinstance(result, WishListItemRead)
-        assert result.id == 10
-        assert result.status == "Wanted"
-        assert result.notes == "High priority"
+    # Assert — served from the cache without a request
+    assert result.name == "Cached"
+    request.assert_not_called()
 
 
 def test_wish_list_acquire_item(session: Session) -> None:
@@ -3651,3 +995,123 @@ def test_wish_list_remove_item(session: Session) -> None:
         # Assert
         assert result is None
         mock_send_void.assert_called_once_with("DELETE", ["wish_list", "items", 10, "remove"])
+
+
+@pytest.mark.parametrize(
+    ("method", "endpoint", "item", "count_field"),
+    [
+        (
+            "pull_list",
+            "pull_list",
+            {
+                "id": 1,
+                "series_count": 3,
+                "series_url": "https://metron.cloud/api/pull_list/series/",
+            },
+            "series_count",
+        ),
+        (
+            "wish_list",
+            "wish_list",
+            {"id": 1, "item_count": 5, "items_url": "https://metron.cloud/api/wish_list/items/"},
+            "item_count",
+        ),
+    ],
+    ids=["pull_list", "wish_list"],
+)
+def test_user_list_returns_the_only_result(
+    session: Session, method: str, endpoint: str, item: dict[str, Any], count_field: str
+) -> None:
+    """The pull list and wish list are read from a one-item list."""
+    body = {"next": None, "results": [{**item, "modified": "2024-01-01T12:00:00Z"}]}
+    with requests_mock.Mocker() as r:
+        r.get(session.api_url.format(endpoint), json=body)
+        result = getattr(session, method)()
+
+    assert result.id == 1
+    assert getattr(result, count_field) == item[count_field]
+
+
+@pytest.mark.parametrize(
+    ("method", "endpoint"),
+    [("pull_list", "pull_list"), ("wish_list", "wish_list")],
+    ids=["pull_list", "wish_list"],
+)
+def test_user_list_raises_api_error_when_empty(
+    session: Session, method: str, endpoint: str
+) -> None:
+    """An empty list is reported as an ApiError rather than an IndexError."""
+    with requests_mock.Mocker() as r:
+        r.get(session.api_url.format(endpoint), json={"next": None, "results": []})
+        with pytest.raises(exceptions.ApiError, match="Metron returned no"):
+            getattr(session, method)()
+
+
+def test_public_method_annotations_resolve_at_runtime() -> None:
+    """Every public method's type hints resolve, for tools that inspect them at runtime."""
+    methods = [
+        member
+        for name, member in inspect.getmembers(Session, inspect.isfunction)
+        if not name.startswith("_")
+    ]
+    assert methods
+    for method in methods:
+        typing.get_type_hints(method)
+
+
+def test_rate_limit_header_names_still_importable_from_session() -> None:
+    """The header-name constants that moved to rate_limit can still be imported from session."""
+    for name in (
+        "HEADER_BURST_LIMIT",
+        "HEADER_BURST_REMAINING",
+        "HEADER_BURST_RESET",
+        "HEADER_SUSTAINED_LIMIT",
+        "HEADER_SUSTAINED_REMAINING",
+        "HEADER_SUSTAINED_RESET",
+    ):
+        assert getattr(session_module, name) == getattr(rate_limit, name)
+
+
+_SEEN_ADAPTERS: list[Any] = []
+
+
+class _StaticOverrideSession(Session):
+    @staticmethod
+    def _validate_response(resp: Any, adapter_class: type) -> Any:
+        _SEEN_ADAPTERS.append(adapter_class)
+        return Session._validate_response(resp, adapter_class)
+
+
+class _ClassOverrideSession(Session):
+    @classmethod
+    def _validate_response(cls, resp: Any, adapter_class: type) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
+        _SEEN_ADAPTERS.append(adapter_class)
+        return Session._validate_response(resp, adapter_class)
+
+
+class _InstanceOverrideSession(Session):
+    def _validate_response(self, resp: Any, adapter_class: type) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
+        _SEEN_ADAPTERS.append(adapter_class)
+        return Session._validate_response(resp, adapter_class)
+
+
+@pytest.mark.parametrize(
+    "session_class",
+    [_StaticOverrideSession, _ClassOverrideSession, _InstanceOverrideSession],
+    ids=["staticmethod", "classmethod", "instance_method"],
+)
+def test_list_validation_uses_overridden_validate_response(session_class: type[Session]) -> None:
+    """A subclass's _validate_response is used for list calls, as for detail calls."""
+    _SEEN_ADAPTERS.clear()
+    s = session_class("abc123", cache=None, user_agent="pytest", dev_mode=False)
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/series_type/",
+            json={"count": 1, "next": None, "previous": None, "results": [{"id": 1, "name": "A"}]},
+        )
+        result = s.series_type_list()
+
+    assert [item.name for item in result] == ["A"]
+    assert len(_SEEN_ADAPTERS) == 1
+    assert typing.get_origin(_SEEN_ADAPTERS[0]) is list

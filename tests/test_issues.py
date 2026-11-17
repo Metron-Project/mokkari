@@ -66,6 +66,7 @@ def test_imprint_issue() -> None:
             "resource_url": "https://metron.cloud/issue/sandman-1989-1/",
         }
     )
+    assert sandman.imprint is not None
     assert sandman.imprint.id == 1
     assert sandman.imprint.name == "Vertigo Comics"
 

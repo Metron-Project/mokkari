@@ -160,7 +160,9 @@ class SeriesPost(BaseModel):
     gcd_id: int | None = None
 
 
-class SeriesPostResponse(BaseResource, SeriesPost):
+# BaseResource comes first, so ``name`` is its required ``str``, not SeriesPost's optional
+# one: a created resource always has a name.
+class SeriesPostResponse(BaseResource, SeriesPost):  # pyright: ignore[reportIncompatibleVariableOverride]
     """A data model representing the response from creating a series.
 
     Attributes:

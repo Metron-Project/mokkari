@@ -121,11 +121,11 @@ def test_credit_creation_with_roles():
 def test_credit_validation_missing_required_fields():
     """Test Credit validation with missing required fields."""
     with pytest.raises(ValidationError) as exc_info:
-        Credit(id=1)  # Missing creator
+        Credit.model_validate({"id": 1})  # Missing creator
     assert "creator" in str(exc_info.value)
 
     with pytest.raises(ValidationError) as exc_info:
-        Credit(creator="Stan Lee")  # Missing id
+        Credit.model_validate({"creator": "Stan Lee"})  # Missing id
     assert "id" in str(exc_info.value)
 
 
@@ -142,13 +142,13 @@ def test_credit_post_creation():
 def test_credit_post_validation_invalid_types():
     """Test CreditPost validation with invalid types."""
     with pytest.raises(ValidationError):
-        CreditPost(issue="not_an_int", creator=2, role=[1])
+        CreditPost.model_validate({"issue": "not_an_int", "creator": 2, "role": [1]})
 
     with pytest.raises(ValidationError):
-        CreditPost(issue=1, creator="not_an_int", role=[1])
+        CreditPost.model_validate({"issue": 1, "creator": "not_an_int", "role": [1]})
 
     with pytest.raises(ValidationError):
-        CreditPost(issue=1, creator=2, role=["not_an_int"])
+        CreditPost.model_validate({"issue": 1, "creator": 2, "role": ["not_an_int"]})
 
 
 # CreditPostResponse model tests
@@ -176,28 +176,36 @@ def test_basic_series_creation(basic_series_data):
 def test_basic_series_validation_missing_fields():
     """Test BasicSeries validation with missing required fields."""
     with pytest.raises(ValidationError):
-        BasicSeries(id=1, name="Batman", volume=1)  # Missing year_began
+        BasicSeries.model_validate({"id": 1, "name": "Batman", "volume": 1})  # Missing year_began
 
     with pytest.raises(ValidationError):
-        BasicSeries(id=1, volume=1, year_began=1940)  # Missing name
+        BasicSeries.model_validate({"id": 1, "volume": 1, "year_began": 1940})  # Missing name
 
     with pytest.raises(ValidationError):
-        BasicSeries(id=1, name="Batman", year_began=1940)  # Missing volume
+        BasicSeries.model_validate(
+            {"id": 1, "name": "Batman", "year_began": 1940}
+        )  # Missing volume
 
     with pytest.raises(ValidationError):
-        BasicSeries(name="Batman", volume=1, year_began=1940)  # Missing id
+        BasicSeries.model_validate(
+            {"name": "Batman", "volume": 1, "year_began": 1940}
+        )  # Missing id
 
 
 def test_basic_series_validation_invalid_types():
     """Test BasicSeries validation with invalid types."""
     with pytest.raises(ValidationError):
-        BasicSeries(id=1, name=123, volume=1, year_began=1940)
+        BasicSeries.model_validate({"id": 1, "name": 123, "volume": 1, "year_began": 1940})
 
     with pytest.raises(ValidationError):
-        BasicSeries(id=1, name="Batman", volume="not_int", year_began=1940)
+        BasicSeries.model_validate(
+            {"id": 1, "name": "Batman", "volume": "not_int", "year_began": 1940}
+        )
 
     with pytest.raises(ValidationError):
-        BasicSeries(id=1, name="Batman", volume=1, year_began="not_int")
+        BasicSeries.model_validate(
+            {"id": 1, "name": "Batman", "volume": 1, "year_began": "not_int"}
+        )
 
 
 # IssueSeries model tests
@@ -396,6 +404,7 @@ def test_issue_creation_full_data():
     issue = Issue(**data)
     assert issue.id == 1
     assert issue.publisher.name == "DC Comics"
+    assert issue.imprint is not None
     assert issue.imprint.name == "Vertigo"
     assert issue.series.name == "Batman"
     assert issue.alt_number == "1A"
@@ -572,16 +581,16 @@ def test_issue_post_creation_empty():
 def test_issue_post_validation_invalid_types():
     """Test IssuePost validation with invalid types."""
     with pytest.raises(ValidationError):
-        IssuePost(series="not_an_int")
+        IssuePost.model_validate({"series": "not_an_int"})
 
     with pytest.raises(ValidationError):
-        IssuePost(rating="not_an_int")
+        IssuePost.model_validate({"rating": "not_an_int"})
 
     with pytest.raises(ValidationError):
-        IssuePost(page="not_an_int")
+        IssuePost.model_validate({"page": "not_an_int"})
 
     with pytest.raises(ValidationError):
-        IssuePost(cover_date="invalid_date")
+        IssuePost.model_validate({"cover_date": "invalid_date"})
 
 
 # IssuePostResponse model tests
@@ -605,7 +614,9 @@ def test_issue_post_response_creation():
 def test_issue_post_response_validation_missing_required():
     """Test IssuePostResponse validation with missing required fields."""
     with pytest.raises(ValidationError) as exc_info:
-        IssuePostResponse(series=1, number="1")  # Missing id and resource_url
+        IssuePostResponse.model_validate(
+            {"series": 1, "number": "1"}
+        )  # Missing id and resource_url
     error_str = str(exc_info.value)
     assert "id" in error_str
     assert "resource_url" in error_str
@@ -727,16 +738,16 @@ def test_price_post_creation_itl():
 def test_price_post_invalid_currency():
     """Test that PricePost rejects unsupported currency codes."""
     with pytest.raises(ValidationError):
-        PricePost(amount=Decimal("3.99"), currency="JPY")
+        PricePost.model_validate({"amount": Decimal("3.99"), "currency": "JPY"})
 
 
 def test_price_post_missing_fields():
     """Test PricePost validation with missing required fields."""
     with pytest.raises(ValidationError):
-        PricePost(amount=Decimal("3.99"))  # Missing currency
+        PricePost.model_validate({"amount": Decimal("3.99")})  # Missing currency
 
     with pytest.raises(ValidationError):
-        PricePost(currency="GBP")  # Missing amount
+        PricePost.model_validate({"currency": "GBP"})  # Missing amount
 
 
 def test_issue_post_price_accepts_decimal():

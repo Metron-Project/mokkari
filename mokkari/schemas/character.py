@@ -68,7 +68,9 @@ class CharacterPost(BaseModel):
     gcd_id: int | None = None
 
 
-class CharacterPostResponse(BaseResource, CharacterPost):
+# BaseResource comes first, so ``name`` is its required ``str``, not CharacterPost's optional
+# one: a created resource always has a name.
+class CharacterPostResponse(BaseResource, CharacterPost):  # pyright: ignore[reportIncompatibleVariableOverride]
     """A data model representing the response from creating a character.
 
     Attributes:

@@ -16,13 +16,15 @@ from mokkari.session import Session
 
 def test_known_arc() -> None:
     """Test for known arcs."""
-    arc = Arc(
-        id=2,
-        name="The Witching Hour",
-        desc="A DC Comics crossover event.",
-        image="https://static.metron.cloud/media/arc/2018/11/13/witching-hour.jpg",
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/arc/witching-hour/",
+    arc = Arc.model_validate(
+        {
+            "id": 2,
+            "name": "The Witching Hour",
+            "desc": "A DC Comics crossover event.",
+            "image": "https://static.metron.cloud/media/arc/2018/11/13/witching-hour.jpg",
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/arc/witching-hour/",
+        }
     )
     assert arc.name == "The Witching Hour"
     assert (

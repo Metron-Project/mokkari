@@ -7,78 +7,64 @@ This module provides the following classes:
 
 __all__ = ["Session"]
 
+# The HEADER_* constants imported from mokkari.rate_limit below lived here until the
+# rate-limit header handling moved there, so they stay importable from here through 5.x.
+# New code should import them from mokkari.rate_limit.
+
+import functools
 import hashlib
 import http.cookiejar
-import inspect
 import json
 import logging
+import math
 import platform
 import threading
 import time
-from collections import Counter, OrderedDict, defaultdict, deque
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from email.utils import format_datetime as format_http_datetime
+from email.utils import (
+    format_datetime as format_http_datetime,
+    parsedate_to_datetime as parse_http_datetime,
+)
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Final, Protocol, Self, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, Final, Self, TypeAlias
 from urllib.parse import urlencode
 
 import requests
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
+from requests.adapters import HTTPAdapter
 from requests.auth import AuthBase
 
-from mokkari import __version__, exceptions, rate_limit, utils
-from mokkari.cache import (
-    NO_CACHE,
-    Cache,
-    CacheKind,
-    ResourceEndpoint,
-    TtlPolicy,
-    create_tags,
-    entry_tags,
-    update_tags,
+from mokkari._cache_coordinator import CacheCoordinator
+from mokkari._endpoints import (
+    CatalogEndpoints,
+    CollectionEndpoints,
+    PullListEndpoints,
+    ReadingListEndpoints,
+    WishListEndpoints,
 )
-from mokkari.schemas.arc import Arc, ArcPost
-from mokkari.schemas.base import BaseResource
-from mokkari.schemas.character import Character, CharacterPost, CharacterPostResponse
-from mokkari.schemas.collection import (
-    CollectionAddItem,
-    CollectionList,
-    CollectionRead,
-    CollectionStats,
-    CollectionUpdate,
-    CollectionUpdateResponse,
-    MissingIssue,
-    MissingSeries,
-    ScrobbleRequest,
-    ScrobbleResponse,
+from mokkari._version import __version__
+from mokkari.cache import Cache, CacheKind, ResourceEndpoint, create_tags, update_tags
+from mokkari.exceptions import ApiError, AuthenticationError, RateLimiterError, RateLimitError
+from mokkari.rate_limit import (
+    DEFAULT_BURST_PERIOD,
+    HEADER_BURST_LIMIT,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_BURST_REMAINING,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_BURST_RESET,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_SUSTAINED_LIMIT,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_SUSTAINED_REMAINING,  # noqa: F401 (re-exported, see the note under __all__)
+    HEADER_SUSTAINED_RESET,  # noqa: F401 (re-exported, see the note under __all__)
+    RateLimiter,
+    RateLimitStatus,
 )
-from mokkari.schemas.creator import Creator, CreatorPost
-from mokkari.schemas.generic import GenericItem
-from mokkari.schemas.imprint import Imprint
 from mokkari.schemas.issue import (
     BaseIssue,
-    CreditPost,
-    CreditPostResponse,
-    Issue,
-    IssuePost,
-    IssuePostResponse,
 )
-from mokkari.schemas.publisher import Publisher, PublisherPost
-from mokkari.schemas.pull_list import PullListAddSeries, PullListIssue, PullListRead, PullListSeries
-from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
-from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostResponse
-from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
-from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
-from mokkari.schemas.variant import VariantPost, VariantPostResponse
-from mokkari.schemas.wish_list import (
-    AcquireWishListItem,
-    WishList,
-    WishListAddItem,
-    WishListItemList,
-    WishListItemRead,
-)
+from mokkari.utils import format_time
+
+if TYPE_CHECKING:
+    from mokkari._endpoints._helpers import EndpointHelpers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -99,17 +85,6 @@ MAX_RATE_LIMIT_RETRIES: Final[int] = 20
 HTTP_POOL_MAXSIZE: Final[int] = 32
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
-
-# Metron reports rate-limit state via these response headers rather than a
-# fixed quota: the "sustained" (daily) limit varies per user based on
-# OpenCollective donor tier, so it can only be known by reading the headers
-# Metron sends back, not by hardcoding a value locally.
-HEADER_BURST_LIMIT: Final[str] = "X-RateLimit-Burst-Limit"
-HEADER_BURST_REMAINING: Final[str] = "X-RateLimit-Burst-Remaining"
-HEADER_BURST_RESET: Final[str] = "X-RateLimit-Burst-Reset"
-HEADER_SUSTAINED_LIMIT: Final[str] = "X-RateLimit-Sustained-Limit"
-HEADER_SUSTAINED_REMAINING: Final[str] = "X-RateLimit-Sustained-Remaining"
-HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 
 # Reports whether the most recent response was served from Metron's cache
 # ("HIT") or generated fresh ("MISS").
@@ -132,54 +107,12 @@ class _BearerAuth(AuthBase):
         return r
 
 
-class _ServerRateLimitError(exceptions.RateLimitError):
+class _ServerRateLimitError(RateLimitError):
     """A ``RateLimitError`` for a 429 that Metron returned.
 
     Unlike one raised locally before a request is sent, retrying this one after the
     rate limiter has backed off can succeed.
     """
-
-
-@runtime_checkable
-class _TaggedCache(Cache, Protocol):
-    """A ``Cache`` invalidated by tag, which ``store`` passes each entry's tags (see ``Cache``)."""
-
-    def invalidate_tags(self, resource: str, tags: Collection[str]) -> object:
-        """Remove every entry for ``resource`` stored with any of ``tags``."""
-        ...
-
-
-def _check_cache(cache: object) -> None:
-    """Raise ``CacheError`` unless ``cache`` can be called the way ``Session`` calls it.
-
-    The ``Cache`` protocol check only sees that ``get`` and ``store`` exist, so this also
-    checks they accept Session's arguments, catching e.g. a 4.x ``store(key, value)``.
-    """
-    if not isinstance(cache, Cache):
-        msg = f"Cache must have get() and store() methods: {cache!r}"
-        raise exceptions.CacheError(msg)
-    store_kwargs: dict[str, Any] = {"resource": "series", "kind": "detail"}
-    # A cache invalidated by tag is passed each entry's tags to store.
-    if isinstance(cache, _TaggedCache):
-        store_kwargs["tags"] = frozenset()
-    for name, expected, args, kwargs in [
-        ("get", "get(key)", ("key",), {}),
-        ("store", f"store(key, value, *, {', '.join(store_kwargs)})", ("key", None), store_kwargs),
-    ]:
-        method = getattr(cache, name)
-        try:
-            signature = inspect.signature(method)
-        except ValueError:
-            # Some C-implemented callables can't be inspected; trust them.
-            continue
-        except TypeError as e:
-            msg = f"Cache {name} must be a method: {cache!r}"
-            raise exceptions.CacheError(msg) from e
-        try:
-            signature.bind(*args, **kwargs)
-        except TypeError as e:
-            msg = f"Cache must have a {expected} method, not {name}{signature}: {cache!r}"
-            raise exceptions.CacheError(msg) from e
 
 
 # Given a write's response (``None`` if it raised), returns the tags of the entries of the
@@ -204,24 +137,1128 @@ def _created_tags(resource: str) -> _WriteTags:
     return tags
 
 
-# Responses from these depend on whose token made the request (e.g. a private reading list),
-# so their cache keys are scoped to the token and other tokens sharing the cache can't see them.
-_PER_USER_RESOURCES: Final[frozenset[str]] = frozenset(
-    {
-        ResourceEndpoint.COLLECTION,
-        ResourceEndpoint.PULL_LIST,
-        ResourceEndpoint.READING_LIST,
-        ResourceEndpoint.WISH_LIST,
+_JSON_CONTENT_TYPE: Final[str] = "application/json;charset=utf-8"
+
+# A write's request body: one model, or a list of them for a bulk endpoint (e.g. credits).
+# ``list`` is invariant, so its items are ``Any`` to accept e.g. ``list[CreditPost]``.
+_Payload: TypeAlias = BaseModel | list[Any]
+
+
+def _http_date(moment: datetime) -> str:
+    """Format ``moment`` as an HTTP date (RFC 9110), taking a naive datetime as UTC."""
+    moment = moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+    return format_http_datetime(moment, usegmt=True)
+
+
+@functools.cache
+def _type_adapter(tp: Any) -> TypeAdapter[Any]:
+    """Return a ``TypeAdapter`` for ``tp``, built once rather than on every validation."""
+    return TypeAdapter(tp)
+
+
+def _multipart_payload(
+    fields: dict[str, Any],
+) -> tuple[dict[str, tuple[str, bytes]] | None, dict[str, Any]]:
+    """Split a model's fields into multipart/form-data file uploads and form fields.
+
+    The ``image`` field, a path, becomes the file upload if the file exists. ``None`` values
+    are dropped, since form data can't represent them, and nested dicts are JSON-encoded.
+    Lists are sent as repeated form fields by ``requests``.
+
+    Args:
+        fields: The model's dumped fields, including ``image``. It's modified.
+
+    Returns:
+        The file uploads (``None`` if there's no image to send), and the form fields.
+    """
+    files = None
+    if img := fields.pop("image"):
+        img_path = Path(img)
+        if img_path.exists():
+            files = {"image": (img_path.name, img_path.read_bytes())}
+            LOGGER.debug("Image File: %s", img)
+        else:
+            LOGGER.warning("Image file not found: %s", img)
+    form = {
+        k: json.dumps(v, default=str) if isinstance(v, dict) else v
+        for k, v in fields.items()
+        if v is not None
     }
-)
-
-# How many of each resource's latest writes are remembered, for reads that finish during
-# them (see ``Session._stale_tags``). A read that more writes overlapped treats every entry
-# as stale.
-_WRITE_LOG_SIZE: Final[int] = 64
+    return files, form
 
 
-class Session:
+class _SessionCore:
+    """The transport, rate limiting, caching and validation every endpoint shares.
+
+    ``Session`` combines this with the endpoint mixins in ``mokkari._endpoints``. Use
+    ``Session`` rather than this class.
+    """
+
+    def __init__(
+        self,
+        api_token: str,
+        *,
+        cache: Cache | None = None,
+        user_agent: str | None = None,
+        dev_mode: bool = False,
+        rate_limiter: RateLimiter | None = None,
+    ) -> None:
+        """Initialize a Session object with authentication and configuration.
+
+        Sets up the session with proper authentication headers, API endpoint URL,
+        and optional caching. The user agent is automatically constructed to include
+        the library version and system information.
+
+        Args:
+            api_token: API token for Bearer-token authentication.
+            cache: Optional response cache, such as a ``SqliteCache``.
+            user_agent: Optional custom user agent string to prepend to the default.
+            dev_mode: If True, use local development server instead of production.
+            rate_limiter: Optional pacing gate dispatched on every HTTP send,
+                in place of the default fail-fast check. Defaults to ``None``.
+
+        Raises:
+            AuthenticationError: If the api_token is missing or empty.
+            CacheError: If ``cache`` lacks a ``get`` or ``store`` method taking Session's arguments.
+        """
+        # Guards against a token read from an unset environment variable, which the
+        # type hint alone won't catch at runtime.
+        if not api_token:
+            raise AuthenticationError
+
+        self.api_token = api_token
+        self.header = {
+            "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
+            f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
+        }
+        # Kept out of ``header`` so the token isn't logged with the request headers.
+        self._auth = _BearerAuth(api_token)
+        self.api_url = LOCAL_URL if dev_mode else METRON_URL
+        # Per-user cache keys identify the token by a hash rather than storing the token.
+        self._cache_coordinator = CacheCoordinator(
+            cache, cache_user=hashlib.sha256(api_token.encode()).hexdigest()[:16]
+        )
+        self.rate_limiter = rate_limiter
+        self._http = self._build_http_session()
+        self._rate_limit_lock = threading.Lock()
+        self._rate_limit_status = RateLimitStatus()
+        self._cache_status_lock = threading.Lock()
+        self._last_cache_status: str | None = None
+
+    @property
+    def cache(self) -> Cache | None:
+        """The response cache, or ``None`` if responses aren't cached."""
+        return self._cache_coordinator.cache
+
+    @cache.setter
+    def cache(self, cache: Cache | None) -> None:
+        # Validated by the coordinator, so a mis-wired cache fails now rather than on the
+        # first request.
+        self._cache_coordinator.cache = cache
+
+    @staticmethod
+    def _build_http_session() -> requests.Session:
+        """Build the ``requests.Session`` that pools connections across API calls.
+
+        Reusing one session keeps TCP/TLS connections to Metron alive between requests
+        instead of paying a fresh handshake each time. Credentials are still sent per
+        request, and cookies are refused outright so a stray ``Set-Cookie`` from the
+        server can't turn later requests into session-authenticated ones.
+        """
+        http_session = requests.Session()
+        # Only one host is ever contacted, so a single pool is enough; its size is what
+        # bounds how many concurrent threads can reuse a connection.
+        for prefix in ("https://", "http://"):
+            http_session.mount(
+                prefix,
+                HTTPAdapter(pool_connections=1, pool_maxsize=HTTP_POOL_MAXSIZE),
+            )
+        http_session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
+        return http_session
+
+    def close(self) -> None:
+        """Close the pooled HTTP connections held by this session.
+
+        Calling this is optional. ``requests.Session`` has no finalizer of its own, so
+        without it the sockets are only released when they are finalized (promptly under
+        CPython's reference counting, but not guaranteed elsewhere), and Python may emit a
+        ``ResourceWarning`` for each one. It is safe to call more than once, and the session
+        can still be used afterwards, at the cost of opening new connections.
+
+        Only the HTTP connections are closed. A ``cache`` or ``rate_limiter`` passed to the
+        constructor is left untouched, since the caller owns it and may share it with other
+        sessions; ``SqliteCache`` in particular keeps its database connection open.
+        """
+        self._http.close()
+
+    def __enter__(self) -> Self:
+        """Enter the context manager, returning this session."""
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        """Exit the context manager, closing pooled connections."""
+        self.close()
+
+    @property
+    def rate_limit_status(self) -> RateLimitStatus:
+        """Return the most recently observed rate-limit state.
+
+        Populated from the ``X-RateLimit-*`` headers Metron sends with every
+        response. Fields are ``None`` until the first request completes, or if
+        Metron did not report that window.
+        """
+        with self._rate_limit_lock:
+            return self._rate_limit_status
+
+    @property
+    def last_cache_status(self) -> str | None:
+        """Return the ``X-Cache`` value from the most recent response, if any.
+
+        Metron reports whether a response was served from its cache (``"HIT"``)
+        or generated fresh (``"MISS"``) via the ``X-Cache`` header, but only on
+        endpoints that are actually cached — others omit the header entirely.
+        This is ``None`` until the first request completes, and also resets to
+        ``None`` after any request whose endpoint isn't cached, so it always
+        reflects only the most recently completed request rather than a stale
+        value from an earlier, cached one.
+        """
+        with self._cache_status_lock:
+            return self._last_cache_status
+
+    def _get(
+        self,
+        endpoint: list[str | int],
+        params: dict[str, str | int] | None = None,
+        *,
+        kind: CacheKind = "detail",
+    ) -> dict[str, Any]:
+        """Send a GET request to the specified endpoint with optional parameters.
+
+        This internal method handles GET requests with caching support. It first checks
+        the cache for existing data, and if not found, makes the API request and caches
+        the result for future use.
+
+        Args:
+            endpoint: List of path segments to build the API endpoint URL.
+            params: Optional query parameters to include in the request.
+            kind: Whether the endpoint returns a single object (``"detail"``) or a
+                list (``"list"``), passed to the cache along with the resource name.
+
+        Returns:
+            dict[str, Any]: The response data from the API.
+
+        Raises:
+            ApiError: If the API returns an error response or if there are network issues.
+        """
+        return self._fetch(endpoint, params, kind=kind)[0]
+
+    def _fetch(
+        self,
+        endpoint: list[str | int],
+        params: dict[str, str | int] | None = None,
+        *,
+        kind: CacheKind = "detail",
+        use_cache: bool = True,
+        resource: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Do the work of ``_get``, also reporting whether the response came from the cache.
+
+        Args:
+            endpoint: List of path segments to build the API endpoint URL.
+            params: Optional query parameters to include in the request.
+            kind: ``"detail"`` or ``"list"``, passed to the cache with the resource name.
+            use_cache: Whether to look in the cache first. The response is stored either way.
+            resource: The resource the response is cached under. Defaults to the endpoint's
+                first segment.
+
+        Returns:
+            The response data, and ``True`` if it was served from the cache.
+
+        Raises:
+            ApiError: If the API returns an error response or if there are network issues.
+        """
+        if params is None:
+            params = {}
+
+        # Sorted so the same query gets the same key whatever order its params were given in.
+        cache_params = f"?{urlencode(sorted(params.items()))}" if params else ""
+
+        url = self._url(endpoint)
+        cache_key = f"{url}{cache_params}"
+        resource = resource or str(endpoint[0])
+
+        if use_cache:
+            cached_response = self._cache_coordinator.get(cache_key, resource)
+            if cached_response is not None:
+                return cached_response, True
+
+        invalidations = self._cache_coordinator.invalidation_count(resource)
+        data = self._request_data("GET", url, params)
+        self._cache_coordinator.store(cache_key, data, resource, kind, invalidations=invalidations)
+
+        return data, False
+
+    def _url(self, endpoint: list[str | int]) -> str:
+        """Return the API URL for ``endpoint``'s path segments."""
+        return self.api_url.format("/".join(str(e) for e in endpoint))
+
+    def _send(
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: _Payload,
+        *,
+        also_invalidates: tuple[str, ...] = (),
+        tags: _WriteTags | None = None,
+    ) -> Any:
+        """Send a write request with a body and return its parsed JSON response.
+
+        Args:
+            method: HTTP method to use ("POST" or "PATCH").
+            endpoint: List of path segments to build the API endpoint URL.
+            data: The data object to send in the request body.
+            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
+            tags: Which of the resource's cached entries the write changes (see
+                ``_execute_write``).
+
+        Returns:
+            Any: The response data from the API.
+
+        Raises:
+            ApiError: If there is an error during the API call.
+        """
+        response = self._execute_write(
+            method, endpoint, data, also_invalidates=also_invalidates, tags=tags
+        )
+        return self._handle_http_response(response)
+
+    def _execute_write(
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: _Payload | None,
+        *,
+        also_invalidates: tuple[str, ...] = (),
+        tags: _WriteTags | None = None,
+    ) -> requests.Response:
+        """Send a write request, then drop cached entries it may have made stale.
+
+        Args:
+            method: HTTP method to use ("POST", "PATCH" or "DELETE").
+            endpoint: List of path segments to build the API endpoint URL.
+            data: The data to send in the request body, or ``None``.
+            also_invalidates: Cached resources the write changes besides the one it's sent
+                to (the endpoint's first segment), such as ``issue`` for a credit.
+            tags: Given the response, or ``None`` if there isn't one, returns the tags of
+                the entries of the resource it's sent to that the write may have made stale
+                (see ``Cache``), or ``None`` for all of them. All are dropped if not given,
+                and every entry of ``also_invalidates`` always is.
+
+        Returns:
+            The HTTP response, not yet checked for errors.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+            RateLimitError: When the API rate limit is exceeded.
+            RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
+        """
+        url = self._url(endpoint)
+        LOGGER.debug("Request Method: %s | URL: %s", method, url)
+        header, files, data_dict = self._prepare_request_payload(data)
+        # Acquired separately from the send, so a write the limiter refuses (or fails on)
+        # is known never to have been sent and leaves the cache alone.
+        self._acquire_rate_limit_slot()
+        response = None
+        try:
+            response = self._send_http_request(
+                method, url, headers=header, data=data_dict, files=files
+            )
+            return response
+        finally:
+            # A 4xx means Metron rejected the write. Anything else, even a timeout or a 5xx,
+            # may have been applied, and dropping the entries only costs a refetch.
+            rejected = response is not None and (
+                HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+            if not rejected:
+                resource = str(endpoint[0])
+                written_tags = None if tags is None else tags(response)
+                self._cache_coordinator.invalidate(
+                    (resource, *also_invalidates),
+                    tags=None if written_tags is None else {resource: written_tags},
+                )
+
+    @staticmethod
+    def _validate_response(resp: dict[str, Any], adapter_class: type) -> Any:
+        """Validate API response using the provided Pydantic adapter class.
+
+        This method ensures that the API response conforms to the expected schema
+        by validating it against the appropriate Pydantic model.
+
+        Args:
+            resp: The response dictionary from the API to validate.
+            adapter_class: The Pydantic type adapter class for validation.
+
+        Returns:
+            Any: The validated response object.
+
+        Raises:
+            ApiError: If validation fails due to schema mismatch.
+        """
+        try:
+            return _type_adapter(adapter_class).validate_python(resp)
+        except ValidationError as error:
+            raise ApiError(error) from error
+
+    def _validate_list_response(self, resp: dict[str, Any], item_class: type) -> list[Any]:
+        """Validate API response containing a list of items.
+
+        This method validates paginated responses that contain a 'results' field
+        with a list of items that should conform to the specified schema.
+
+        Args:
+            resp: The response dictionary containing a 'results' field with list data.
+            item_class: The class type that each item in the list should conform to.
+
+        Returns:
+            list[Any]: The validated list of objects.
+
+        Raises:
+            ApiError: If validation fails for any item in the list.
+        """
+        # Called through self, so an override of _validate_response applies here as it does
+        # for detail calls, whether it's a static, class or instance method.
+        return self._validate_response(resp["results"], list[item_class])
+
+    def _send_void(
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: BaseModel | None = None,
+        *,
+        also_invalidates: tuple[str, ...] = (),
+    ) -> None:
+        """Send a request that returns no response body (204 No Content or 200 with no body).
+
+        Args:
+            method: HTTP method to use ("POST" or "DELETE").
+            endpoint: List of path segments to build the API endpoint URL.
+            data: Optional data to send in the request body.
+            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
+
+        Raises:
+            ApiError: If the request fails.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        response = self._execute_write(method, endpoint, data, also_invalidates=also_invalidates)
+        self._raise_for_status(response)
+
+    def _handle_write_request(  # noqa: PLR0913
+        self,
+        method: str,
+        endpoint: list[str | int],
+        data: _Payload,
+        response_class: type,
+        *,
+        also_invalidates: tuple[str, ...] = (),
+        tags: _WriteTags | None = None,
+    ) -> Any:
+        """Handle POST or PATCH request with consistent error handling and validation.
+
+        This internal method provides a standardized way to handle write requests
+        (POST and PATCH) with proper response validation.
+
+        Args:
+            method: HTTP method to use ("POST" or "PATCH").
+            endpoint: The API endpoint path segments.
+            data: The data to send in the request.
+            response_class: The expected response class for validation.
+            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
+            tags: Which of the resource's cached entries the write changes (see
+                ``_execute_write``).
+
+        Returns:
+            Any: The validated response object.
+
+        Raises:
+            ApiError: If the request fails or validation fails.
+        """
+        resp = self._send(method, endpoint, data, also_invalidates=also_invalidates, tags=tags)
+        return self._validate_response(resp, response_class)
+
+    # Generic resource methods
+    def _get_resource(
+        self,
+        resource_name: str,
+        _id: int,
+        response_class: type,
+        if_modified_since: datetime | None = None,
+    ) -> Any:
+        """Retrieve a single resource by ID.
+
+        When ``if_modified_since`` is provided the request includes an
+        ``If-Modified-Since`` header and may return ``None`` (304 Not Modified).
+        Otherwise the regular cache-aware flow is used.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            _id: The unique identifier for the resource.
+            response_class: The Pydantic model class for response validation.
+            if_modified_since: Optional datetime; when given, the server may return
+                304 Not Modified and this method returns ``None``.
+
+        Returns:
+            The validated resource object, or ``None`` when a 304 is received.
+
+        Raises:
+            ApiError: If the resource is not found or if there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        if if_modified_since is not None:
+            # Conditional requests skip the cache, which can't answer "has it changed?".
+            data = self._request_data(
+                "GET", self._url([resource_name, _id]), if_modified_since=if_modified_since
+            )
+            return None if data is None else self._validate_response(data, response_class)
+
+        resp = self._get([resource_name, _id])
+        return self._validate_response(resp, response_class)
+
+    def _post_resource(self, resource_name: str, data: BaseModel, response_class: type) -> Any:
+        """Create a new resource in the database.
+
+        Generic method for creating any resource type via POST request.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            data: The data object to send in the POST request.
+            response_class: The Pydantic model class for response validation.
+
+        Returns:
+            Any: The validated response object.
+
+        Raises:
+            ApiError: If creation fails or if user lacks permissions.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        # Only lists the new object may join are dropped.
+        return self._handle_write_request(
+            "POST", [resource_name], data, response_class, tags=_created_tags(resource_name)
+        )
+
+    def _patch_resource(
+        self, resource_name: str, _id: int, data: BaseModel, response_class: type
+    ) -> Any:
+        """Update an existing resource in the database.
+
+        Generic method for updating any resource type via PATCH request.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            _id: The unique identifier for the resource to update.
+            data: The data object to send in the PATCH request.
+            response_class: The Pydantic model class for response validation.
+
+        Returns:
+            Any: The validated response object.
+
+        Raises:
+            ApiError: If update fails or if user lacks permissions.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        # Only entries the update may change are dropped. None values aren't sent (see
+        # _prepare_request_payload), so they don't change anything.
+        tags = update_tags(resource_name, _id, data.model_dump(exclude_none=True))
+        return self._handle_write_request(
+            "PATCH", [resource_name, _id], data, response_class, tags=lambda _response: tags
+        )
+
+    def _list_resources(
+        self, resource_name: str, params: dict[str, str | int] | None, response_class: type
+    ) -> list[Any]:
+        """Retrieve a list of resources with optional filtering.
+
+        Generic method for listing any resource type with pagination support.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
+            params: Optional dictionary of query parameters for filtering results.
+            response_class: The Pydantic model class for validating list items.
+
+        Returns:
+            list[Any]: A list of validated resource objects.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        resp = self._get_results([resource_name], params)
+        return self._validate_list_response(resp, response_class)
+
+    def _get_resource_issues(self, resource_name: str, _id: int) -> list[BaseIssue]:
+        """Retrieve a list of issues associated with a specific resource.
+
+        Generic method for getting issue lists for characters, teams, arcs, or series.
+
+        Args:
+            resource_name: The name of the resource endpoint (e.g., 'character', 'team', 'arc').
+            _id: The unique identifier for the resource.
+
+        Returns:
+            list[BaseIssue]: A list of BaseIssue objects.
+
+        Raises:
+            ApiError: If there's an API error.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+        """
+        # A list of issues, so it's cached as issues: its TTL is the issue TTL, and an issue
+        # write invalidates it.
+        resp = self._get_results(
+            [resource_name, _id, "issue_list"], resource=ResourceEndpoint.ISSUE
+        )
+        return self._validate_list_response(resp, BaseIssue)
+
+    def _get_results(
+        self,
+        endpoint: list[str | int],
+        params: dict[str, str | int] | None = None,
+        *,
+        resource: str | None = None,
+    ) -> dict[str, Any]:
+        """Retrieve results from the specified API endpoint with automatic pagination handling.
+
+        This internal method handles paginated responses by automatically following 'next' links
+        to retrieve all available results. It's used by list methods to ensure complete data retrieval.
+
+        A paginated list is served either entirely from the cache or entirely from Metron,
+        so it's never a mix of pages from an older listing and a newer one: a fresh first
+        page means every following page is fetched too, and a cached first page is only
+        used if every other page of the list is cached as well. Otherwise the whole list is
+        fetched again, starting from the first page requested.
+
+        Args:
+            endpoint: List of path segments to build the API endpoint URL.
+            params: Optional query parameters to include in the request.
+            resource: The resource every page is cached under. Defaults to the endpoint's
+                first segment.
+
+        Returns:
+            dict[str, Any]: The complete response data with all paginated results combined.
+        """
+        if params is None:
+            params = {}
+
+        resource = resource or str(endpoint[0])
+        result, from_cache = self._fetch(endpoint, params, kind="list", resource=resource)
+        if from_cache:
+            if (cached := self._cached_pages(result, resource)) is not None:
+                return cached
+            result, _ = self._fetch(
+                endpoint, params, kind="list", use_cache=False, resource=resource
+            )
+        if not result["next"]:
+            return result
+        return self._retrieve_all_results(result, resource)
+
+    def _cached_pages(self, data: dict[str, Any], resource: str) -> dict[str, Any] | None:
+        """Add every following page of ``data`` from the cache, without making any requests.
+
+        The pages before ``data`` must be cached too, though their results aren't added. A
+        write drops only the pages holding the objects it changes, so an object that moves
+        to another page (e.g. when renamed) shifts the pages between them without dropping
+        them. Only a list whose every page is cached is known to have none dropped.
+
+        Args:
+            data: The first page requested, from the cache. It isn't modified, since the
+                cache may have returned the very object it stores.
+            resource: The resource name the first page was cached under.
+
+        Returns:
+            A copy of ``data`` with every following page's results, or ``None`` if any page
+            of the list isn't in the cache.
+        """
+        previous_page = data.get("previous")
+        while previous_page:
+            page = self._cache_coordinator.get(previous_page, resource)
+            if page is None:
+                return None
+            previous_page = page.get("previous")
+        results = list(data["results"])
+        next_page = data["next"]
+        while next_page:
+            page = self._cache_coordinator.get(next_page, resource)
+            if page is None:
+                return None
+            results.extend(page["results"])
+            next_page = page["next"]
+        return {**data, "results": results}
+
+    def _retrieve_all_results(self, data: dict[str, Any], resource: str) -> dict[str, Any]:
+        """Retrieve all results from paginated data by following 'next' links.
+
+        This internal method handles the pagination logic by making additional requests
+        to fetch all pages of results. Every page is fetched from Metron rather than read
+        from the cache (see ``_get_results``), then stored. It respects rate limiting.
+
+        Args:
+            data: Dictionary containing the initial response data with pagination information.
+                It isn't modified, since the cache may have stored the very same object.
+            resource: The resource name the first page was cached under; every
+                following page is cached under the same one, as a ``"list"``.
+
+        Returns:
+            dict[str, Any]: A copy of ``data`` containing all results retrieved by following
+                pagination links.
+
+        Raises:
+            RateLimitError: If a page can't be fetched despite retrying (see ``_fetch_page``).
+        """
+        results = list(data["results"])
+        next_page = data["next"]
+
+        while next_page:
+            response, invalidations = self._fetch_page(next_page, resource)
+            results.extend(response["results"])
+            self._cache_coordinator.store(
+                next_page, response, resource, "list", invalidations=invalidations
+            )
+            next_page = response["next"]
+
+        return {**data, "results": results}
+
+    def _fetch_page(self, url: str, resource: str) -> tuple[dict[str, Any], int]:
+        """Fetch one page of a paginated list, retrying it when Metron rate-limits it.
+
+        Only this page is retried, rather than letting the error propagate and restart
+        the entire paginated fetch from page 1.
+
+        Args:
+            url: The page's URL, a previous page's ``next`` link.
+            resource: The resource the page is cached under.
+
+        Returns:
+            The page's parsed response, and ``resource``'s ``invalidation_count`` from
+            just before the attempt that fetched it, to pass to ``store``.
+
+        Raises:
+            RateLimitError: If the page is rejected with a 429 more than
+                ``MAX_RATE_LIMIT_RETRIES`` times in a row, or more than
+                ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row when it has no
+                ``Retry-After``, or, when a ``rate_limiter`` is set, if the limiter itself
+                refuses a request (its daily window is exhausted).
+        """
+        untimed_retries = 0
+        limited_retries = 0
+        while True:
+            # Read before every attempt, not once per page: a write made while a retry
+            # waits is from before the page that's then fetched, so it can't be stale.
+            invalidations = self._cache_coordinator.invalidation_count(resource)
+            try:
+                return self._request_data("GET", url), invalidations
+            except RateLimitError as e:
+                # A rate limiter that refuses the request itself (an exhausted daily window)
+                # is deliberately not waited out here: the caller decides whether to wait.
+                if self.rate_limiter is not None and not isinstance(e, _ServerRateLimitError):
+                    raise
+                # A missing Retry-After (0) can't be waited out, so don't retry it forever.
+                untimed_retries = untimed_retries + 1 if e.retry_after <= 0 else 0
+                limited_retries += 1
+                if (
+                    untimed_retries > MAX_UNTIMED_RATE_LIMIT_RETRIES
+                    or limited_retries > MAX_RATE_LIMIT_RETRIES
+                ):
+                    raise
+                if self.rate_limiter is None:
+                    # Floor a missing Retry-After at the burst window, as the limiter does,
+                    # so the capped retries are still spaced out rather than back-to-back.
+                    delay = e.retry_after if e.retry_after > 0 else DEFAULT_BURST_PERIOD
+                    LOGGER.warning("Rate limit during pagination; retrying page in %ss", delay)
+                    time.sleep(delay)
+                else:
+                    # The limiter has already backed off from this 429; acquire() blocks.
+                    LOGGER.warning("Rate limit during pagination; retrying page via rate limiter")
+
+    def _prepare_request_payload(
+        self, data: _Payload | None
+    ) -> tuple[dict[str, str], dict[str, tuple[str, bytes]] | None, str | dict[str, Any] | None]:
+        """Prepare request payload, handling data serialization and file uploads.
+
+        Args:
+            data: Optional data to include in the request body.
+
+        Returns:
+            tuple: A tuple of (header, files, body) where header contains HTTP headers,
+                  files contains file uploads, and body is the request body: a JSON string,
+                  multipart form fields, or ``None``.
+        """
+        header = self.header.copy()
+        files = None
+        body: str | dict[str, Any] | None = None
+
+        if isinstance(data, list):
+            # Handle list data (e.g., credits)
+            body = json.dumps([item.model_dump() for item in data])
+        elif data is not None:
+            fields = data.model_dump()
+            # Endpoints whose model has an `image` field (creator, issue, team, character,
+            # arc) require multipart/form-data even when no file is present. The others
+            # (series, universe, etc.) require JSON.
+            if "image" in fields:
+                files, body = _multipart_payload(fields)
+            else:
+                # None values are stripped so PATCH requests don't overwrite existing data
+                # with nulls.
+                body = json.dumps({k: v for k, v in fields.items() if v is not None}, default=str)
+
+        if isinstance(body, str):
+            header["Content-Type"] = _JSON_CONTENT_TYPE
+
+        LOGGER.debug("Header: %s", header)
+        LOGGER.debug("Data: %s", body)
+
+        return header, files, body
+
+    def _execute_http_request(  # noqa: PLR0913
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, str | int] | None = None,
+        headers: dict[str, str] | None = None,
+        data: str | dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes]] | None = None,
+    ) -> requests.Response:
+        """Execute the HTTP request with proper error handling.
+
+        Args:
+            method: HTTP method to use ("GET", "POST", "PATCH" or "DELETE").
+            url: The complete URL to send the request to.
+            params: Optional query parameters to include in the request.
+            headers: HTTP headers to send with the request. Defaults to ``self.header``.
+            data: The request body (see ``_prepare_request_payload``), or ``None``.
+            files: Optional file uploads.
+
+        Returns:
+            requests.Response: The HTTP response object.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
+            RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
+        """
+        self._acquire_rate_limit_slot()
+        return self._send_http_request(
+            method, url, params=params, headers=headers, data=data, files=files
+        )
+
+    def _send_http_request(  # noqa: PLR0913
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, str | int] | None = None,
+        headers: dict[str, str] | None = None,
+        data: str | dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes]] | None = None,
+    ) -> requests.Response:
+        """Send the HTTP request in a rate-limit slot already acquired, then release it.
+
+        Only ``_execute_http_request`` and ``_execute_write`` call this, each right
+        after ``_acquire_rate_limit_slot``. Anything raised before this is called means
+        the request was never sent.
+
+        Args:
+            method: HTTP method to use ("GET", "POST", "PATCH" or "DELETE").
+            url: The complete URL to send the request to.
+            params: Optional query parameters to include in the request.
+            headers: HTTP headers to send with the request. Defaults to ``self.header``.
+            data: The request body (see ``_prepare_request_payload``), or ``None``.
+            files: Optional file uploads.
+
+        Returns:
+            requests.Response: The HTTP response object.
+
+        Raises:
+            ApiError: For connection errors or timeouts.
+            RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
+        """
+        # The slot is held from here on, so it must be released on every exit path, not just
+        # the connection errors we translate. ``status`` stays ``None`` unless the response
+        # reported rate-limit headers and they were folded into the session's state.
+        status: RateLimitStatus | None = None
+        try:
+            response = self._http.request(
+                method,
+                url,
+                params=params,
+                timeout=REQUEST_TIMEOUT,
+                auth=self._auth,
+                headers=self.header if headers is None else headers,
+                data=data,
+                files=files,
+            )
+            status = self._update_rate_limit_status(response.headers)
+            self._update_cache_status(response.headers)
+            if response.status_code == requests.codes.too_many:
+                self._report_rate_limited(self._retry_after_seconds(response))
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout,
+        ) as err:
+            msg = f"Connection error: {err!r}"
+            raise ApiError(msg) from err
+        finally:
+            self._release_rate_limit_slot(status)
+        return response
+
+    def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:
+        """Handle HTTP response, parsing JSON and checking for errors.
+
+        Args:
+            response: The HTTP response object to process.
+
+        Returns:
+            dict[str, Any]: The parsed JSON response data.
+
+        Raises:
+            RateLimitError: When the API rate limit is exceeded.
+            ApiError: For HTTP errors, invalid JSON, or API error responses.
+        """
+        self._raise_for_status(response)
+
+        try:
+            resp = response.json()
+        except ValueError as err:
+            msg = f"Invalid JSON response: {err!r}"
+            raise ApiError(msg) from err
+
+        if "detail" in resp:
+            raise ApiError(resp["detail"])
+
+        return resp
+
+    @staticmethod
+    def _raise_for_status(response: requests.Response) -> None:
+        """Raise the error for an unsuccessful (4xx or 5xx) response.
+
+        Args:
+            response: The HTTP response to check.
+
+        Raises:
+            RateLimitError: For a 429, as a ``_ServerRateLimitError``.
+            ApiError: For any other HTTP error.
+        """
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            if response.status_code == requests.codes.too_many:
+                retry_after = _SessionCore._retry_after_seconds(response)
+                msg = (
+                    f"Metron API Rate Limit exceeded, need to wait for {format_time(retry_after)}."
+                )
+                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
+            msg = f"HTTP error: {err!r} | Response body: {response.text}"
+            raise ApiError(msg) from err
+
+    def _update_rate_limit_status(self, headers: Mapping[str, str]) -> RateLimitStatus | None:
+        """Update the session's rate-limit state from a response's headers.
+
+        Returns:
+            The updated state, as merged under the lock, so the caller gets this
+            response's headers even if another thread updates the state right after.
+            ``None`` if the response reported no rate-limit headers, so the previous
+            response's state isn't passed on as this one's.
+        """
+        with self._rate_limit_lock:
+            merged = self._rate_limit_status.merge_headers(headers)
+            if merged is self._rate_limit_status:
+                return None
+            self._rate_limit_status = merged
+            return merged
+
+    def _update_cache_status(self, headers: Any) -> None:
+        """Update the session's last-observed ``X-Cache`` status from response headers.
+
+        Unlike rate-limit headers, ``X-Cache`` is per-endpoint: Metron only adds it
+        on the paths that actually go through its response cache and omits it
+        entirely elsewhere. So a missing header resets the status to ``None``
+        rather than preserving a stale value from a previous, cached endpoint.
+        """
+        with self._cache_status_lock:
+            self._last_cache_status = headers.get(HEADER_CACHE)
+
+    def _acquire_rate_limit_slot(self) -> None:
+        """Dispatch to the injected rate limiter, or fall back to the fail-fast check.
+
+        This is the single choke point for rate limiting: every HTTP send
+        goes through ``_execute_http_request``, which calls this first. When
+        no ``rate_limiter`` is configured, behavior is identical to calling
+        ``_check_rate_limit()`` directly.
+
+        Raises:
+            RateLimitError: When ``rate_limiter`` is unset and the last known
+                rate-limit headers show a window is exhausted and hasn't reset yet.
+            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
+        """
+        if self.rate_limiter is None:
+            self._check_rate_limit()
+            return
+        self._rate_limiter_method("acquire")(self.rate_limit_status)
+
+    def _rate_limiter_method(self, name: str) -> Callable[..., None]:
+        """Look up a required method on the injected rate limiter.
+
+        Only the lookup is guarded, so an ``AttributeError`` raised from inside the
+        limiter's own code isn't misreported as a missing method.
+
+        Raises:
+            RateLimiterError: If the rate limiter has no attribute ``name``.
+        """
+        try:
+            return getattr(self.rate_limiter, name)
+        except AttributeError as e:
+            msg = f"Rate limiter object passed in is missing attribute: {e!r}"
+            raise RateLimiterError(msg) from e
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> float:
+        """Return the response's ``Retry-After`` in seconds, or 0 if it has none.
+
+        ``Retry-After`` is either a number of seconds or an HTTP date (RFC 9110), and
+        both are accepted. A value that's malformed, already past or not finite is
+        treated as missing rather than raised, since the response has already arrived,
+        so the caller falls back to waiting out a burst window.
+        """
+        value = response.headers.get("Retry-After")
+        if value is None:
+            return 0.0
+        try:
+            seconds = float(value)
+        except ValueError:
+            try:
+                when = parse_http_datetime(value)
+            except (TypeError, ValueError):
+                return 0.0
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=UTC)
+            seconds = (when - datetime.now(UTC)).total_seconds()
+        return seconds if math.isfinite(seconds) and seconds > 0 else 0.0
+
+    def _report_rate_limited(self, retry_after: float) -> None:
+        """Tell the injected rate limiter, if any, that Metron rejected a request with a 429.
+
+        Args:
+            retry_after: The response's ``Retry-After`` in seconds, or 0 if it had none.
+
+        Raises:
+            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
+        """
+        if self.rate_limiter is None:
+            return
+        on_rate_limited = self._rate_limiter_method("on_rate_limited")
+        # The 429 is still reported to the caller as a RateLimitError, so a limiter that
+        # fails to record it (e.g. its backing store is unreachable) is logged, not raised.
+        try:
+            on_rate_limited(retry_after)
+        except Exception:
+            LOGGER.exception("Rate limiter on_rate_limited() failed; ignoring")
+
+    def _release_rate_limit_slot(self, status: RateLimitStatus | None) -> None:
+        """Release the slot reserved by ``_acquire_rate_limit_slot``, if a limiter is set.
+
+        Args:
+            status: The freshly updated rate-limit status after the request
+                completed, or ``None`` if it failed before headers were received or
+                the response reported no rate-limit headers.
+
+        Raises:
+            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
+        """
+        if self.rate_limiter is None:
+            return
+        release = self._rate_limiter_method("release")
+        # This runs in a ``finally``, so raising here would discard a successful response
+        # or mask the request's own error; log a failing limiter instead.
+        try:
+            release(status)
+        except Exception:
+            LOGGER.exception("Rate limiter release() failed; ignoring")
+
+    def _check_rate_limit(self) -> None:
+        """Check rate limits before making a request.
+
+        Metron's sustained (daily) limit varies per user based on OpenCollective
+        donor tier, so mokkari doesn't track it locally with a fixed quota.
+        Instead it trusts the most recently observed ``X-RateLimit-*`` response
+        headers, and only pre-empts a request once those headers show a window
+        is already exhausted.
+
+        Not synchronized with request dispatch: this check and the subsequent
+        HTTP call are not serialized under a shared lock, so under concurrent
+        callers (e.g. multiple threads sharing one ``Session``) more than one
+        caller can pass this check before either request's response updates
+        ``rate_limit_status``. See the "Thread safety" note on ``Session`` for
+        guidance on bounding your own concurrency.
+
+        Raises:
+            RateLimitError: When the last known rate-limit headers show the
+                burst or sustained window is exhausted and hasn't reset yet. Its
+                ``retry_after`` is the time until the reset Metron reported, measured
+                against the local clock.
+        """
+        error = self.rate_limit_status.exhausted_error(datetime.now(UTC))
+        if error is None:
+            return
+        LOGGER.warning("%s", error)
+        raise error
+
+    def _request_data(
+        self,
+        method: str,
+        url: str,
+        params: dict[str, str | int] | None = None,
+        *,
+        if_modified_since: datetime | None = None,
+    ) -> Any:
+        """Send a request without a body and return its parsed JSON response.
+
+        Writes, which send a body, go through ``_execute_write`` instead.
+
+        Args:
+            method: HTTP method to use (normally "GET").
+            url: The complete URL to send the request to.
+            params: Optional query parameters to include in the request.
+            if_modified_since: If given, sent as ``If-Modified-Since`` (a naive datetime
+                is taken as UTC), so Metron can answer 304 Not Modified when the data
+                hasn't changed since.
+
+        Returns:
+            Any: The parsed JSON response from the API, or ``None`` for a 304 answering
+                ``if_modified_since``.
+
+        Raises:
+            ApiError: For connection errors, HTTP errors, or invalid JSON responses.
+            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
+        """
+        headers = self.header
+        if if_modified_since is not None:
+            headers = {**headers, "If-Modified-Since": _http_date(if_modified_since)}
+        LOGGER.debug("Request Method: %s | URL: %s | Params: %s", method, url, params)
+        LOGGER.debug("Header: %s", headers)
+        response = self._execute_http_request(method, url, params=params, headers=headers)
+        if if_modified_since is not None and response.status_code == HTTPStatus.NOT_MODIFIED:
+            return None
+        return self._handle_http_response(response)
+
+
+class Session(
+    _SessionCore,
+    CatalogEndpoints,
+    ReadingListEndpoints,
+    CollectionEndpoints,
+    PullListEndpoints,
+    WishListEndpoints,
+):
     """A comprehensive API client for interacting with the Metron Comics Database.
 
     The Session class provides a complete interface for accessing comic book data including
@@ -376,2601 +1413,9 @@ class Session:
         ValidationError: For invalid response data that doesn't match expected schemas.
     """
 
-    T = TypeVar(
-        "T",
-        ArcPost,
-        CharacterPost,
-        CreatorPost,
-        list[CreditPost],
-        VariantPost,
-        IssuePost,
-        PublisherPost,
-        ScrobbleRequest,
-        SeriesPost,
-        TeamPost,
-        UniversePost,
-    )
 
-    def __init__(
-        self,
-        api_token: str,
-        *,
-        cache: Cache | None = None,
-        user_agent: str | None = None,
-        dev_mode: bool = False,
-        rate_limiter: rate_limit.RateLimiter | None = None,
-    ) -> None:
-        """Initialize a Session object with authentication and configuration.
-
-        Sets up the session with proper authentication headers, API endpoint URL,
-        and optional caching. The user agent is automatically constructed to include
-        the library version and system information.
-
-        Args:
-            api_token: API token for Bearer-token authentication.
-            cache: Optional response cache, such as a ``SqliteCache``.
-            user_agent: Optional custom user agent string to prepend to the default.
-            dev_mode: If True, use local development server instead of production.
-            rate_limiter: Optional pacing gate dispatched on every HTTP send,
-                in place of the default fail-fast check. Defaults to ``None``.
-
-        Raises:
-            AuthenticationError: If the api_token is missing or empty.
-            CacheError: If ``cache`` lacks a ``get`` or ``store`` method taking Session's arguments.
-        """
-        # Guards against a token read from an unset environment variable, which the
-        # type hint alone won't catch at runtime.
-        if not api_token:
-            raise exceptions.AuthenticationError
-
-        self.api_token = api_token
-        self.header = {
-            "User-Agent": f"{f'{user_agent} ' if user_agent is not None else ''}"
-            f"Mokkari/{__version__} ({platform.system()}; {platform.release()})"
-        }
-        # Kept out of ``header`` so the token isn't logged with the request headers.
-        self._auth = _BearerAuth(api_token)
-        # Identifies the token in per-user cache keys without storing the token itself.
-        self._cache_user = hashlib.sha256(api_token.encode()).hexdigest()[:16]
-        self.api_url = LOCAL_URL if dev_mode else METRON_URL
-        self.cache = cache
-        self.rate_limiter = rate_limiter
-        self._http = self._build_http_session()
-        self._rate_limit_lock = threading.Lock()
-        self._rate_limit_status = rate_limit.RateLimitStatus()
-        self._cache_status_lock = threading.Lock()
-        self._last_cache_status: str | None = None
-        # Counts invalidations by resource, so a response fetched before one isn't stored
-        # after it, while reads of other resources are stored as usual.
-        self._invalidation_lock = threading.Lock()
-        self._invalidations: Counter[str] = Counter()
-        # The tags each of a resource's latest invalidations dropped, or None if it dropped
-        # every entry, so a read overlapping one is only discarded if it could be stale.
-        self._invalidated_tags: defaultdict[str, deque[frozenset[str] | None]] = defaultdict(
-            lambda: deque(maxlen=_WRITE_LOG_SIZE)
-        )
-
-    @property
-    def cache(self) -> Cache | None:
-        """The response cache, or ``None`` if responses aren't cached."""
-        return self._cache
-
-    @cache.setter
-    def cache(self, cache: Cache | None) -> None:
-        # Checked here so a mis-wired cache fails now rather than on the first request.
-        if cache is not None:
-            _check_cache(cache)
-        self._cache = cache
-        # Whether the cache is invalidated by tag is decided once, here, not on each use.
-        self._tagged_cache = cache if isinstance(cache, _TaggedCache) else None
-
-    @staticmethod
-    def _build_http_session() -> requests.Session:
-        """Build the ``requests.Session`` that pools connections across API calls.
-
-        Reusing one session keeps TCP/TLS connections to Metron alive between requests
-        instead of paying a fresh handshake each time. Credentials are still sent per
-        request, and cookies are refused outright so a stray ``Set-Cookie`` from the
-        server can't turn later requests into session-authenticated ones.
-        """
-        http_session = requests.Session()
-        # Only one host is ever contacted, so a single pool is enough; its size is what
-        # bounds how many concurrent threads can reuse a connection.
-        for prefix in ("https://", "http://"):
-            http_session.mount(
-                prefix,
-                requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=HTTP_POOL_MAXSIZE),
-            )
-        http_session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
-        return http_session
-
-    def close(self) -> None:
-        """Close the pooled HTTP connections held by this session.
-
-        Calling this is optional. ``requests.Session`` has no finalizer of its own, so
-        without it the sockets are only released when they are finalized (promptly under
-        CPython's reference counting, but not guaranteed elsewhere), and Python may emit a
-        ``ResourceWarning`` for each one. It is safe to call more than once, and the session
-        can still be used afterwards, at the cost of opening new connections.
-
-        Only the HTTP connections are closed. A ``cache`` or ``rate_limiter`` passed to the
-        constructor is left untouched, since the caller owns it and may share it with other
-        sessions; ``SqliteCache`` in particular keeps its database connection open.
-        """
-        self._http.close()
-
-    def __enter__(self) -> Self:
-        """Enter the context manager, returning this session."""
-        return self
-
-    def __exit__(self, *_exc_info: object) -> None:
-        """Exit the context manager, closing pooled connections."""
-        self.close()
-
-    @property
-    def rate_limit_status(self) -> rate_limit.RateLimitStatus:
-        """Return the most recently observed rate-limit state.
-
-        Populated from the ``X-RateLimit-*`` headers Metron sends with every
-        response. Fields are ``None`` until the first request completes, or if
-        Metron did not report that window.
-        """
-        with self._rate_limit_lock:
-            return self._rate_limit_status
-
-    @property
-    def last_cache_status(self) -> str | None:
-        """Return the ``X-Cache`` value from the most recent response, if any.
-
-        Metron reports whether a response was served from its cache (``"HIT"``)
-        or generated fresh (``"MISS"``) via the ``X-Cache`` header, but only on
-        endpoints that are actually cached — others omit the header entirely.
-        This is ``None`` until the first request completes, and also resets to
-        ``None`` after any request whose endpoint isn't cached, so it always
-        reflects only the most recently completed request rather than a stale
-        value from an earlier, cached one.
-        """
-        with self._cache_status_lock:
-            return self._last_cache_status
-
-    def _get(
-        self,
-        endpoint: list[str | int],
-        params: dict[str, str | int] | None = None,
-        *,
-        kind: CacheKind = "detail",
-    ) -> dict[str, Any]:
-        """Send a GET request to the specified endpoint with optional parameters.
-
-        This internal method handles GET requests with caching support. It first checks
-        the cache for existing data, and if not found, makes the API request and caches
-        the result for future use.
-
-        Args:
-            endpoint: List of path segments to build the API endpoint URL.
-            params: Optional query parameters to include in the request.
-            kind: Whether the endpoint returns a single object (``"detail"``) or a
-                list (``"list"``), passed to the cache along with the resource name.
-
-        Returns:
-            dict[str, Any]: The response data from the API.
-
-        Raises:
-            ApiError: If the API returns an error response or if there are network issues.
-        """
-        return self._fetch(endpoint, params, kind=kind)[0]
-
-    def _fetch(
-        self,
-        endpoint: list[str | int],
-        params: dict[str, str | int] | None = None,
-        *,
-        kind: CacheKind = "detail",
-        use_cache: bool = True,
-        resource: str | None = None,
-    ) -> tuple[dict[str, Any], bool]:
-        """Do the work of ``_get``, also reporting whether the response came from the cache.
-
-        Args:
-            endpoint: List of path segments to build the API endpoint URL.
-            params: Optional query parameters to include in the request.
-            kind: ``"detail"`` or ``"list"``, passed to the cache with the resource name.
-            use_cache: Whether to look in the cache first. The response is stored either way.
-            resource: The resource the response is cached under. Defaults to the endpoint's
-                first segment.
-
-        Returns:
-            The response data, and ``True`` if it was served from the cache.
-
-        Raises:
-            ApiError: If the API returns an error response or if there are network issues.
-        """
-        if params is None:
-            params = {}
-
-        cache_params = ""
-        if params:
-            ordered_params = OrderedDict(sorted(params.items(), key=lambda t: t[0]))
-            cache_params = f"?{urlencode(ordered_params)}"
-
-        url = self._url(endpoint)
-        cache_key = f"{url}{cache_params}"
-        resource = resource or str(endpoint[0])
-
-        if use_cache:
-            cached_response = self._get_results_from_cache(cache_key, resource)
-            if cached_response is not None:
-                return cached_response, True
-
-        invalidations = self._invalidations[resource]
-        data = self._request_data("GET", url, params)
-
-        if "detail" in data:
-            raise exceptions.ApiError(data["detail"])
-
-        self._save_results_to_cache(cache_key, data, resource, kind, invalidations=invalidations)
-
-        return data, False
-
-    def _url(self, endpoint: list[str | int]) -> str:
-        """Return the API URL for ``endpoint``'s path segments."""
-        return self.api_url.format("/".join(str(e) for e in endpoint))
-
-    def _send(
-        self,
-        method: str,
-        endpoint: list[str | int],
-        data: T,
-        *,
-        also_invalidates: tuple[str, ...] = (),
-        tags: _WriteTags | None = None,
-    ) -> Any:
-        """Send a request with data to the specified endpoint.
-
-        This internal method handles POST and PATCH requests with data payloads.
-        It supports both single objects and lists of objects, as well as file uploads.
-
-        Args:
-            method: HTTP method to use ("POST" or "PATCH").
-            endpoint: List of path segments to build the API endpoint URL.
-            data: The data object to send in the request body.
-            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
-            tags: Which of the resource's cached entries the write changes (see
-                ``_execute_write``).
-
-        Returns:
-            Any: The response data from the API.
-
-        Raises:
-            ApiError: If there is an error during the API call.
-        """
-        return self._handle_http_response(
-            self._execute_write(
-                method, endpoint, data, also_invalidates=also_invalidates, tags=tags
-            )
-        )
-
-    def _execute_write(
-        self,
-        method: str,
-        endpoint: list[str | int],
-        data: Any,
-        *,
-        also_invalidates: tuple[str, ...] = (),
-        tags: _WriteTags | None = None,
-    ) -> requests.Response:
-        """Send a write request, then drop cached entries it may have made stale.
-
-        Args:
-            method: HTTP method to use ("POST", "PATCH" or "DELETE").
-            endpoint: List of path segments to build the API endpoint URL.
-            data: The data to send in the request body, or ``None``.
-            also_invalidates: Cached resources the write changes besides the one it's sent
-                to (the endpoint's first segment), such as ``issue`` for a credit.
-            tags: Given the response, or ``None`` if there isn't one, returns the tags of
-                the entries of the resource it's sent to that the write may have made stale
-                (see ``Cache``), or ``None`` for all of them. All are dropped if not given,
-                and every entry of ``also_invalidates`` always is.
-
-        Returns:
-            The HTTP response, not yet checked for errors.
-
-        Raises:
-            ApiError: For connection errors or timeouts.
-            RateLimitError: When the API rate limit is exceeded.
-        """
-        url = self._url(endpoint)
-        LOGGER.debug("Request Method: %s | URL: %s", method, url)
-        header, files, data_dict = self._prepare_request_payload(data)
-        response = None
-        unsent = False
-        try:
-            response = self._execute_http_request(method, url, {}, header, data_dict, files)
-        except exceptions.RateLimitError:
-            # Raised only before the request is sent (a 429 is returned, not raised).
-            unsent = True
-            raise
-        finally:
-            # A 4xx means Metron rejected the write. Anything else, even a timeout or a 5xx,
-            # may have been applied, and dropping the entries only costs a refetch.
-            rejected = response is not None and (
-                HTTPStatus.BAD_REQUEST <= response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
-            )
-            if not (rejected or unsent):
-                resource = str(endpoint[0])
-                written_tags = None if tags is None else tags(response)
-                self._invalidate_cache(
-                    (resource, *also_invalidates),
-                    tags=None if written_tags is None else {resource: written_tags},
-                )
-        return response
-
-    @staticmethod
-    def _validate_response(resp: dict[str, Any], adapter_class: type) -> Any:
-        """Validate API response using the provided Pydantic adapter class.
-
-        This method ensures that the API response conforms to the expected schema
-        by validating it against the appropriate Pydantic model.
-
-        Args:
-            resp: The response dictionary from the API to validate.
-            adapter_class: The Pydantic type adapter class for validation.
-
-        Returns:
-            Any: The validated response object.
-
-        Raises:
-            ApiError: If validation fails due to schema mismatch.
-        """
-        adapter = TypeAdapter(adapter_class)
-        try:
-            return adapter.validate_python(resp)
-        except ValidationError as error:
-            raise exceptions.ApiError(error) from error
-
-    @staticmethod
-    def _validate_list_response(resp: dict[str, Any], item_class: type) -> list[Any]:
-        """Validate API response containing a list of items.
-
-        This method validates paginated responses that contain a 'results' field
-        with a list of items that should conform to the specified schema.
-
-        Args:
-            resp: The response dictionary containing a 'results' field with list data.
-            item_class: The class type that each item in the list should conform to.
-
-        Returns:
-            list[Any]: The validated list of objects.
-
-        Raises:
-            ApiError: If validation fails for any item in the list.
-        """
-        adapter = TypeAdapter(list[item_class])
-        try:
-            return adapter.validate_python(resp["results"])
-        except ValidationError as error:
-            raise exceptions.ApiError(error) from error
-
-    def _send_void(
-        self,
-        method: str,
-        endpoint: list[str | int],
-        data: Any = None,
-        *,
-        also_invalidates: tuple[str, ...] = (),
-    ) -> None:
-        """Send a request that returns no response body (204 No Content or 200 with no body).
-
-        Args:
-            method: HTTP method to use ("POST" or "DELETE").
-            endpoint: List of path segments to build the API endpoint URL.
-            data: Optional data to send in the request body.
-            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
-
-        Raises:
-            ApiError: If the request fails.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        response = self._execute_write(method, endpoint, data, also_invalidates=also_invalidates)
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == requests.codes.too_many:
-                retry_after = self._retry_after_seconds(response)
-                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
-                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
-            msg = f"HTTP error: {err!r} | Response body: {response.text}"
-            raise exceptions.ApiError(msg) from err
-
-    def _handle_write_request(  # noqa: PLR0913
-        self,
-        method: str,
-        endpoint: list[str | int],
-        data: Any,
-        response_class: type,
-        *,
-        also_invalidates: tuple[str, ...] = (),
-        tags: _WriteTags | None = None,
-    ) -> Any:
-        """Handle POST or PATCH request with consistent error handling and validation.
-
-        This internal method provides a standardized way to handle write requests
-        (POST and PATCH) with proper response validation.
-
-        Args:
-            method: HTTP method to use ("POST" or "PATCH").
-            endpoint: The API endpoint path segments.
-            data: The data to send in the request.
-            response_class: The expected response class for validation.
-            also_invalidates: Other cached resources the write changes (see ``_execute_write``).
-            tags: Which of the resource's cached entries the write changes (see
-                ``_execute_write``).
-
-        Returns:
-            Any: The validated response object.
-
-        Raises:
-            ApiError: If the request fails or validation fails.
-        """
-        resp = self._send(method, endpoint, data, also_invalidates=also_invalidates, tags=tags)
-        return self._validate_response(resp, response_class)
-
-    # Generic resource methods
-    def _get_resource(
-        self,
-        resource_name: str,
-        _id: int,
-        response_class: type,
-        if_modified_since: datetime | None = None,
-    ) -> Any:
-        """Retrieve a single resource by ID.
-
-        When ``if_modified_since`` is provided the request includes an
-        ``If-Modified-Since`` header and may return ``None`` (304 Not Modified).
-        Otherwise the regular cache-aware flow is used.
-
-        Args:
-            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
-            _id: The unique identifier for the resource.
-            response_class: The Pydantic model class for response validation.
-            if_modified_since: Optional datetime; when given, the server may return
-                304 Not Modified and this method returns ``None``.
-
-        Returns:
-            The validated resource object, or ``None`` when a 304 is received.
-
-        Raises:
-            ApiError: If the resource is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        if if_modified_since is not None:
-            url = self._url([resource_name, _id])
-            if if_modified_since.tzinfo is None:
-                if_modified_since = if_modified_since.replace(tzinfo=UTC)
-            else:
-                if_modified_since = if_modified_since.astimezone(UTC)
-            header_value = format_http_datetime(if_modified_since, usegmt=True)
-            data = self._fetch_detail(url, header_value)
-            if data is None:
-                return None
-            if "detail" in data:
-                raise exceptions.ApiError(data["detail"])
-            return self._validate_response(data, response_class)
-
-        resp = self._get([resource_name, _id])
-        return self._validate_response(resp, response_class)
-
-    def _post_resource(self, resource_name: str, data: Any, response_class: type) -> Any:
-        """Create a new resource in the database.
-
-        Generic method for creating any resource type via POST request.
-
-        Args:
-            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
-            data: The data object to send in the POST request.
-            response_class: The Pydantic model class for response validation.
-
-        Returns:
-            Any: The validated response object.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        # Only lists the new object may join are dropped.
-        return self._handle_write_request(
-            "POST", [resource_name], data, response_class, tags=_created_tags(resource_name)
-        )
-
-    def _patch_resource(self, resource_name: str, _id: int, data: Any, response_class: type) -> Any:
-        """Update an existing resource in the database.
-
-        Generic method for updating any resource type via PATCH request.
-
-        Args:
-            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
-            _id: The unique identifier for the resource to update.
-            data: The data object to send in the PATCH request.
-            response_class: The Pydantic model class for response validation.
-
-        Returns:
-            Any: The validated response object.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        # Only entries the update may change are dropped. None values aren't sent (see
-        # _prepare_request_payload), so they don't change anything.
-        tags = update_tags(resource_name, _id, data.model_dump(exclude_none=True))
-        return self._handle_write_request(
-            "PATCH", [resource_name, _id], data, response_class, tags=lambda _response: tags
-        )
-
-    def _list_resources(
-        self, resource_name: str, params: dict[str, str | int] | None, response_class: type
-    ) -> list[Any]:
-        """Retrieve a list of resources with optional filtering.
-
-        Generic method for listing any resource type with pagination support.
-
-        Args:
-            resource_name: The name of the resource endpoint (e.g., 'creator', 'character').
-            params: Optional dictionary of query parameters for filtering results.
-            response_class: The Pydantic model class for validating list items.
-
-        Returns:
-            list[Any]: A list of validated resource objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        resp = self._get_results([resource_name], params)
-        return self._validate_list_response(resp, response_class)
-
-    def _get_resource_issues(self, resource_name: str, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues associated with a specific resource.
-
-        Generic method for getting issue lists for characters, teams, arcs, or series.
-
-        Args:
-            resource_name: The name of the resource endpoint (e.g., 'character', 'team', 'arc').
-            _id: The unique identifier for the resource.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        # A list of issues, so it's cached as issues: its TTL is the issue TTL, and an issue
-        # write invalidates it.
-        resp = self._get_results(
-            [resource_name, _id, "issue_list"], resource=ResourceEndpoint.ISSUE
-        )
-        return self._validate_list_response(resp, BaseIssue)
-
-    # Creator methods
-    def creator(self, _id: int, if_modified_since: datetime | None = None) -> Creator | None:
-        """Retrieve detailed information about a creator by ID.
-
-        Args:
-            _id: The unique identifier for the creator.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-                Typically you would pass a previously fetched creator's ``modified`` field.
-
-        Returns:
-            A Creator object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the creator is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creator = session.creator(1)
-            >>> print(creator.name)
-            >>> # Later, check if updated:
-            >>> updated = session.creator(1, if_modified_since=creator.modified)
-            >>> if updated is None:
-            ...     print("Not modified")
-        """
-        return self._get_resource(ResourceEndpoint.CREATOR, _id, Creator, if_modified_since)
-
-    def creator_post(self, data: CreatorPost) -> Creator:
-        """Create a new creator in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: CreatorPost object containing the creator information to create.
-
-        Returns:
-            Creator: The newly created Creator object.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
-            >>> new_creator = session.creator_post(creator_data)
-        """
-        return self._post_resource(ResourceEndpoint.CREATOR, data, Creator)
-
-    def creator_patch(self, _id: int, data: CreatorPost) -> Creator:
-        """Update an existing creator in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the creator to update.
-            data: CreatorPost object containing the updated creator information.
-
-        Returns:
-            Creator: The updated Creator object.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creator_data = CreatorPost(name="Jane Doe", birth_date="1980-01-01")
-            >>> updated_creator = session.creator_patch(1, creator_data)
-        """
-        return self._patch_resource(ResourceEndpoint.CREATOR, _id, data, Creator)
-
-    def creators_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of creators with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing creators.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> creators = session.creators_list({"name": "Stan Lee"})
-            >>> all_creators = session.creators_list()
-        """
-        return self._list_resources(ResourceEndpoint.CREATOR, params, BaseResource)
-
-    # Character methods
-    def character(self, _id: int, if_modified_since: datetime | None = None) -> Character | None:
-        """Retrieve detailed information about a character by ID.
-
-        Args:
-            _id: The unique identifier for the character.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Character object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the character is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> character = session.character(1)
-            >>> print(character.name)
-        """
-        return self._get_resource(ResourceEndpoint.CHARACTER, _id, Character, if_modified_since)
-
-    def character_post(self, data: CharacterPost) -> CharacterPostResponse:
-        """Create a new character in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: CharacterPost object containing the character information to create.
-
-        Returns:
-            CharacterPostResponse: The newly created character response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-        """
-        return self._post_resource(ResourceEndpoint.CHARACTER, data, CharacterPostResponse)
-
-    def character_patch(self, _id: int, data: CharacterPost) -> CharacterPostResponse:
-        """Update an existing character in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the character to update.
-            data: CharacterPost object containing the updated character information.
-
-        Returns:
-            CharacterPostResponse: The updated character response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-        """
-        return self._patch_resource(ResourceEndpoint.CHARACTER, _id, data, CharacterPostResponse)
-
-    def characters_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of characters with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing characters.
-        """
-        return self._list_resources(ResourceEndpoint.CHARACTER, params, BaseResource)
-
-    def character_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues featuring a specific character.
-
-        Args:
-            _id: The unique identifier for the character.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issues = session.character_issues_list(1)
-            >>> print(f"Character appears in {len(issues)} issues")
-        """
-        return self._get_resource_issues(ResourceEndpoint.CHARACTER, _id)
-
-    # Publisher methods
-    def publisher(self, _id: int, if_modified_since: datetime | None = None) -> Publisher | None:
-        """Retrieve detailed information about a publisher by ID.
-
-        Args:
-            _id: The unique identifier for the publisher.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Publisher object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the publisher is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.PUBLISHER, _id, Publisher, if_modified_since)
-
-    def publisher_post(self, data: PublisherPost) -> Publisher:
-        """Create a new publisher in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: PublisherPost object containing the publisher information to create.
-
-        Returns:
-            Publisher: The newly created Publisher object.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-        """
-        return self._post_resource(ResourceEndpoint.PUBLISHER, data, Publisher)
-
-    def publisher_patch(self, _id: int, data: PublisherPost) -> Publisher:
-        """Update an existing publisher in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the publisher to update.
-            data: PublisherPost object containing the updated publisher information.
-
-        Returns:
-            Publisher: The updated Publisher object.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-        """
-        return self._patch_resource(ResourceEndpoint.PUBLISHER, _id, data, Publisher)
-
-    def publishers_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of publishers with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing publishers.
-        """
-        return self._list_resources(ResourceEndpoint.PUBLISHER, params, BaseResource)
-
-    # Team methods
-    def team(self, _id: int, if_modified_since: datetime | None = None) -> Team | None:
-        """Retrieve detailed information about a team by ID.
-
-        Args:
-            _id: The unique identifier for the team.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Team object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the team is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.TEAM, _id, Team, if_modified_since)
-
-    def team_post(self, data: TeamPost) -> TeamPostResponse:
-        """Create a new team in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: TeamPost object containing the team information to create.
-
-        Returns:
-            TeamPostResponse: The newly created team response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.TEAM, data, TeamPostResponse)
-
-    def team_patch(self, _id: int, data: TeamPost) -> TeamPostResponse:
-        """Update an existing team in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the team to update.
-            data: TeamPost object containing the updated team information.
-
-        Returns:
-            TeamPostResponse: The updated team response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.TEAM, _id, data, TeamPostResponse)
-
-    def teams_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of teams with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing teams.
-        """
-        return self._list_resources(ResourceEndpoint.TEAM, params, BaseResource)
-
-    def team_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues featuring a specific team.
-
-        Args:
-            _id: The unique identifier for the team.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-        """
-        return self._get_resource_issues(ResourceEndpoint.TEAM, _id)
-
-    # Arc methods
-    def arc(self, _id: int, if_modified_since: datetime | None = None) -> Arc | None:
-        """Retrieve detailed information about a story arc by ID.
-
-        Args:
-            _id: The unique identifier for the arc.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            An Arc object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the arc is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.ARC, _id, Arc, if_modified_since)
-
-    def arc_post(self, data: ArcPost) -> Arc:
-        """Create a new story arc in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: ArcPost object containing the arc information to create.
-
-        Returns:
-            Arc: The newly created Arc object.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.ARC, data, Arc)
-
-    def arc_patch(self, _id: int, data: ArcPost) -> Arc:
-        """Update an existing story arc in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the arc to update.
-            data: ArcPost object containing the updated arc information.
-
-        Returns:
-            Arc: The updated Arc object.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.ARC, _id, data, Arc)
-
-    def arcs_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of story arcs with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing arcs.
-        """
-        return self._list_resources(ResourceEndpoint.ARC, params, BaseResource)
-
-    def arc_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues that are part of a specific story arc.
-
-        Args:
-            _id: The unique identifier for the arc.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-        """
-        return self._get_resource_issues(ResourceEndpoint.ARC, _id)
-
-    # Series methods
-    def series(self, _id: int, if_modified_since: datetime | None = None) -> Series | None:
-        """Retrieve detailed information about a series by ID.
-
-        Args:
-            _id: The unique identifier for the series.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Series object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the series is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.SERIES, _id, Series, if_modified_since)
-
-    def series_post(self, data: SeriesPost) -> SeriesPostResponse:
-        """Create a new series in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: SeriesPost object containing the series information to create.
-
-        Returns:
-            SeriesPostResponse: The newly created series response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.SERIES, data, SeriesPostResponse)
-
-    def series_patch(self, _id: int, data: SeriesPost) -> SeriesPostResponse:
-        """Update an existing series in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the series to update.
-            data: SeriesPost object containing the updated series information.
-
-        Returns:
-            SeriesPostResponse: The updated series response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.SERIES, _id, data, SeriesPostResponse)
-
-    def series_list(self, params: dict[str, str | int] | None = None) -> list[BaseSeries]:
-        """Retrieve a list of series with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'publisher', 'year_began', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseSeries]: A list of BaseSeries objects representing series.
-        """
-        return self._list_resources(ResourceEndpoint.SERIES, params, BaseSeries)
-
-    def series_issues_list(self, _id: int) -> list[BaseIssue]:
-        """Retrieve a list of issues that are part of a specific series.
-
-        Args:
-            _id: The unique identifier for the series.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects.
-        """
-        return self._get_resource_issues(ResourceEndpoint.SERIES, _id)
-
-    def series_type_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
-        """Retrieve a list of available series types.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[GenericItem]: A list of GenericItem objects representing series types.
-        """
-        resp = self._get_results([ResourceEndpoint.SERIES_TYPE], params)
-        return self._validate_list_response(resp, GenericItem)
-
-    # Issue methods
-    def issue(self, _id: int, if_modified_since: datetime | None = None) -> Issue | None:
-        """Retrieve detailed information about an issue by ID.
-
-        Args:
-            _id: The unique identifier for the issue.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            An Issue object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issue = session.issue(1)
-            >>> print(f"Issue #{issue.number} of {issue.series.name}")
-            >>> # Later, check if updated:
-            >>> updated = session.issue(1, if_modified_since=issue.modified)
-            >>> if updated is None:
-            ...     print("Not modified")
-        """
-        return self._get_resource(ResourceEndpoint.ISSUE, _id, Issue, if_modified_since)
-
-    def issue_post(self, data: IssuePost) -> IssuePostResponse:
-        """Create a new issue in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: IssuePost object containing the issue information to create.
-
-        Returns:
-            IssuePostResponse: The newly created issue response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.ISSUE, data, IssuePostResponse)
-
-    def issue_patch(self, _id: int, data: IssuePost) -> IssuePostResponse:
-        """Update an existing issue in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the issue to update.
-            data: IssuePost object containing the updated issue information.
-
-        Returns:
-            IssuePostResponse: The updated issue response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.ISSUE, _id, data, IssuePostResponse)
-
-    def issues_list(self, params: dict[str, str | int] | None = None) -> list[BaseIssue]:
-        """Retrieve a list of issues with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'series', 'number', 'cover_date', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseIssue]: A list of BaseIssue objects representing issues.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issues = session.issues_list({"series": 1})
-            >>> recent_issues = session.issues_list({"modified_gt": "2023-01-01"})
-        """
-        return self._list_resources(ResourceEndpoint.ISSUE, params, BaseIssue)
-
-    def credits_post(self, data: list[CreditPost]) -> list[CreditPostResponse]:
-        """Create new credits for issues in bulk.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: List of CreditPost objects containing credit information to create.
-
-        Returns:
-            list[CreditPostResponse]: A list of newly created credit responses.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> credits_ = [CreditPost(issue=1, creator=1, role=[1])]
-            >>> new_credits = session.credits_post(credits_)
-        """
-        # Credits are read back as part of their issue.
-        return self._handle_write_request(
-            "POST",
-            ["credit"],
-            data,
-            list[CreditPostResponse],
-            also_invalidates=(ResourceEndpoint.ISSUE,),
-        )
-
-    def variant_post(self, data: VariantPost) -> VariantPostResponse:
-        """Create a new variant cover for an issue.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: VariantPost object containing the variant cover information to create.
-
-        Returns:
-            VariantPostResponse: The newly created variant cover response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        # Variants are read back as part of their issue.
-        return self._handle_write_request(
-            "POST",
-            ["variant"],
-            data,
-            VariantPostResponse,
-            also_invalidates=(ResourceEndpoint.ISSUE,),
-        )
-
-    def role_list(self, params: dict[str, str | int] | None = None) -> list[GenericItem]:
-        """Retrieve a list of available creator roles.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[GenericItem]: A list of GenericItem objects representing creator roles
-                              (e.g., Writer, Artist, Colorist, etc.).
-        """
-        resp = self._get_results([ResourceEndpoint.ROLE], params)
-        return self._validate_list_response(resp, GenericItem)
-
-    # Universe methods
-    def universe(self, _id: int, if_modified_since: datetime | None = None) -> Universe | None:
-        """Retrieve detailed information about a universe by ID.
-
-        Args:
-            _id: The unique identifier for the universe.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A Universe object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the universe is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.UNIVERSE, _id, Universe, if_modified_since)
-
-    def universe_post(self, data: UniversePost) -> UniversePostResponse:
-        """Create a new universe in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            data: UniversePost object containing the universe information to create.
-
-        Returns:
-            UniversePostResponse: The newly created universe response.
-
-        Raises:
-            ApiError: If creation fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._post_resource(ResourceEndpoint.UNIVERSE, data, UniversePostResponse)
-
-    def universe_patch(self, _id: int, data: UniversePost) -> UniversePostResponse:
-        """Update an existing universe in the database.
-
-        Note: This function requires Admin permissions at Metron.
-
-        Args:
-            _id: The unique identifier for the universe to update.
-            data: UniversePost object containing the updated universe information.
-
-        Returns:
-            UniversePostResponse: The updated universe response.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._patch_resource(ResourceEndpoint.UNIVERSE, _id, data, UniversePostResponse)
-
-    def universes_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of universes with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing universes.
-        """
-        return self._list_resources(ResourceEndpoint.UNIVERSE, params, BaseResource)
-
-    # Imprint methods
-    def imprint(self, _id: int, if_modified_since: datetime | None = None) -> Imprint | None:
-        """Retrieve detailed information about an imprint by ID.
-
-        Args:
-            _id: The unique identifier for the imprint.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            An Imprint object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the imprint is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(ResourceEndpoint.IMPRINT, _id, Imprint, if_modified_since)
-
-    def imprints_list(self, params: dict[str, str | int] | None = None) -> list[BaseResource]:
-        """Retrieve a list of imprints with optional filtering.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include 'name', 'publisher', 'modified_gt', 'modified_lt'.
-
-        Returns:
-            list[BaseResource]: A list of BaseResource objects representing imprints.
-        """
-        return self._list_resources(ResourceEndpoint.IMPRINT, params, BaseResource)
-
-    # Reading List methods
-    def reading_list(
-        self, _id: int, if_modified_since: datetime | None = None
-    ) -> ReadingListRead | None:
-        """Retrieve detailed information about a reading list by ID.
-
-        Note: This endpoint requires authentication. Users can access:
-        - Authenticated users: Public lists + own lists
-        - Admin users: Public lists + own lists + Metron's lists
-
-        Args:
-            _id: The unique identifier for the reading list.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A ReadingListRead object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the reading list is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._get_resource(
-            ResourceEndpoint.READING_LIST, _id, ReadingListRead, if_modified_since
-        )
-
-    def reading_lists_list(
-        self, params: dict[str, str | int] | None = None
-    ) -> list[ReadingListList]:
-        """Retrieve a list of reading lists with optional filtering.
-
-        Note: This endpoint requires authentication. Users can access:
-        - Authenticated users: Public lists + own lists
-        - Admin users: Public lists + own lists + Metron's lists
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include:
-                   - 'name': Filter by reading list name
-                   - 'user': Filter by user ID
-                   - 'username': Filter by username
-                   - 'is_private': Filter by privacy status (boolean)
-                   - 'attribution_source': Filter by attribution source (CBRO, CMRO, CBH, etc.)
-                   - 'modified_gt': Filter by modification date (greater than)
-
-        Returns:
-            list[ReadingListList]: A list of ReadingListList objects representing reading lists.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        return self._list_resources(ResourceEndpoint.READING_LIST, params, ReadingListList)
-
-    def reading_list_items(self, _id: int) -> list[ReadingListItem]:
-        """Retrieve a paginated list of items for a specific reading list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            _id: The unique identifier for the reading list.
-
-        Returns:
-            list[ReadingListItem]: A list of ReadingListItem objects representing items
-                                   in the reading list.
-
-        Raises:
-            ApiError: If the reading list is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-        """
-        resp = self._get_results([ResourceEndpoint.READING_LIST, _id, "items"])
-        return self._validate_list_response(resp, ReadingListItem)
-
-    # Collection methods
-    def collection(
-        self, _id: int, if_modified_since: datetime | None = None
-    ) -> CollectionRead | None:
-        """Retrieve detailed information about a collection item by ID.
-
-        Note: This endpoint requires authentication. Users can only access their own collection items.
-
-        Args:
-            _id: The unique identifier for the collection item.
-            if_modified_since: Optional datetime for conditional requests. When provided,
-                the server may return 304 Not Modified and this method returns ``None``.
-
-        Returns:
-            A CollectionRead object, or ``None`` if the resource has not been modified.
-
-        Raises:
-            ApiError: If the collection item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> collection_item = session.collection(1)
-            >>> print(f"Issue: {collection_item.issue.series.name} #{collection_item.issue.number}")
-        """
-        return self._get_resource(
-            ResourceEndpoint.COLLECTION, _id, CollectionRead, if_modified_since
-        )
-
-    def collections_list(self, params: dict[str, str | int] | None = None) -> list[CollectionList]:
-        """Retrieve a list of collection items with optional filtering.
-
-        Note: This endpoint requires authentication. Users can only access their own collection items.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-                   Common parameters include:
-                   - 'book_format': Filter by format (PRINT, DIGITAL, BOTH)
-                   - 'grade': Filter by comic book grade (CGC scale)
-                   - 'grading_company': Filter by grading company (CGC, CBCS, PGX)
-                   - 'is_read': Filter by read status (boolean)
-                   - 'issue__series': Filter by series ID
-                   - 'modified_gt': Filter by modification date (greater than)
-                   - 'purchase_date': Filter by purchase date
-                   - 'rating': Filter by star rating (1-5)
-
-        Returns:
-            list[CollectionList]: A list of CollectionList objects representing collection items.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> collection = session.collections_list({"is_read": False})
-            >>> unread = [item for item in collection if not item.is_read]
-        """
-        return self._list_resources(ResourceEndpoint.COLLECTION, params, CollectionList)
-
-    def collection_missing_issues(self, series_id: int) -> list[MissingIssue]:
-        """Retrieve a list of missing issues for a specific series.
-
-        Returns issues from a series that are not in the authenticated user's collection.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            series_id: The unique identifier for the series.
-
-        Returns:
-            list[MissingIssue]: A list of MissingIssue objects representing issues
-                               not in the user's collection.
-
-        Raises:
-            ApiError: If the series is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> missing = session.collection_missing_issues(1)
-            >>> print(f"Missing {len(missing)} issues from this series")
-        """
-        resp = self._get_results([ResourceEndpoint.COLLECTION, "missing_issues", series_id])
-        return self._validate_list_response(resp, MissingIssue)
-
-    def collection_missing_series(self) -> list[MissingSeries]:
-        """Retrieve a list of series where the user has some issues but is missing others.
-
-        Returns series where the authenticated user owns at least one issue but not
-        all issues in the series.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            list[MissingSeries]: A list of MissingSeries objects representing series
-                                with incomplete collections.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> incomplete_series = session.collection_missing_series()
-            >>> for series in incomplete_series:
-            ...     print(f"Series: {series.name} ({series.year_began})")
-        """
-        resp = self._get_results([ResourceEndpoint.COLLECTION, "missing_series"])
-        return self._validate_list_response(resp, MissingSeries)
-
-    def collection_stats(self) -> CollectionStats:
-        """Retrieve statistics about the authenticated user's collection.
-
-        Returns comprehensive statistics including total items, total value,
-        read/unread counts, and breakdowns by format.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            CollectionStats: A CollectionStats object containing collection statistics.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> stats = session.collection_stats()
-            >>> print(f"Total items: {stats.total_items}")
-            >>> print(f"Total value: {stats.total_value}")
-            >>> print(f"Read: {stats.read_count}, Unread: {stats.unread_count}")
-        """
-        resp = self._get([ResourceEndpoint.COLLECTION, "stats"])
-        return self._validate_response(resp, CollectionStats)
-
-    def collection_scrobble(self, data: ScrobbleRequest) -> ScrobbleResponse:
-        """Mark an issue as read (scrobble).
-
-        This endpoint marks an issue as read and optionally provides a rating.
-        If the issue is not already in the user's collection, it will be
-        automatically added with default values.
-
-        Note: This endpoint requires authentication. Users can only scrobble issues
-        to their own collection.
-
-        Args:
-            data: ScrobbleRequest object containing the issue_id and optional
-                  date_read and rating.
-
-        Returns:
-            ScrobbleResponse: A ScrobbleResponse object containing the updated
-                            collection item information and a 'created' flag
-                            indicating whether a new collection item was created.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from datetime import datetime
-            >>> scrobble_data = ScrobbleRequest(
-            ...     issue_id=1,
-            ...     date_read=datetime.now(),
-            ...     rating=5
-            ... )
-            >>> result = session.collection_scrobble(scrobble_data)
-            >>> print(f"Issue marked as read: {result.issue.series.name} #{result.issue.number}")
-            >>> print(f"New item created: {result.created}")
-
-            Mark as read without rating:
-            >>> scrobble_data = ScrobbleRequest(issue_id=1)
-            >>> result = session.collection_scrobble(scrobble_data)
-        """
-        return self._handle_write_request(
-            "POST", [ResourceEndpoint.COLLECTION, "scrobble"], data, ScrobbleResponse
-        )
-
-    def collection_patch(self, _id: int, data: CollectionUpdate) -> CollectionUpdateResponse:
-        """Update the rating of an existing collection item.
-
-        Note: Users can only update items in their own collection. Only the rating field can be updated; read-tracking
-        (is_read/date_read) is handled exclusively through the scrobble action.
-
-        Args:
-            _id: The unique identifier for the collection item to update.
-            data: CollectionUpdate object containing the updated rating.
-
-        Returns:
-            CollectionUpdateResponse: The updated collection item's id, rating, and
-                                       modified timestamp.
-
-        Raises:
-            ApiError: If update fails or if user lacks permissions.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> update_data = CollectionUpdate(rating=4)
-            >>> result = session.collection_patch(1, update_data)
-            >>> print(f"Rating updated to: {result.rating}")
-        """
-        return self._patch_resource(
-            ResourceEndpoint.COLLECTION, _id, data, CollectionUpdateResponse
-        )
-
-    def collection_add(self, data: CollectionAddItem) -> CollectionRead:
-        """Add an issue to the authenticated user's collection.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            data: CollectionAddItem object containing the issue_id and optional
-                  quantity, grade, and purchase details.
-
-        Returns:
-            CollectionRead: The created (or updated, if the issue was already
-                             in the collection) collection item.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from mokkari.schemas.collection import CollectionAddItem
-            >>> item = session.collection_add(CollectionAddItem(issue_id=1, quantity=2))
-            >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
-        """
-        return self._handle_write_request(
-            "POST", [ResourceEndpoint.COLLECTION, "add"], data, CollectionRead
-        )
-
-    def collection_delete(self, _id: int) -> None:
-        """Remove an item from the authenticated user's collection.
-
-        Note: Users can only remove items from their own collection.
-
-        Args:
-            _id: The unique identifier for the collection item to remove.
-
-        Raises:
-            ApiError: If the collection item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> session.collection_delete(1)
-        """
-        self._send_void("DELETE", [ResourceEndpoint.COLLECTION, _id])
-
-    # Pull list methods
-    def pull_list(self) -> PullListRead:
-        """Retrieve the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            A PullListRead object.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> pl = session.pull_list()
-            >>> print(f"Series: {pl.series_count}")
-        """
-        results = self._list_resources(ResourceEndpoint.PULL_LIST, None, PullListRead)
-        return results[0]
-
-    def pull_list_issues(self, params: dict[str, str | int] | None = None) -> list[PullListIssue]:
-        """Retrieve issues for series on the authenticated user's pull list.
-
-        Optionally filter by store date using store_date_after and store_date_before.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            params: Optional dictionary of query parameters. Supports:
-                - store_date_after: Return issues with a store date on or after this date (YYYY-MM-DD).
-                - store_date_before: Return issues with a store date on or before this date (YYYY-MM-DD).
-
-        Returns:
-            list[PullListIssue]: A list of PullListIssue objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> issues = session.pull_list_issues({"store_date_after": "2024-01-01"})
-            >>> for issue in issues:
-            ...     print(f"{issue.series.name} #{issue.number}")
-        """
-        resp = self._get_results([ResourceEndpoint.PULL_LIST, "issues"], params)
-        return self._validate_list_response(resp, PullListIssue)
-
-    def pull_list_series(self, params: dict[str, str | int] | None = None) -> list[PullListSeries]:
-        """Retrieve the series on the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[PullListSeries]: A list of PullListSeries objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> series_list = session.pull_list_series()
-            >>> for entry in series_list:
-            ...     print(entry.series.display_name)
-        """
-        resp = self._get_results([ResourceEndpoint.PULL_LIST, "series"], params)
-        return self._validate_list_response(resp, PullListSeries)
-
-    def pull_list_add_series(self, series_id: int) -> PullListSeries:
-        """Add a series to the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            series_id: The unique identifier of the series to add.
-
-        Returns:
-            PullListSeries: The pull list series entry.
-
-        Raises:
-            ApiError: If the series is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> entry = session.pull_list_add_series(42)
-            >>> print(entry.series.display_name)
-        """
-        return self._handle_write_request(
-            "POST",
-            [ResourceEndpoint.PULL_LIST, "series", "add"],
-            PullListAddSeries(series_id=series_id),
-            PullListSeries,
-        )
-
-    def pull_list_remove_series(self, series_pk: int) -> None:
-        """Remove a series from the authenticated user's pull list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            series_pk: The unique identifier of the pull list series entry to remove.
-
-        Raises:
-            ApiError: If the entry is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> session.pull_list_remove_series(1)
-        """
-        self._send_void("DELETE", [ResourceEndpoint.PULL_LIST, "series", series_pk, "remove"])
-
-    # Wish list methods
-    def wish_list(self) -> WishList:
-        """Retrieve the authenticated user's wish list.
-
-        Note: This endpoint requires authentication.
-
-        Returns:
-            A WishList object.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> wl = session.wish_list()
-            >>> print(f"Items: {wl.item_count}")
-        """
-        results = self._list_resources(ResourceEndpoint.WISH_LIST, None, WishList)
-        return results[0]
-
-    def wish_list_items(self, params: dict[str, str | int] | None = None) -> list[WishListItemList]:
-        """Retrieve wish list items for the authenticated user.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            params: Optional dictionary of query parameters for filtering results.
-
-        Returns:
-            list[WishListItemList]: A list of WishListItemList objects.
-
-        Raises:
-            ApiError: If there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> items = session.wish_list_items()
-            >>> for item in items:
-            ...     print(f"{item.issue.series.name} #{item.issue.number} - {item.status}")
-        """
-        resp = self._get_results([ResourceEndpoint.WISH_LIST, "items"], params)
-        return self._validate_list_response(resp, WishListItemList)
-
-    def wish_list_add_item(self, data: WishListAddItem) -> WishListItemRead:
-        """Add an issue to the authenticated user's wish list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            data: WishListAddItem object containing the issue_id and optional fields.
-
-        Returns:
-            WishListItemRead: The newly created wish list item.
-
-        Raises:
-            ApiError: If the issue is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from mokkari.schemas.wish_list import WishListAddItem
-            >>> item = session.wish_list_add_item(WishListAddItem(issue_id=1, priority=2))
-            >>> print(f"Added: {item.issue.series.name} #{item.issue.number}")
-        """
-        return self._handle_write_request(
-            "POST", [ResourceEndpoint.WISH_LIST, "items", "add"], data, WishListItemRead
-        )
-
-    def wish_list_acquire_item(self, item_pk: int, data: AcquireWishListItem) -> None:
-        """Mark a wish list item as acquired and create a collection item.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            item_pk: The unique identifier of the wish list item to acquire.
-            data: AcquireWishListItem object with optional purchase details.
-
-        Raises:
-            ApiError: If the item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> from mokkari.schemas.wish_list import AcquireWishListItem
-            >>> session.wish_list_acquire_item(1, AcquireWishListItem(purchase_price="9.99"))
-        """
-        # Acquiring the item adds it to the collection.
-        self._send_void(
-            "POST",
-            [ResourceEndpoint.WISH_LIST, "items", item_pk, "acquire"],
-            data,
-            also_invalidates=(ResourceEndpoint.COLLECTION,),
-        )
-
-    def wish_list_remove_item(self, item_pk: int) -> None:
-        """Remove an item from the authenticated user's wish list.
-
-        Note: This endpoint requires authentication.
-
-        Args:
-            item_pk: The unique identifier of the wish list item to remove.
-
-        Raises:
-            ApiError: If the item is not found or if there's an API error.
-            RateLimitError: If the Metron API rate limit has been exceeded.
-
-        Examples:
-            >>> session = Session("your-api-token")
-            >>> session.wish_list_remove_item(1)
-        """
-        self._send_void("DELETE", [ResourceEndpoint.WISH_LIST, "items", item_pk, "remove"])
-
-    def _get_results(
-        self,
-        endpoint: list[str | int],
-        params: dict[str, str | int] | None = None,
-        *,
-        resource: str | None = None,
-    ) -> dict[str, Any]:
-        """Retrieve results from the specified API endpoint with automatic pagination handling.
-
-        This internal method handles paginated responses by automatically following 'next' links
-        to retrieve all available results. It's used by list methods to ensure complete data retrieval.
-
-        A paginated list is served either entirely from the cache or entirely from Metron,
-        so it's never a mix of pages from an older listing and a newer one: a fresh first
-        page means every following page is fetched too, and a cached first page is only
-        used if every other page of the list is cached as well. Otherwise the whole list is
-        fetched again, starting from the first page requested.
-
-        Args:
-            endpoint: List of path segments to build the API endpoint URL.
-            params: Optional query parameters to include in the request.
-            resource: The resource every page is cached under. Defaults to the endpoint's
-                first segment.
-
-        Returns:
-            dict[str, Any]: The complete response data with all paginated results combined.
-        """
-        if params is None:
-            params = {}
-
-        resource = resource or str(endpoint[0])
-        result, from_cache = self._fetch(endpoint, params, kind="list", resource=resource)
-        if from_cache:
-            if (cached := self._cached_pages(result, resource)) is not None:
-                return cached
-            result, _ = self._fetch(
-                endpoint, params, kind="list", use_cache=False, resource=resource
-            )
-        if not result["next"]:
-            return result
-        return self._retrieve_all_results(result, resource)
-
-    def _cached_pages(self, data: dict[str, Any], resource: str) -> dict[str, Any] | None:
-        """Add every following page of ``data`` from the cache, without making any requests.
-
-        The pages before ``data`` must be cached too, though their results aren't added. A
-        write drops only the pages holding the objects it changes, so an object that moves
-        to another page (e.g. when renamed) shifts the pages between them without dropping
-        them. Only a list whose every page is cached is known to have none dropped.
-
-        Args:
-            data: The first page requested, from the cache. It isn't modified, since the
-                cache may have returned the very object it stores.
-            resource: The resource name the first page was cached under.
-
-        Returns:
-            A copy of ``data`` with every following page's results, or ``None`` if any page
-            of the list isn't in the cache.
-        """
-        previous_page = data.get("previous")
-        while previous_page:
-            page = self._get_results_from_cache(previous_page, resource)
-            if page is None:
-                return None
-            previous_page = page.get("previous")
-        results = list(data["results"])
-        next_page = data["next"]
-        while next_page:
-            page = self._get_results_from_cache(next_page, resource)
-            if page is None:
-                return None
-            results.extend(page["results"])
-            next_page = page["next"]
-        return {**data, "results": results}
-
-    def _retrieve_all_results(self, data: dict[str, Any], resource: str) -> dict[str, Any]:
-        """Retrieve all results from paginated data by following 'next' links.
-
-        This internal method handles the pagination logic by making additional requests
-        to fetch all pages of results. Every page is fetched from Metron rather than read
-        from the cache (see ``_get_results``), then stored. It respects rate limiting.
-
-        Args:
-            data: Dictionary containing the initial response data with pagination information.
-                It isn't modified, since the cache may have stored the very same object.
-            resource: The resource name the first page was cached under; every
-                following page is cached under the same one, as a ``"list"``.
-
-        Returns:
-            dict[str, Any]: A copy of ``data`` containing all results retrieved by following
-                pagination links.
-
-        Raises:
-            RateLimitError: If a page is rejected with a 429 more than
-                ``MAX_RATE_LIMIT_RETRIES`` times in a row, or more than
-                ``MAX_UNTIMED_RATE_LIMIT_RETRIES`` times in a row when it has no
-                ``Retry-After``, or, when a ``rate_limiter`` is set, if the limiter itself
-                refuses a request (its daily window is exhausted).
-        """
-        results = list(data["results"])
-        has_next_page = True
-        next_page = data["next"]
-        untimed_retries = 0
-        limited_retries = 0
-
-        while has_next_page:
-            invalidations = self._invalidations[resource]
-            try:
-                response = self._request_data("GET", next_page)
-            except exceptions.RateLimitError as e:
-                # A rate limiter that refuses the request itself (an exhausted daily window)
-                # is deliberately not waited out here: the caller decides whether to wait.
-                if self.rate_limiter is not None and not isinstance(e, _ServerRateLimitError):
-                    raise
-                # A missing Retry-After (0) can't be waited out, so don't retry it forever.
-                untimed_retries = untimed_retries + 1 if e.retry_after <= 0 else 0
-                limited_retries += 1
-                if (
-                    untimed_retries > MAX_UNTIMED_RATE_LIMIT_RETRIES
-                    or limited_retries > MAX_RATE_LIMIT_RETRIES
-                ):
-                    raise
-                # Retry only this page rather than letting the error propagate
-                # and restart the entire paginated fetch from page 1.
-                if self.rate_limiter is None:
-                    # Floor a missing Retry-After at the burst window, as the limiter does,
-                    # so the capped retries are still spaced out rather than back-to-back.
-                    delay = e.retry_after if e.retry_after > 0 else rate_limit.DEFAULT_BURST_PERIOD
-                    LOGGER.warning("Rate limit during pagination; retrying page in %ss", delay)
-                    time.sleep(delay)
-                else:
-                    # The limiter has already backed off from this 429; acquire() blocks.
-                    LOGGER.warning("Rate limit during pagination; retrying page via rate limiter")
-                continue
-
-            untimed_retries = 0
-            limited_retries = 0
-            results.extend(response["results"])
-
-            self._save_results_to_cache(
-                next_page, response, resource, "list", invalidations=invalidations
-            )
-
-            if response["next"]:
-                next_page = response["next"]
-            else:
-                has_next_page = False
-
-        return {**data, "results": results}
-
-    def _prepare_request_payload(
-        self, data: T | None
-    ) -> tuple[dict[str, str], dict[str, tuple[str, bytes]] | None, str | dict[str, Any] | None]:
-        """Prepare request payload, handling data serialization and file uploads.
-
-        Args:
-            data: Optional data to include in the request body.
-
-        Returns:
-            tuple: A tuple of (header, files, data_dict) where header contains HTTP headers,
-                  files contains file uploads, and data_dict contains the request body data.
-        """
-        files = None
-        data_dict = None
-        header = self.header.copy()
-
-        if isinstance(data, list):
-            # Handle list data (e.g., credits)
-            lst = [item.model_dump() for item in data]
-            data_dict = json.dumps(lst)
-            header["Content-Type"] = "application/json;charset=utf-8"
-        elif data is not None:
-            # Handle single object data
-            data_dict = data.model_dump()
-
-            # Determine whether this model type supports file uploads.
-            # Endpoints that have an `image` field (creator, issue, team, character, arc)
-            # require multipart/form-data even when no file is present.
-            # Endpoints without an `image` field (series, universe, etc.) require JSON.
-            has_image_field = bool(data_dict) and "image" in data_dict
-            if has_image_field:
-                img = data_dict.pop("image")
-                if img:
-                    img_path = Path(img)
-                    if img_path.exists():
-                        files = {"image": (img_path.name, img_path.read_bytes())}
-                        LOGGER.debug("Image File: %s", img)
-                    else:
-                        LOGGER.warning("Image file not found: %s", img)
-
-            if has_image_field:
-                # Multipart form data: strip None values (can't be represented in form
-                # data) and JSON-encode any nested dicts.
-                # Lists are sent as repeated form fields by requests.
-                data_dict = {k: v for k, v in data_dict.items() if v is not None}
-                for key, value in data_dict.items():
-                    if isinstance(value, dict):
-                        data_dict[key] = json.dumps(value, default=str)
-            else:
-                # No image field — send as JSON, stripping None values so PATCH
-                # requests don't overwrite existing data with nulls.
-                data_dict = json.dumps(
-                    {k: v for k, v in data_dict.items() if v is not None}, default=str
-                )
-                header["Content-Type"] = "application/json;charset=utf-8"
-
-        LOGGER.debug("Header: %s", header)
-        LOGGER.debug("Data: %s", data_dict)
-
-        return header, files, data_dict
-
-    def _execute_http_request(  # noqa: PLR0913, PLR0917
-        self,
-        method: str,
-        url: str,
-        params: dict[str, str | int],
-        header: dict[str, str],
-        data_dict: str | dict[str, Any] | None,
-        files: dict[str, tuple[str, bytes]] | None,
-    ) -> requests.Response:
-        """Execute the HTTP request with proper error handling.
-
-        Args:
-            method: HTTP method to use ("GET", "POST", "PATCH").
-            url: The complete URL to send the request to.
-            params: Query parameters to include in the request.
-            header: HTTP headers to send with the request.
-            data_dict: The request body data.
-            files: Optional file uploads.
-
-        Returns:
-            requests.Response: The HTTP response object.
-
-        Raises:
-            ApiError: For connection errors or timeouts.
-            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
-            RateLimiterError: If an injected ``rate_limiter`` object is missing a required method.
-        """
-        self._acquire_rate_limit_slot()
-        # The slot is held from here on, so it must be released on every exit path, not just
-        # the connection errors we translate. ``status`` stays ``None`` unless headers were
-        # received and folded into the session's rate-limit state.
-        status: rate_limit.RateLimitStatus | None = None
-        try:
-            response = self._http.request(
-                method,
-                url,
-                params=params,
-                timeout=REQUEST_TIMEOUT,
-                auth=self._auth,
-                headers=header,
-                data=data_dict,
-                files=files,
-            )
-            self._update_rate_limit_status(response.headers)
-            status = self.rate_limit_status
-            self._update_cache_status(response.headers)
-            if response.status_code == requests.codes.too_many:
-                self._report_rate_limited(self._retry_after_seconds(response))
-        except (
-            requests.exceptions.ConnectionError,
-            requests.exceptions.ReadTimeout,
-        ) as err:
-            msg = f"Connection error: {err!r}"
-            raise exceptions.ApiError(msg) from err
-        finally:
-            self._release_rate_limit_slot(status)
-        return response
-
-    def _handle_http_response(self, response: requests.Response) -> dict[str, Any]:
-        """Handle HTTP response, parsing JSON and checking for errors.
-
-        Args:
-            response: The HTTP response object to process.
-
-        Returns:
-            dict[str, Any]: The parsed JSON response data.
-
-        Raises:
-            RateLimitError: When the API rate limit is exceeded.
-            ApiError: For HTTP errors, invalid JSON, or API error responses.
-        """
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == requests.codes.too_many:
-                retry_after = self._retry_after_seconds(response)
-                msg = f"Metron API Rate Limit exceeded, need to wait for {utils.format_time(retry_after)}."
-                raise _ServerRateLimitError(msg, retry_after=retry_after) from err
-            msg = f"HTTP error: {err!r} | Response body: {response.text}"
-            raise exceptions.ApiError(msg) from err
-
-        try:
-            resp = response.json()
-        except ValueError as err:
-            msg = f"Invalid JSON response: {err!r}"
-            raise exceptions.ApiError(msg) from err
-
-        if "detail" in resp:
-            raise exceptions.ApiError(resp["detail"])
-
-        return resp
-
-    @staticmethod
-    def _parse_rate_limit_window(
-        headers: Any, limit_header: str, remaining_header: str, reset_header: str
-    ) -> rate_limit.RateLimitWindow | None:
-        """Parse one rate-limit window (burst or sustained) out of response headers.
-
-        Returns ``None`` when none of the three headers for this window are present,
-        so a response missing rate-limit headers entirely doesn't clobber
-        previously observed state.
-        """
-        limit = headers.get(limit_header)
-        remaining = headers.get(remaining_header)
-        reset = headers.get(reset_header)
-        if limit is None and remaining is None and reset is None:
-            return None
-        return rate_limit.RateLimitWindow(
-            limit=int(limit) if limit is not None else None,
-            remaining=int(remaining) if remaining is not None else None,
-            reset=datetime.fromtimestamp(int(reset), tz=UTC) if reset is not None else None,
-        )
-
-    def _update_rate_limit_status(self, headers: Any) -> None:
-        """Update the session's rate-limit state from a response's headers."""
-        burst = self._parse_rate_limit_window(
-            headers, HEADER_BURST_LIMIT, HEADER_BURST_REMAINING, HEADER_BURST_RESET
-        )
-        sustained = self._parse_rate_limit_window(
-            headers, HEADER_SUSTAINED_LIMIT, HEADER_SUSTAINED_REMAINING, HEADER_SUSTAINED_RESET
-        )
-        if burst is None and sustained is None:
-            return
-        with self._rate_limit_lock:
-            self._rate_limit_status = rate_limit.RateLimitStatus(
-                burst=burst or self._rate_limit_status.burst,
-                sustained=sustained or self._rate_limit_status.sustained,
-            )
-
-    def _update_cache_status(self, headers: Any) -> None:
-        """Update the session's last-observed ``X-Cache`` status from response headers.
-
-        Unlike rate-limit headers, ``X-Cache`` is per-endpoint: Metron only adds it
-        on the paths that actually go through its response cache and omits it
-        entirely elsewhere. So a missing header resets the status to ``None``
-        rather than preserving a stale value from a previous, cached endpoint.
-        """
-        with self._cache_status_lock:
-            self._last_cache_status = headers.get(HEADER_CACHE)
-
-    @staticmethod
-    def _seconds_until_window_resets(window: rate_limit.RateLimitWindow, now: datetime) -> float:
-        """Seconds until ``window`` allows another request, or 0 if it already does."""
-        if window.remaining is None or window.remaining > 0 or window.reset is None:
-            return 0.0
-        return max(0.0, (window.reset - now).total_seconds())
-
-    def _acquire_rate_limit_slot(self) -> None:
-        """Dispatch to the injected rate limiter, or fall back to the fail-fast check.
-
-        This is the single choke point for rate limiting: every HTTP send
-        goes through ``_execute_http_request``, which calls this first. When
-        no ``rate_limiter`` is configured, behavior is identical to calling
-        ``_check_rate_limit()`` directly.
-
-        Raises:
-            RateLimitError: When ``rate_limiter`` is unset and the last known
-                rate-limit headers show a window is exhausted and hasn't reset yet.
-            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
-        """
-        if self.rate_limiter is None:
-            self._check_rate_limit()
-            return
-        self._rate_limiter_method("acquire")(self.rate_limit_status)
-
-    def _rate_limiter_method(self, name: str) -> Callable[..., None]:
-        """Look up a required method on the injected rate limiter.
-
-        Only the lookup is guarded, so an ``AttributeError`` raised from inside the
-        limiter's own code isn't misreported as a missing method.
-
-        Raises:
-            RateLimiterError: If the rate limiter has no attribute ``name``.
-        """
-        try:
-            return getattr(self.rate_limiter, name)
-        except AttributeError as e:
-            msg = f"Rate limiter object passed in is missing attribute: {e!r}"
-            raise exceptions.RateLimiterError(msg) from e
-
-    @staticmethod
-    def _retry_after_seconds(response: requests.Response) -> float:
-        """Return the response's ``Retry-After`` value in seconds, or 0 if it has none."""
-        return float(response.headers.get("Retry-After", 0))
-
-    def _report_rate_limited(self, retry_after: float) -> None:
-        """Tell the injected rate limiter, if any, that Metron rejected a request with a 429.
-
-        Args:
-            retry_after: The response's ``Retry-After`` in seconds, or 0 if it had none.
-
-        Raises:
-            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
-        """
-        if self.rate_limiter is None:
-            return
-        on_rate_limited = self._rate_limiter_method("on_rate_limited")
-        # The 429 is still reported to the caller as a RateLimitError, so a limiter that
-        # fails to record it (e.g. its backing store is unreachable) is logged, not raised.
-        try:
-            on_rate_limited(retry_after)
-        except Exception:
-            LOGGER.exception("Rate limiter on_rate_limited() failed; ignoring")
-
-    def _release_rate_limit_slot(self, status: rate_limit.RateLimitStatus | None) -> None:
-        """Release the slot reserved by ``_acquire_rate_limit_slot``, if a limiter is set.
-
-        Args:
-            status: The freshly updated rate-limit status after the request
-                completed, or ``None`` if it failed before headers were received.
-
-        Raises:
-            RateLimiterError: If ``rate_limiter`` is set but is missing a required method.
-        """
-        if self.rate_limiter is None:
-            return
-        release = self._rate_limiter_method("release")
-        # This runs in a ``finally``, so raising here would discard a successful response
-        # or mask the request's own error; log a failing limiter instead.
-        try:
-            release(status)
-        except Exception:
-            LOGGER.exception("Rate limiter release() failed; ignoring")
-
-    def _check_rate_limit(self) -> None:
-        """Check rate limits before making a request.
-
-        Metron's sustained (daily) limit varies per user based on OpenCollective
-        donor tier, so mokkari doesn't track it locally with a fixed quota.
-        Instead it trusts the most recently observed ``X-RateLimit-*`` response
-        headers, and only pre-empts a request once those headers show a window
-        is already exhausted.
-
-        Not synchronized with request dispatch: this check and the subsequent
-        HTTP call are not serialized under a shared lock, so under concurrent
-        callers (e.g. multiple threads sharing one ``Session``) more than one
-        caller can pass this check before either request's response updates
-        ``rate_limit_status``. See the "Thread safety" note on ``Session`` for
-        guidance on bounding your own concurrency.
-
-        Raises:
-            RateLimitError: When the last known rate-limit headers show the
-                burst or sustained window is exhausted and hasn't reset yet. Its
-                ``retry_after`` is the time until the reset Metron reported, measured
-                against the local clock.
-        """
-        status = self.rate_limit_status
-        now = datetime.now(UTC)
-        burst_wait = self._seconds_until_window_resets(status.burst, now)
-        sustained_wait = self._seconds_until_window_resets(status.sustained, now)
-
-        delay = max(burst_wait, sustained_wait)
-        if delay <= 0:
-            return
-
-        if sustained_wait >= burst_wait:
-            limit_type, limit_value = "day", status.sustained.limit
-        else:
-            limit_type, limit_value = "minute", status.burst.limit
-        limit_str = f"{limit_value:,}" if limit_value is not None else "your"
-
-        msg = (
-            f"Rate limit exceeded: You have reached the {limit_str} requests per {limit_type} limit. "
-            f"Please wait {utils.format_time(delay)} before making another request."
-        )
-        LOGGER.warning(msg)
-        raise exceptions.RateLimitError(msg, retry_after=delay)
-
-    def _request_data(
-        self,
-        method: str,
-        url: str,
-        params: dict[str, str | int] | None = None,
-        data: T | None = None,
-    ) -> Any:
-        """Send an HTTP request to the API with comprehensive error handling.
-
-        This internal method handles all HTTP communication with the Metron API, including
-        authentication, rate limiting, error handling, and response parsing. It supports
-        both simple data requests and file uploads.
-
-        Args:
-            method: HTTP method to use ("GET", "POST", "PATCH").
-            url: The complete URL to send the request to.
-            params: Optional query parameters to include in the request.
-            data: Optional data to include in the request body.
-
-        Returns:
-            Any: The parsed JSON response from the API.
-
-        Raises:
-            ApiError: For connection errors, HTTP errors, or invalid JSON responses.
-            RateLimitError: When the API rate limit is exceeded (either locally or by the server).
-
-        Notes:
-            - Automatically handles image file uploads when 'image' field is present in data
-            - Implements local rate limiting to prevent exceeding API quotas
-            - Supports both single objects and lists of objects for POST requests
-        """
-        LOGGER.debug("Request Method: %s | URL: %s", method, url)
-        LOGGER.debug("Original Header: %s", self.header)
-
-        if params is None:
-            params = {}
-
-        # Prepare request payload (data serialization and file handling)
-        header, files, data_dict = self._prepare_request_payload(data)
-
-        LOGGER.debug("Params: %s", params)
-
-        # Execute HTTP request
-        response = self._execute_http_request(method, url, params, header, data_dict, files)
-
-        # Handle response (parse JSON and check for errors)
-        return self._handle_http_response(response)
-
-    def _fetch_detail(
-        self,
-        url: str,
-        if_modified_since: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Fetch a detail resource with conditional request support.
-
-        Makes a GET request to the given URL. If ``if_modified_since`` is provided,
-        the ``If-Modified-Since`` header is included in the request to allow the server
-        to return a 304 Not Modified response when the data has not changed.
-
-        Args:
-            url: The complete URL to fetch.
-            if_modified_since: Optional RFC 7231 formatted date string for the
-                ``If-Modified-Since`` header.
-
-        Returns:
-            The parsed response data, or ``None`` when the server returns 304.
-
-        Raises:
-            ApiError: For connection errors, HTTP errors, or invalid JSON responses.
-            RateLimitError: When the API rate limit is exceeded.
-        """
-        header = self.header.copy()
-        if if_modified_since:
-            header["If-Modified-Since"] = if_modified_since
-
-        response = self._execute_http_request("GET", url, {}, header, None, None)
-
-        if response.status_code == HTTPStatus.NOT_MODIFIED:
-            return None
-
-        return self._handle_http_response(response)
-
-    def _cache_key(self, key: str, resource: str) -> str:
-        """Return ``key``, scoped to this session's token if ``resource`` is per-user data."""
-        if resource in _PER_USER_RESOURCES:
-            return f"{key}#user={self._cache_user}"
-        return key
-
-    def _get_results_from_cache(self, key: str, resource: str) -> Any | None:
-        """Retrieve cached response data using the specified key.
-
-        Args:
-            key: The cache key to retrieve data for.
-            resource: The resource the entry is cached under (see ``_fetch``).
-
-        Returns:
-            Any | None: The cached response data if available and cache is configured,
-                       None if not found, the cache isn't available, or reading it failed.
-        """
-        if self.cache is None:
-            return None
-        # A failing cache (e.g. its database is locked or unreadable) is treated as a miss,
-        # so the data is fetched from Metron instead of the request failing. A database
-        # shared between processes is expected to be locked now and then, so it's a warning,
-        # with the traceback only when debugging.
-        try:
-            data = self.cache.get(self._cache_key(key, resource))
-        except Exception as e:
-            LOGGER.warning(
-                "Cache get() failed; fetching from Metron: %r",
-                e,
-                exc_info=LOGGER.isEnabledFor(logging.DEBUG),
-            )
-            return None
-        LOGGER.debug("Cache %s: %s", "miss" if data is None else "hit", key)
-        return data
-
-    def _save_results_to_cache(
-        self, key: str, data: Any, resource: str, kind: CacheKind, *, invalidations: int
-    ) -> None:
-        """Store the provided data in the cache using the specified key.
-
-        Args:
-            key: The cache key to store the data under.
-            data: The data to be stored in the cache.
-            resource: The resource the entry is cached under (see ``_fetch``).
-            kind: ``"detail"`` or ``"list"``.
-            invalidations: ``resource``'s count in ``self._invalidations`` from just before
-                the request was sent.
-        """
-        if self.cache is None:
-            return
-        # A cache with a TTL policy (e.g. SqliteCache) wouldn't keep the data, so don't
-        # describe it for one.
-        ttl_policy = getattr(self.cache, "ttl_policy", None)
-        if (
-            isinstance(ttl_policy, TtlPolicy)
-            and ttl_policy.ttl_for_value(data, resource=resource, kind=kind) is NO_CACHE
-        ):
-            return
-        # Only a cache invalidated by tag takes tags (see Cache).
-        tags = (
-            None
-            if self._tagged_cache is None
-            else entry_tags(key, data, resource=resource, kind=kind)
-        )
-        # A write invalidated entries like this one while it was being fetched, so the data
-        # may be from before it, and storing it would undo the invalidation.
-        if self._stale_tags(resource, invalidations, tags) != frozenset():
-            LOGGER.debug("Cache invalidated during the request; not caching %s", key)
-            return
-        # The data has already been fetched, so a cache that fails to store it (e.g. its
-        # database is locked or the disk is full) is logged rather than failing the request.
-        try:
-            self.cache.store(
-                self._cache_key(key, resource),
-                data,
-                resource=resource,
-                kind=kind,
-                **({} if tags is None else {"tags": tags}),
-            )
-        except Exception as e:
-            # Logged like a failing get(); see _get_results_from_cache.
-            LOGGER.warning(
-                "Cache store() failed; not caching %s: %r",
-                key,
-                e,
-                exc_info=LOGGER.isEnabledFor(logging.DEBUG),
-            )
-            return
-        # The store isn't made under the lock, so one waiting on a locked database doesn't
-        # hold up every other thread's store and invalidation. A write that invalidated
-        # entries like this one meanwhile may have done so before it landed, so drop it again.
-        stale = self._stale_tags(resource, invalidations, tags)
-        if stale is None:
-            LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
-            self._invalidate_resource(resource)
-        elif stale:
-            LOGGER.debug("Cache invalidated during the store; dropping %s again", key)
-            self._invalidate_tags(resource, stale)
-
-    def _stale_tags(
-        self, resource: str, invalidations: int, tags: frozenset[str] | None
-    ) -> frozenset[str] | None:
-        """Return which of an entry's tags the invalidations made since a read dropped.
-
-        Args:
-            resource: The resource the entry is cached under.
-            invalidations: ``resource``'s count in ``self._invalidations`` from just before
-                the read was sent.
-            tags: The entry's tags, or ``None`` if the cache isn't invalidated by tag.
-
-        Returns:
-            The tags to drop the entry by, which are empty if none of those invalidations
-            could have made it stale, or ``None`` if one may have, but not by its tags.
-        """
-        with self._invalidation_lock:
-            missed = self._invalidations[resource] - invalidations
-            if not missed:
-                return frozenset()
-            log = self._invalidated_tags[resource]
-            if tags is None or missed > len(log):
-                return None
-            dropped = list(log)[-missed:]
-        stale: set[str] = set()
-        for dropped_tags in dropped:
-            if dropped_tags is None:
-                return None
-            stale.update(tags & dropped_tags)
-        return frozenset(stale)
-
-    def _invalidate_cache(
-        self, resources: Iterable[str], *, tags: Mapping[str, frozenset[str]] | None = None
-    ) -> None:
-        """Drop the cached entries of ``resources``, which a write may have made stale.
-
-        Only a cache with an ``invalidate(resource)`` method, such as ``SqliteCache``, can
-        be invalidated; other caches keep their entries until they expire. Either way, a
-        read in flight is no longer stored, since it may be from before the write.
-
-        Args:
-            resources: The resources the write changed.
-            tags: For some of ``resources``, the tags of the only entries to drop, if the
-                cache has ``invalidate_tags``. Every entry of the rest is dropped.
-        """
-        with self._invalidation_lock:
-            for resource in resources:
-                self._invalidations[resource] += 1
-                if tags is not None and resource in tags:
-                    self._invalidated_tags[resource].append(tags[resource])
-                    self._invalidate_tags(resource, tags[resource])
-                else:
-                    self._invalidated_tags[resource].append(None)
-                    self._invalidate_resource(resource)
-
-    def _invalidate_tags(self, resource: str, tags: frozenset[str]) -> None:
-        """Call the cache's ``invalidate_tags``, or ``invalidate`` if it hasn't got one.
-
-        Like ``_invalidate_resource``, a failure is logged rather than raised.
-
-        Args:
-            resource: The resource whose cached entries to drop.
-            tags: The tags of the entries to drop.
-        """
-        if self._tagged_cache is None:
-            self._invalidate_resource(resource)
-            return
-        try:
-            self._tagged_cache.invalidate_tags(resource, tags)
-        except Exception:
-            LOGGER.exception("Cache invalidate_tags(%r) failed; ignoring", resource)
-
-    def _invalidate_resource(self, resource: str) -> None:
-        """Call the cache's ``invalidate(resource)``, logging rather than raising a failure.
-
-        After a write, which may already have been applied, raising would invite a retry
-        that repeats it, or hide the write's own error. After a read, the data has already
-        been fetched.
-
-        Args:
-            resource: The resource whose cached entries to drop.
-        """
-        invalidate = getattr(self.cache, "invalidate", None)
-        if invalidate is None:
-            return
-        try:
-            invalidate(resource)
-        except Exception:
-            LOGGER.exception("Cache invalidate(%r) failed; ignoring", resource)
+if TYPE_CHECKING:
+    # The endpoint mixins type-check against EndpointHelpers; fail here if Session stops
+    # providing any of it.
+    def _provides_endpoint_helpers(session: Session) -> EndpointHelpers:
+        return session

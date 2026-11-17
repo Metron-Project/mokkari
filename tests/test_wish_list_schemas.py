@@ -221,7 +221,7 @@ def test_acquire_wish_list_item_valid_data():
         "purchase_store": "Local Comic Shop",
         "notes": "Good condition",
     }
-    item = AcquireWishListItem(**data)
+    item = AcquireWishListItem.model_validate({**data})
     assert item.purchase_date == date(2024, 3, 15)
     assert item.purchase_price == Decimal("12.99")
     assert item.purchase_price_currency == "USD"
@@ -241,6 +241,8 @@ def test_acquire_wish_list_item_defaults():
 
 def test_acquire_wish_list_item_gbp_currency():
     """Test AcquireWishListItem with GBP currency."""
-    item = AcquireWishListItem(purchase_price="8.50", purchase_price_currency="GBP")
+    item = AcquireWishListItem.model_validate(
+        {"purchase_price": "8.50", "purchase_price_currency": "GBP"}
+    )
     assert item.purchase_price == Decimal("8.50")
     assert item.purchase_price_currency == "GBP"

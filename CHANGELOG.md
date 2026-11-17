@@ -6,6 +6,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `RateLimitWindow.from_headers()` and `RateLimitWindow.seconds_until_reset()`,
+  and `RateLimitStatus.merge_headers()` and `RateLimitStatus.exhausted_error()`,
+  for reading Metron's `X-RateLimit-*` headers and checking for an exhausted
+  window outside a `Session`.
+
+### Changed
+
+- The `HEADER_BURST_*` and `HEADER_SUSTAINED_*` header-name constants are now
+  exported from `mokkari.rate_limit`, along with `limit_error()` and
+  `daily_limit_error()`. They can still be imported from `mokkari.session`.
+- `mokkari.schemas.publisher.COUNTY_CODE_LENGTH` is now spelled
+  `COUNTRY_CODE_LENGTH`. The old name still works through 5.x.
+- `Session`'s internals have been split up: rate-limit header handling now lives
+  in `mokkari.rate_limit`, cache coordination in a private module, and the
+  endpoint methods in private mixins. The public API is unchanged, but code that
+  patches or calls `Session`'s private methods may need updating.
+- The detail methods, such as `issue()` and `series()`, are typed as returning
+  the resource rather than `None` as well, unless `if_modified_since` is passed.
+  Type checkers no longer require a `None` check on every plain call.
+
+### Fixed
+
+- A malformed `X-RateLimit-*` response header no longer raises `ValueError` and
+  discards a response that has already arrived. A value that won't parse is
+  treated as missing, and a fractional reset timestamp is accepted.
+- A 429 whose `Retry-After` is an HTTP date, or won't parse, raises
+  `RateLimitError` rather than `ValueError`. A date is read as the seconds until
+  then, and a malformed value is treated as missing.
+- A `rate_limiter`'s `release()` is passed `None` rather than the previous
+  response's status when a response has no `X-RateLimit-*` headers. Before,
+  `HeaderPacedRateLimiter` re-applied that older state, such as an exhausted
+  burst window, as if this response had just reported it.
+- A write that a `rate_limiter` stops before it's sent, because the limiter is
+  missing `acquire()` or `acquire()` raises, no longer drops cached entries.
+- A write's cache invalidation no longer holds up other threads' reads while the
+  cache waits, e.g. on a `SqliteCache` database another process has locked.
+- `pull_list()` and `wish_list()` raise `ApiError` rather than `IndexError` if
+  Metron returns an empty list.
+- `PublisherPost` now rejects a `country` that isn't a 2-letter code, including
+  an empty one, with a `ValidationError`. The check was never applied before. A
+  `Publisher` read from Metron isn't checked.
+- `publisher_patch()` no longer resets the publisher's country to `US` when the
+  `PublisherPost` doesn't set one. `PublisherPost.country` now defaults to
+  `None`, so an unset country is left out of the request, and a
+  `publisher_post()` without one gets Metron's default.
+
 ## [5.1.0] - 2026-11-10
 
 ### Added
@@ -188,7 +238,8 @@ and this project adheres to
 See the [GitHub releases](https://github.com/Metron-Project/mokkari/releases)
 for versions before 4.0.0.
 
-[Unreleased]: https://github.com/Metron-Project/mokkari/compare/v5.0.0...HEAD
+[Unreleased]: https://github.com/Metron-Project/mokkari/compare/v5.1.0...HEAD
+[5.1.0]: https://github.com/Metron-Project/mokkari/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/Metron-Project/mokkari/compare/v4.9.0...v5.0.0
 [4.10.0]: https://github.com/Metron-Project/mokkari/compare/v4.9.0...v4.10.0
 [4.9.0]: https://github.com/Metron-Project/mokkari/compare/v4.8.0...v4.9.0

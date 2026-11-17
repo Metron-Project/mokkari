@@ -16,15 +16,17 @@ from mokkari.session import Session
 
 def test_known_creator() -> None:
     """Test for a known creator."""
-    jack = Creator(
-        id=3,
-        name="Jack Kirby",
-        birth="1917-08-28",
-        death="1994-02-06",
-        desc="Co-creator of many Marvel characters.",
-        image="https://static.metron.cloud/media/creator/2018/11/11/432124-Jack_Kirby01.jpg",
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/creator/jack-kirby/",
+    jack = Creator.model_validate(
+        {
+            "id": 3,
+            "name": "Jack Kirby",
+            "birth": "1917-08-28",
+            "death": "1994-02-06",
+            "desc": "Co-creator of many Marvel characters.",
+            "image": "https://static.metron.cloud/media/creator/2018/11/11/432124-Jack_Kirby01.jpg",
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/creator/jack-kirby/",
+        }
     )
     assert jack.name == "Jack Kirby"
     assert jack.birth == date(1917, 8, 28)

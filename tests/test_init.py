@@ -4,9 +4,14 @@
 This module contains tests for project init.
 """
 
+from typing import TYPE_CHECKING, cast
+
 import pytest
 
 from mokkari import api, exceptions, session
+
+if TYPE_CHECKING:
+    from mokkari.rate_limit import RateLimiter
 
 
 def test_api() -> None:
@@ -28,7 +33,7 @@ def test_api() -> None:
 
 def test_api_forwards_rate_limiter() -> None:
     """api() forwards a rate_limiter object through to the Session it constructs."""
-    sentinel = object()
+    sentinel = cast("RateLimiter", object())
 
     m = api("Something", rate_limiter=sentinel)
 

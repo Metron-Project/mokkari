@@ -16,20 +16,22 @@ from mokkari.session import Session
 
 def test_known_team() -> None:
     """Test for a known team."""
-    inhumans = Team(
-        id=1,
-        name="Inhumans",
-        desc="A race of superhumans.",
-        image="https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg",
-        creators=[
-            {"id": 1, "name": "Stan Lee", "modified": "2019-06-23T15:13:19.432378-04:00"},
-            {"id": 2, "name": "Jack Kirby", "modified": "2019-06-23T15:13:19.432378-04:00"},
-        ],
-        universes=[
-            {"id": 1, "name": "Earth 616", "modified": "2019-06-23T15:13:19.432378-04:00"},
-        ],
-        modified="2019-06-23T15:13:19.432378-04:00",
-        resource_url="https://metron.cloud/team/inhumans/",
+    inhumans = Team.model_validate(
+        {
+            "id": 1,
+            "name": "Inhumans",
+            "desc": "A race of superhumans.",
+            "image": "https://static.metron.cloud/media/team/2018/11/11/Inhumans.jpg",
+            "creators": [
+                {"id": 1, "name": "Stan Lee", "modified": "2019-06-23T15:13:19.432378-04:00"},
+                {"id": 2, "name": "Jack Kirby", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            ],
+            "universes": [
+                {"id": 1, "name": "Earth 616", "modified": "2019-06-23T15:13:19.432378-04:00"},
+            ],
+            "modified": "2019-06-23T15:13:19.432378-04:00",
+            "resource_url": "https://metron.cloud/team/inhumans/",
+        }
     )
     assert inhumans.name == "Inhumans"
     assert (

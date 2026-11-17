@@ -2,12 +2,8 @@
 
 __all__ = ["__version__", "api"]
 
-from importlib.metadata import version
-
-# Keep this at beginning of file to prevent circular import with session
-__version__ = version("mokkari")
-
 from mokkari import rate_limit, session
+from mokkari._version import __version__
 from mokkari.cache import Cache
 
 

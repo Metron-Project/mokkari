@@ -62,7 +62,9 @@ class TeamPost(BaseModel):
     gcd_id: int | None = None
 
 
-class TeamPostResponse(BaseResource, TeamPost):
+# BaseResource comes first, so ``name`` is its required ``str``, not TeamPost's optional
+# one: a created resource always has a name.
+class TeamPostResponse(BaseResource, TeamPost):  # pyright: ignore[reportIncompatibleVariableOverride]
     """A data model representing the response from creating a team.
 
     Attributes:

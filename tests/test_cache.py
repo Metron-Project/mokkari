@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -17,7 +18,7 @@ import pytest
 import requests
 import requests_mock
 
-from mokkari import api, exceptions, session, sqlite_cache
+from mokkari import _cache_coordinator, api, exceptions, session, sqlite_cache
 from mokkari.cache import (
     NO_CACHE,
     RESOURCES,
@@ -326,7 +327,7 @@ def test_no_cache_ttl_is_not_stored(
 )
 def test_ttl_resolution_order(
     resource: str,
-    kind: str,
+    kind: CacheKind,
     expected: timedelta | None,
     make_cache: Callable[..., sqlite_cache.SqliteCache],
 ) -> None:
@@ -1157,6 +1158,34 @@ def role_page(next_page: str | None, *names: str) -> dict[str, Any]:
     return {"count": len(names), "next": next_page, "results": results}
 
 
+def test_page_fetched_after_a_write_during_rate_limit_backoff_is_cached(
+    dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
+) -> None:
+    """A write made while a page's retry waits doesn't stop the page then fetched being cached."""
+    cache = make_cache()
+    m = api(dummy_api_token, cache=cache)
+
+    def write_during_backoff(_seconds: float) -> None:
+        m._cache_coordinator.invalidate(["role"])
+
+    with (
+        requests_mock.Mocker() as r,
+        patch("mokkari.session.time.sleep", side_effect=write_during_backoff),
+    ):
+        r.get(ROLE_PAGE1, json=role_page(ROLE_PAGE2, "Writer"))
+        r.get(
+            ROLE_PAGE2,
+            [
+                {"status_code": 429, "headers": {"Retry-After": "1"}},
+                {"json": role_page(None, "Co-Writer")},
+            ],
+        )
+        m.role_list({"name": "writer"})
+
+    keys = [key for (key,) in connection(cache).execute("SELECT key FROM cache")]
+    assert ROLE_PAGE2 in keys
+
+
 @pytest.mark.parametrize("missing", [ROLE_PAGE1, ROLE_PAGE2])
 def test_session_refetches_whole_paginated_list(
     missing: str, dummy_api_token: str, make_cache: Callable[..., sqlite_cache.SqliteCache]
@@ -1358,7 +1387,7 @@ def test_page_read_during_write_not_stored(
     page2 = f"{url}?page=2"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["series_type"])
+        m._cache_coordinator.invalidate(["series_type"])
         return {"count": 2, "next": None, "previous": url, "results": [{"id": 2, "name": "B"}]}
 
     with requests_mock.Mocker() as r:
@@ -1390,7 +1419,7 @@ def test_read_during_write_not_stored_without_invalidate(dummy_api_token: str) -
     url = "https://metron.cloud/api/series_type/"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["series_type"])
+        m._cache_coordinator.invalidate(["series_type"])
         return {"count": 1, "next": None, "previous": None, "results": [{"id": 1, "name": "A"}]}
 
     with requests_mock.Mocker() as r:
@@ -1398,6 +1427,49 @@ def test_read_during_write_not_stored_without_invalidate(dummy_api_token: str) -
         m.series_type_list()
 
     assert cache.data == {}
+
+
+def test_invalidate_does_not_hold_up_stores_while_the_cache_blocks() -> None:
+    """A store isn't held up while the cache's invalidate() waits, e.g. on a locked database."""
+    entered = threading.Event()
+    unblock = threading.Event()
+
+    class BlockingCache(RecordingCache):
+        def __init__(self) -> None:
+            super().__init__()
+            self.stored: list[str] = []
+
+        def store(self, key: str, value: Any, *, resource: str, kind: str) -> None:  # noqa: ARG002
+            self.stored.append(key)
+
+        def invalidate(self, resource: str) -> int:
+            entered.set()
+            unblock.wait(10)
+            return super().invalidate(resource)
+
+    cache = BlockingCache()
+    coordinator = _cache_coordinator.CacheCoordinator(cache, "user")  # type: ignore[arg-type]
+    invalidations = coordinator.invalidation_count("series")
+    writer = threading.Thread(target=coordinator.invalidate, args=(["series_type"],))
+    writer.start()
+    try:
+        assert entered.wait(5)
+        reader = threading.Thread(
+            target=coordinator.store,
+            args=("key", {"id": 1}, "series", "detail"),
+            kwargs={"invalidations": invalidations},
+        )
+        reader.start()
+        reader.join(2)
+        assert not reader.is_alive()
+        assert cache.stored == ["key"]
+        # The invalidation was counted before the cache call, so a read of it in flight
+        # is already discarded.
+        assert coordinator.invalidation_count("series_type") == 1
+    finally:
+        unblock.set()
+        writer.join(5)
+    assert cache.invalidated == ["series_type"]
 
 
 def test_read_during_write_store_dropped(
@@ -1411,7 +1483,7 @@ def test_read_during_write_store_dropped(
 
     def write_then_store(key: str, value: Any, **kwargs: Any) -> None:
         # The write's invalidation runs before this entry is written, so it misses it.
-        m._invalidate_cache(["series_type"])
+        m._cache_coordinator.invalidate(["series_type"])
         store(key, value, **kwargs)
 
     with (
@@ -1437,7 +1509,7 @@ def test_page_read_during_unrelated_write_stored(
     page2 = f"{url}?page=2"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["collection"])
+        m._cache_coordinator.invalidate(["collection"])
         return {"count": 2, "next": None, "previous": url, "results": [{"id": 2, "name": "B"}]}
 
     with requests_mock.Mocker() as r:
@@ -1464,7 +1536,7 @@ def test_read_during_tagged_write_stored_unless_it_matches(
     url = "https://metron.cloud/api/character/1/"
 
     def write_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        m._invalidate_cache(["character"], tags={"character": frozenset({dropped})})
+        m._cache_coordinator.invalidate(["character"], tags={"character": frozenset({dropped})})
         return {"id": 1}
 
     with requests_mock.Mocker() as r:
@@ -1483,8 +1555,8 @@ def test_read_during_too_many_tagged_writes_not_stored(
     url = "https://metron.cloud/api/character/1/"
 
     def writes_then_answer(_request: Any, _context: Any) -> dict[str, Any]:
-        for _ in range(session._WRITE_LOG_SIZE + 1):
-            m._invalidate_cache(["character"], tags={"character": frozenset({"id:2"})})
+        for _ in range(_cache_coordinator.WRITE_LOG_SIZE + 1):
+            m._cache_coordinator.invalidate(["character"], tags={"character": frozenset({"id:2"})})
         return {"id": 1}
 
     with requests_mock.Mocker() as r:
@@ -1507,7 +1579,7 @@ def test_read_during_tagged_write_store_dropped_by_its_tags(
     def write_then_store(key: str, value: Any, **kwargs: Any) -> None:
         # The write's invalidation runs before this entry is written, so it misses it.
         if key == url:
-            m._invalidate_cache(["character"], tags={"character": frozenset({"id:1"})})
+            m._cache_coordinator.invalidate(["character"], tags={"character": frozenset({"id:1"})})
         store(key, value, **kwargs)
 
     with (
@@ -1634,6 +1706,68 @@ def test_rate_limited_write_does_not_invalidate(dummy_api_token: str) -> None:
     assert not r.called
 
     assert cache.invalidated == []
+
+
+class _NoAcquireLimiter:
+    """A rate limiter missing ``acquire``."""
+
+    def on_rate_limited(self, retry_after: float) -> None:
+        pass
+
+    def release(self, status: object) -> None:
+        pass
+
+
+class _FailingAcquireLimiter(_NoAcquireLimiter):
+    """A rate limiter whose ``acquire`` fails, e.g. because its backing store is down."""
+
+    def acquire(self, _status: object) -> None:
+        msg = "store unreachable"
+        raise OSError(msg)
+
+
+@pytest.mark.parametrize(
+    ("limiter", "error"),
+    [
+        (_NoAcquireLimiter(), exceptions.RateLimiterError),
+        (_FailingAcquireLimiter(), OSError),
+    ],
+    ids=["missing_acquire", "failing_acquire"],
+)
+def test_write_stopped_by_rate_limiter_does_not_invalidate(
+    dummy_api_token: str, limiter: object, error: type[Exception]
+) -> None:
+    """Nothing is invalidated when the rate limiter fails before the write is sent."""
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache, rate_limiter=limiter)  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r, pytest.raises(error):
+        m.collection_delete(5)
+
+    assert not r.called
+    assert cache.invalidated == []
+
+
+def test_sent_write_invalidates_when_rate_limiter_fails_after(dummy_api_token: str) -> None:
+    """A write that was sent invalidates even if the limiter then fails on release."""
+
+    class NoReleaseLimiter:
+        def acquire(self, status: object) -> None:
+            pass
+
+        def on_rate_limited(self, retry_after: float) -> None:
+            pass
+
+    cache = RecordingCache()
+    m = api(dummy_api_token, cache=cache, rate_limiter=NoReleaseLimiter())  # type: ignore[arg-type]
+
+    with requests_mock.Mocker() as r:
+        r.delete("https://metron.cloud/api/collection/5/", status_code=204)
+        with pytest.raises(exceptions.RateLimiterError):
+            m.collection_delete(5)
+
+    assert r.called
+    assert cache.invalidated == ["collection"]
 
 
 @pytest.mark.parametrize(
@@ -1822,7 +1956,12 @@ def read_path(m: session.Session, path: str) -> None:
     """Read ``path`` through Session, as a detail or a list."""
     base, _, query = path.partition("?")
     segments: list[str | int] = [s for s in base.split("/") if s]
-    params = dict(pair.split("=") for pair in query.split("&")) if query else None
+    params: dict[str, str | int] | None = None
+    if query:
+        params = {}
+        for pair in query.split("&"):
+            key, _, value = pair.partition("=")
+            params[key] = value
     if len(segments) == 2:
         m._get(segments, params)
     else:
@@ -2067,7 +2206,7 @@ def test_uncached_resource_not_tagged(
 
     with (
         requests_mock.Mocker() as r,
-        patch.object(session, "entry_tags") as entry_tags_,
+        patch.object(_cache_coordinator, "entry_tags") as entry_tags_,
         patch.object(cache, "store") as store,
     ):
         r.get(url, json={"id": 1})

@@ -319,7 +319,9 @@ def test_daily_estimate_is_only_tightened(server) -> None:
     limiter.release(_status(daily_remaining=5, daily_reset_in=3600))
     limiter.release(_status(daily_remaining=10, daily_reset_in=3600))
 
-    assert int(client.hget(limiter._daily_key, "remaining")) == 5
+    remaining = client.hget(limiter._daily_key, "remaining")
+    assert remaining is not None
+    assert int(remaining) == 5
 
 
 def test_daily_estimate_ignores_a_window_that_has_reset(server) -> None:
@@ -375,7 +377,7 @@ def test_session_reports_429_to_redis(server, dummy_api_token: str, monkeypatch)
     response = MagicMock(status_code=429, headers={"Retry-After": "30"})
     monkeypatch.setattr(session._http, "request", lambda *_a, **_k: response)
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert client.pttl(limiter._blocked_key) == pytest.approx(30_000, abs=1000)
 
@@ -396,6 +398,6 @@ def test_session_reports_exhausted_burst_window_to_redis(
     response = MagicMock(status_code=200, headers=headers)
     monkeypatch.setattr(session._http, "request", lambda *_a, **_k: response)
 
-    session._execute_http_request("GET", "https://test.com/api/issue/1", {}, {}, None, None)
+    session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert client.pttl(limiter._blocked_key) == pytest.approx(30_000, abs=1500)
