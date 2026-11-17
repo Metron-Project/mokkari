@@ -176,6 +176,33 @@ def test_request_data_updates_rate_limit_status_from_response(
     assert session.rate_limit_status.sustained.remaining == 4998
 
 
+def test_request_data_survives_malformed_rate_limit_headers(
+    session: Session,
+    monkeypatch,
+    make_response,
+) -> None:
+    """Malformed rate-limit headers shouldn't discard a response that already arrived."""
+    session._update_rate_limit_status({"X-RateLimit-Burst-Remaining": "5"})
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(
+            json_body={"id": 1, "name": "Test"},
+            headers={
+                "X-RateLimit-Burst-Remaining": "",
+                "X-RateLimit-Burst-Reset": "not-a-timestamp",
+                "X-RateLimit-Sustained-Remaining": "4998",
+            },
+        ),
+    )
+
+    result = session._request_data("GET", "https://test.com/api/issue/1")
+
+    assert result == {"id": 1, "name": "Test"}
+    assert session.rate_limit_status.burst.remaining == 5
+    assert session.rate_limit_status.sustained.remaining == 4998
+
+
 def test_session_rate_limiter_defaults_to_none() -> None:
     """A Session with no rate_limiter argument has one set to None."""
     session = Session("abc123")
@@ -322,13 +349,15 @@ def test_rate_limiter_release_called_when_status_update_raises(
 
     session.rate_limiter = FakeLimiter()
 
-    monkeypatch.setattr(
-        session._http,
-        "request",
-        lambda *a, **k: make_response(headers={"X-RateLimit-Burst-Remaining": "not-an-int"}),
-    )
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: make_response())
 
-    with pytest.raises(ValueError, match="invalid literal"):
+    def failing_update(headers):
+        msg = "header processing failed"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(session, "_update_rate_limit_status", failing_update)
+
+    with pytest.raises(ValueError, match="header processing failed"):
         session._request_data("GET", "https://test.com/api/issue/1")
 
     assert [call for call, _ in calls] == ["acquire", "release"]

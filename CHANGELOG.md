@@ -30,6 +30,9 @@ and this project adheres to
 
 ### Fixed
 
+- A malformed `X-RateLimit-*` response header no longer raises `ValueError` and
+  discards a response that has already arrived. A value that won't parse is
+  treated as missing, and a fractional reset timestamp is accepted.
 - `pull_list()` and `wish_list()` raise `ApiError` rather than `IndexError` if
   Metron returns an empty list.
 - `PublisherPost` now rejects a `country` that isn't a 2-letter code, including

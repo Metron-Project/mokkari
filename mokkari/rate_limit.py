@@ -81,6 +81,26 @@ HEADER_SUSTAINED_REMAINING: Final[str] = "X-RateLimit-Sustained-Remaining"
 HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
 
 
+def _parse_count(value: str | None) -> int | None:
+    """Parse a rate-limit count header, returning ``None`` if it's missing or malformed."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    """Parse a Unix-timestamp header as a UTC datetime, or ``None`` if missing or malformed."""
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(value), tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 def _is_finite(value: float) -> bool:
     """Return whether ``value`` is a finite number, treating non-numbers as not finite."""
     try:
@@ -140,23 +160,17 @@ class RateLimitWindow:
             reset: The name of the header holding the window's reset, as a Unix timestamp.
 
         Returns:
-            The window, or ``None`` when none of its three headers are present, so a
-            response missing rate-limit headers doesn't clobber previously observed state.
+            The window, or ``None`` when none of its three headers are present and
+            parseable, so a response missing rate-limit headers doesn't clobber
+            previously observed state. A malformed header value is treated as missing
+            rather than raising, since the response itself has already arrived.
         """
-        limit_value = headers.get(limit)
-        remaining_value = headers.get(remaining)
-        reset_value = headers.get(reset)
+        limit_value = _parse_count(headers.get(limit))
+        remaining_value = _parse_count(headers.get(remaining))
+        reset_value = _parse_timestamp(headers.get(reset))
         if limit_value is None and remaining_value is None and reset_value is None:
             return None
-        return cls(
-            limit=int(limit_value) if limit_value is not None else None,
-            remaining=int(remaining_value) if remaining_value is not None else None,
-            reset=(
-                datetime.fromtimestamp(int(reset_value), tz=UTC)
-                if reset_value is not None
-                else None
-            ),
-        )
+        return cls(limit=limit_value, remaining=remaining_value, reset=reset_value)
 
     def seconds_until_reset(self, now: datetime) -> float:
         """Seconds until this window allows another request, or 0 if it already does.

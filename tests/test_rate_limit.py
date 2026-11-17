@@ -57,6 +57,40 @@ def test_window_from_headers_returns_none_without_headers() -> None:
     assert RateLimitWindow.from_headers({}, **BURST_HEADERS) is None
 
 
+def test_window_from_headers_treats_malformed_values_as_missing() -> None:
+    """A header value that won't parse is dropped instead of raising."""
+    headers = {
+        "X-RateLimit-Burst-Limit": "20",
+        "X-RateLimit-Burst-Remaining": "",
+        "X-RateLimit-Burst-Reset": "soon",
+    }
+
+    window = RateLimitWindow.from_headers(headers, **BURST_HEADERS)
+
+    assert window == RateLimitWindow(limit=20)
+
+
+@pytest.mark.parametrize("reset", ["", "soon", "nan", "inf", "1e400"])
+def test_window_from_headers_returns_none_when_no_value_parses(reset: str) -> None:
+    """A window whose headers are all malformed doesn't clobber previously observed state."""
+    headers = {
+        "X-RateLimit-Burst-Limit": "x",
+        "X-RateLimit-Burst-Remaining": "1.5",
+        "X-RateLimit-Burst-Reset": reset,
+    }
+
+    assert RateLimitWindow.from_headers(headers, **BURST_HEADERS) is None
+
+
+def test_window_from_headers_accepts_fractional_reset() -> None:
+    """A reset reported as a fractional Unix timestamp is parsed."""
+    window = RateLimitWindow.from_headers(
+        {"X-RateLimit-Burst-Reset": "1700000060.5"}, **BURST_HEADERS
+    )
+
+    assert window == RateLimitWindow(reset=dt.datetime.fromtimestamp(1700000060.5, tz=dt.UTC))
+
+
 @pytest.mark.parametrize(
     ("remaining", "reset_in", "expected"),
     [
