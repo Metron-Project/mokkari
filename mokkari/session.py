@@ -101,17 +101,6 @@ HTTP_POOL_MAXSIZE: Final[int] = 32
 METRON_URL = "https://metron.cloud/api/{}/"
 LOCAL_URL = "http://127.0.0.1:8000/api/{}/"
 
-# Metron reports rate-limit state via these response headers rather than a
-# fixed quota: the "sustained" (daily) limit varies per user based on
-# OpenCollective donor tier, so it can only be known by reading the headers
-# Metron sends back, not by hardcoding a value locally.
-HEADER_BURST_LIMIT: Final[str] = "X-RateLimit-Burst-Limit"
-HEADER_BURST_REMAINING: Final[str] = "X-RateLimit-Burst-Remaining"
-HEADER_BURST_RESET: Final[str] = "X-RateLimit-Burst-Reset"
-HEADER_SUSTAINED_LIMIT: Final[str] = "X-RateLimit-Sustained-Limit"
-HEADER_SUSTAINED_REMAINING: Final[str] = "X-RateLimit-Sustained-Remaining"
-HEADER_SUSTAINED_RESET: Final[str] = "X-RateLimit-Sustained-Reset"
-
 # Reports whether the most recent response was served from Metron's cache
 # ("HIT") or generated fresh ("MISS").
 HEADER_CACHE: Final[str] = "X-Cache"
@@ -2523,42 +2512,10 @@ class Session:
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise exceptions.ApiError(msg) from err
 
-    @staticmethod
-    def _parse_rate_limit_window(
-        headers: Any, limit_header: str, remaining_header: str, reset_header: str
-    ) -> rate_limit.RateLimitWindow | None:
-        """Parse one rate-limit window (burst or sustained) out of response headers.
-
-        Returns ``None`` when none of the three headers for this window are present,
-        so a response missing rate-limit headers entirely doesn't clobber
-        previously observed state.
-        """
-        limit = headers.get(limit_header)
-        remaining = headers.get(remaining_header)
-        reset = headers.get(reset_header)
-        if limit is None and remaining is None and reset is None:
-            return None
-        return rate_limit.RateLimitWindow(
-            limit=int(limit) if limit is not None else None,
-            remaining=int(remaining) if remaining is not None else None,
-            reset=datetime.fromtimestamp(int(reset), tz=UTC) if reset is not None else None,
-        )
-
-    def _update_rate_limit_status(self, headers: Any) -> None:
+    def _update_rate_limit_status(self, headers: Mapping[str, str]) -> None:
         """Update the session's rate-limit state from a response's headers."""
-        burst = self._parse_rate_limit_window(
-            headers, HEADER_BURST_LIMIT, HEADER_BURST_REMAINING, HEADER_BURST_RESET
-        )
-        sustained = self._parse_rate_limit_window(
-            headers, HEADER_SUSTAINED_LIMIT, HEADER_SUSTAINED_REMAINING, HEADER_SUSTAINED_RESET
-        )
-        if burst is None and sustained is None:
-            return
         with self._rate_limit_lock:
-            self._rate_limit_status = rate_limit.RateLimitStatus(
-                burst=burst or self._rate_limit_status.burst,
-                sustained=sustained or self._rate_limit_status.sustained,
-            )
+            self._rate_limit_status = self._rate_limit_status.merge_headers(headers)
 
     def _update_cache_status(self, headers: Any) -> None:
         """Update the session's last-observed ``X-Cache`` status from response headers.
@@ -2570,13 +2527,6 @@ class Session:
         """
         with self._cache_status_lock:
             self._last_cache_status = headers.get(HEADER_CACHE)
-
-    @staticmethod
-    def _seconds_until_window_resets(window: rate_limit.RateLimitWindow, now: datetime) -> float:
-        """Seconds until ``window`` allows another request, or 0 if it already does."""
-        if window.remaining is None or window.remaining > 0 or window.reset is None:
-            return 0.0
-        return max(0.0, (window.reset - now).total_seconds())
 
     def _acquire_rate_limit_slot(self) -> None:
         """Dispatch to the injected rate limiter, or fall back to the fail-fast check.
@@ -2677,27 +2627,11 @@ class Session:
                 ``retry_after`` is the time until the reset Metron reported, measured
                 against the local clock.
         """
-        status = self.rate_limit_status
-        now = datetime.now(UTC)
-        burst_wait = self._seconds_until_window_resets(status.burst, now)
-        sustained_wait = self._seconds_until_window_resets(status.sustained, now)
-
-        delay = max(burst_wait, sustained_wait)
-        if delay <= 0:
+        error = self.rate_limit_status.exhausted_error(datetime.now(UTC))
+        if error is None:
             return
-
-        if sustained_wait >= burst_wait:
-            limit_type, limit_value = "day", status.sustained.limit
-        else:
-            limit_type, limit_value = "minute", status.burst.limit
-        limit_str = f"{limit_value:,}" if limit_value is not None else "your"
-
-        msg = (
-            f"Rate limit exceeded: You have reached the {limit_str} requests per {limit_type} limit. "
-            f"Please wait {utils.format_time(delay)} before making another request."
-        )
-        LOGGER.warning(msg)
-        raise exceptions.RateLimitError(msg, retry_after=delay)
+        LOGGER.warning("%s", error)
+        raise error
 
     def _request_data(
         self,
