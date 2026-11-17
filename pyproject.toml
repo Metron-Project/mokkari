@@ -254,7 +254,6 @@ addopts = """
     --strict-config
     --strict-markers
     --cov
-    --cov-append
     --cov-report=html
     --cov-report=term
 """
