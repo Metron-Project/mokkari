@@ -17,7 +17,7 @@ import pytest
 import requests
 import requests_mock
 from pydantic import HttpUrl, ValidationError
-from requests.exceptions import ConnectionError as ConnError, HTTPError, TooManyRedirects
+from requests.exceptions import ConnectionError as ConnError, TooManyRedirects
 
 import mokkari.session as session_module
 from mokkari import exceptions, rate_limit
@@ -2329,42 +2329,22 @@ def test__send_void_raises_server_rate_limit_error_on_429(session: Session, monk
     assert exc_info.value.retry_after == 7
 
 
-def test__request_data_get(monkeypatch, session):
+def test__request_data_get(monkeypatch, session, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=200):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self._json
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"foo": "bar"})
+    )
     # Act
     out = session._request_data("GET", "url")
     # Assert
     assert out == {"foo": "bar"}
 
 
-def test__execute_write_post_list(monkeypatch, session):
+def test__execute_write_post_list(monkeypatch, session, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=201):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self._json
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(201, json_body={"foo": "bar"})
+    )
     # Act
     data = [MagicMock(model_dump=lambda: {"a": 1})]
     out = session._execute_write("POST", ["credit"], data)
@@ -2372,21 +2352,11 @@ def test__execute_write_post_list(monkeypatch, session):
     assert out.json() == {"foo": "bar"}
 
 
-def test__execute_write_post_with_image(monkeypatch, session, tmp_path):
+def test__execute_write_post_with_image(monkeypatch, session, tmp_path, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=201):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self._json
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(201, json_body={"foo": "bar"})
+    )
     img_file = tmp_path / "img.png"
     img_file.write_bytes(b"abc")
     data = MagicMock(model_dump=lambda: {"image": str(img_file)})
@@ -2407,36 +2377,28 @@ def test__request_data_connection_error(monkeypatch, session):
         session._request_data("GET", "url")
 
 
-def test__request_data_detail(monkeypatch, session):
+def test__request_data_detail(monkeypatch, session, make_response):
     # Arrange
-    class DummyResp:
-        def __init__(self, status_code=200):
-            self._json = {"foo": "bar"}
-            self.status_code = status_code
-            self.headers = {}
-
-        def raise_for_status(self):
-            if self.status_code >= 400:
-                msg = f"HTTP {self.status_code} Error"
-                raise HTTPError(msg)
-
-        def json(self):
-            return self._json
-
     # Test successful request (200)
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(200))
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"foo": "bar"})
+    )
     out = session._request_data("GET", "url")
     assert out == {"foo": "bar"}
 
     # Test another successful status code (201)
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(201))
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(201, json_body={"foo": "bar"})
+    )
     out = session._request_data("GET", "url")
     assert out == {"foo": "bar"}
 
-    # # Test client error (400) - should raise ApiError
-    # monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp(400))
-    # with pytest.raises(exceptions.ApiError):
-    #     session._request_data("GET", "url")
+    # Test client error (400) - should raise ApiError
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(400, json_body={"foo": "bar"})
+    )
+    with pytest.raises(exceptions.ApiError):
+        session._request_data("GET", "url")
 
 
 def test_cache_coordinator_get_without_cache(session: Session) -> None:
@@ -2668,22 +2630,12 @@ def test_check_rate_limit_blocks_request(session: Session, monkeypatch) -> None:
     assert not mock_request_called["called"], "HTTP request should not be made when rate limited"
 
 
-def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> None:
+def test_rate_limit_allows_successful_request(session: Session, monkeypatch, make_response) -> None:
     """Test that requests proceed normally when no rate limit is exhausted."""
-
     # Arrange
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"id": 1, "name": "Test"})
+    )
 
     # Act
     result = session._request_data("GET", "https://test.com/api/issue/1")
@@ -2693,29 +2645,26 @@ def test_rate_limit_allows_successful_request(session: Session, monkeypatch) -> 
 
 
 def test_request_data_updates_rate_limit_status_from_response(
-    session: Session, monkeypatch
+    session: Session,
+    monkeypatch,
+    make_response,
 ) -> None:
     """A successful response's headers should update the session's rate-limit status."""
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(
+            json_body={"id": 1, "name": "Test"},
+            headers={
                 "X-RateLimit-Burst-Limit": "20",
                 "X-RateLimit-Burst-Remaining": "18",
                 "X-RateLimit-Burst-Reset": "1700000060",
                 "X-RateLimit-Sustained-Limit": "5000",
                 "X-RateLimit-Sustained-Remaining": "4998",
                 "X-RateLimit-Sustained-Reset": "1700086400",
-            }
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+            },
+        ),
+    )
 
     result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2724,21 +2673,17 @@ def test_request_data_updates_rate_limit_status_from_response(
     assert session.rate_limit_status.sustained.remaining == 4998
 
 
-def test_request_data_updates_cache_status_from_response(session: Session, monkeypatch) -> None:
+def test_request_data_updates_cache_status_from_response(
+    session: Session, monkeypatch, make_response
+) -> None:
     """A successful response's X-Cache header should update the session's cache status."""
-
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-Cache": "MISS"}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(
+            json_body={"id": 1, "name": "Test"}, headers={"X-Cache": "MISS"}
+        ),
+    )
 
     result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2754,7 +2699,9 @@ def test_session_rate_limiter_defaults_to_none() -> None:
 
 
 def test_execute_http_request_dispatches_to_rate_limiter_when_set(
-    session: Session, monkeypatch
+    session: Session,
+    monkeypatch,
+    make_response,
 ) -> None:
     """When a rate_limiter is configured, it gates and observes every HTTP send."""
     calls = []
@@ -2768,18 +2715,13 @@ def test_execute_http_request_dispatches_to_rate_limiter_when_set(
 
     session.rate_limiter = FakeLimiter()
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-RateLimit-Burst-Remaining": "19"}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(
+            json_body={"id": 1}, headers={"X-RateLimit-Burst-Remaining": "19"}
+        ),
+    )
 
     result = session._request_data("GET", "https://test.com/api/issue/1")
 
@@ -2867,7 +2809,9 @@ def test_rate_limiter_release_called_on_unhandled_request_exception(
 
 
 def test_rate_limiter_release_called_when_status_update_raises(
-    session: Session, monkeypatch
+    session: Session,
+    monkeypatch,
+    make_response,
 ) -> None:
     """A failure while processing response headers still releases the slot."""
     calls = []
@@ -2881,12 +2825,11 @@ def test_rate_limiter_release_called_when_status_update_raises(
 
     session.rate_limiter = FakeLimiter()
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-RateLimit-Burst-Remaining": "not-an-int"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(headers={"X-RateLimit-Burst-Remaining": "not-an-int"}),
+    )
 
     with pytest.raises(ValueError, match="invalid literal"):
         session._request_data("GET", "https://test.com/api/issue/1")
@@ -2935,7 +2878,9 @@ def test_rate_limiter_missing_acquire_raises_rate_limiter_error(
 
 
 def test_rate_limiter_missing_release_raises_rate_limiter_error(
-    session: Session, monkeypatch
+    session: Session,
+    monkeypatch,
+    make_response,
 ) -> None:
     """A rate_limiter object missing release() raises RateLimiterError."""
 
@@ -2945,45 +2890,28 @@ def test_rate_limiter_missing_release_raises_rate_limiter_error(
 
     session.rate_limiter = NoRelease()
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"id": 1})
+    )
 
     with pytest.raises(exceptions.RateLimiterError):
         session._request_data("GET", "https://test.com/api/issue/1")
 
 
-def test_rate_limiter_paces_concurrent_requests(monkeypatch) -> None:
+def test_rate_limiter_paces_concurrent_requests(monkeypatch, make_response) -> None:
     """A real HeaderPacedRateLimiter shared across threads never exceeds its window."""
     period = 0.3
     limiter = HeaderPacedRateLimiter(burst_period=period)
     paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
     sent: list[float] = []
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {"X-RateLimit-Burst-Limit": "3", "X-RateLimit-Burst-Remaining": "3"}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1}
-
     def mock_request(*args, **kwargs):
         sent.append(time.monotonic())
         time.sleep(0.02)  # widen the window so concurrent callers actually overlap
-        return DummyResp()
+        return make_response(
+            json_body={"id": 1},
+            headers={"X-RateLimit-Burst-Limit": "3", "X-RateLimit-Burst-Remaining": "3"},
+        )
 
     monkeypatch.setattr(paced_session._http, "request", mock_request)
 
@@ -3030,26 +2958,26 @@ def test_real_rate_limiter_raises_rate_limit_error_for_exhausted_daily_window(
     assert limiter._in_flight == 0
 
 
-def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatch) -> None:
+def test_daily_limit_429_makes_the_next_request_raise_without_sending(
+    monkeypatch, make_response
+) -> None:
     """A 429 carrying an exhausted daily window stops the next request before it is sent."""
     limiter = HeaderPacedRateLimiter()
     paced_session = Session("abc123", user_agent="pytest", rate_limiter=limiter)
     reset = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
     sent = []
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {
+    def fake_request(*args, **kwargs):
+        sent.append(1)
+        return make_response(
+            429,
+            headers={
                 "Retry-After": "3600",
                 "X-RateLimit-Sustained-Limit": "5000",
                 "X-RateLimit-Sustained-Remaining": "0",
                 "X-RateLimit-Sustained-Reset": str(int(reset.timestamp())),
-            }
-
-    def fake_request(*args, **kwargs):
-        sent.append(1)
-        return DummyResp()
+            },
+        )
 
     monkeypatch.setattr(paced_session._http, "request", fake_request)
 
@@ -3062,7 +2990,9 @@ def test_daily_limit_429_makes_the_next_request_raise_without_sending(monkeypatc
     assert limiter._in_flight == 0
 
 
-def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypatch) -> None:
+def test_rate_limiter_notified_of_429_before_release(
+    session: Session, monkeypatch, make_response
+) -> None:
     """A 429 response reports its Retry-After to the limiter, then releases the slot."""
     calls = []
 
@@ -3078,19 +3008,18 @@ def test_rate_limiter_notified_of_429_before_release(session: Session, monkeypat
 
     session.rate_limiter = FakeLimiter()
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {"Retry-After": "12"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(429, headers={"Retry-After": "12"})
+    )
 
     session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert calls == [("acquire",), ("on_rate_limited", 12.0), ("release",)]
 
 
-def test_rate_limiter_notified_of_429_without_retry_after(session: Session, monkeypatch) -> None:
+def test_rate_limiter_notified_of_429_without_retry_after(
+    session: Session, monkeypatch, make_response
+) -> None:
     """A 429 with no Retry-After header reports 0 to the limiter."""
     reported = []
 
@@ -3106,19 +3035,16 @@ def test_rate_limiter_notified_of_429_without_retry_after(session: Session, monk
 
     session.rate_limiter = FakeLimiter()
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: make_response(429))
 
     session._execute_http_request("GET", "https://test.com/api/issue/1")
 
     assert reported == [0.0]
 
 
-def test_rate_limiter_not_notified_of_successful_response(session: Session, monkeypatch) -> None:
+def test_rate_limiter_not_notified_of_successful_response(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Non-429 responses never trigger the on_rate_limited hook."""
     reported = []
 
@@ -3134,12 +3060,7 @@ def test_rate_limiter_not_notified_of_successful_response(session: Session, monk
 
     session.rate_limiter = FakeLimiter()
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: make_response())
 
     session._execute_http_request("GET", "https://test.com/api/issue/1")
 
@@ -3147,7 +3068,9 @@ def test_rate_limiter_not_notified_of_successful_response(session: Session, monk
 
 
 def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
-    session: Session, monkeypatch
+    session: Session,
+    monkeypatch,
+    make_response,
 ) -> None:
     """A rate_limiter missing on_rate_limited() raises RateLimiterError on a 429, still releasing."""
     calls = []
@@ -3161,12 +3084,9 @@ def test_rate_limiter_missing_on_rate_limited_raises_rate_limiter_error(
 
     session.rate_limiter = NoHook()
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 429
-            self.headers = {"Retry-After": "1"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(429, headers={"Retry-After": "1"})
+    )
 
     with pytest.raises(exceptions.RateLimiterError):
         session._execute_http_request("GET", "https://test.com/api/issue/1")
@@ -3249,23 +3169,16 @@ def test_rate_limiter_on_rate_limited_failure_still_releases(
 
 
 def test_request_data_resets_cache_status_for_uncached_endpoint(
-    session: Session, monkeypatch
+    session: Session,
+    monkeypatch,
+    make_response,
 ) -> None:
     """A subsequent request to an uncached endpoint should clear a prior HIT/MISS."""
     session._last_cache_status = "HIT"
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Test"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http, "request", lambda *a, **k: make_response(json_body={"id": 1, "name": "Test"})
+    )
 
     session._request_data("GET", "https://test.com/api/pull_list")
 
@@ -3277,19 +3190,12 @@ def test_request_data_resets_cache_status_for_uncached_endpoint(
 # ============================================================================
 
 
-def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) -> None:
+def test_if_modified_since_returns_none_on_304(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Test that passing if_modified_since returns None when server responds 304."""
-
     # Arrange
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(session._http, "request", lambda *a, **k: make_response(304))
 
     # Act
     result = session.arc(1, if_modified_since=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
@@ -3298,22 +3204,16 @@ def test_if_modified_since_returns_none_on_304(session: Session, monkeypatch) ->
     assert result is None
 
 
-def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch) -> None:
+def test_if_modified_since_returns_resource_on_200(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Test that passing if_modified_since returns the resource when data has changed."""
-
     # Arrange
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Updated Arc"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(json_body={"id": 1, "name": "Updated Arc"}),
+    )
 
     with patch(
         "mokkari.session.TypeAdapter.validate_python",
@@ -3333,22 +3233,14 @@ def test_if_modified_since_returns_resource_on_200(session: Session, monkeypatch
     assert result.name == "Updated Arc"
 
 
-def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
+def test_if_modified_since_sends_header(session: Session, monkeypatch, make_response) -> None:
     """Test that if_modified_since sends the correctly formatted If-Modified-Since header."""
     # Arrange
     captured_kwargs = {}
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
     def mock_request(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        return DummyResp()
+        return make_response(304)
 
     monkeypatch.setattr(session._http, "request", mock_request)
 
@@ -3362,22 +3254,16 @@ def test_if_modified_since_sends_header(session: Session, monkeypatch) -> None:
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
 
 
-def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monkeypatch) -> None:
+def test_if_modified_since_naive_datetime_treated_as_utc(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Test that a naive datetime (no tzinfo) is treated as UTC."""
     # Arrange
     captured_kwargs = {}
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
     def mock_request(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        return DummyResp()
+        return make_response(304)
 
     monkeypatch.setattr(session._http, "request", mock_request)
 
@@ -3388,22 +3274,16 @@ def test_if_modified_since_naive_datetime_treated_as_utc(session: Session, monke
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Sun, 15 Jun 2025 08:30:00 GMT"
 
 
-def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypatch) -> None:
+def test_if_modified_since_non_utc_timezone_converted(
+    session: Session, monkeypatch, make_response
+) -> None:
     """Test that a non-UTC timezone-aware datetime is converted to UTC for the header."""
     # Arrange
     captured_kwargs = {}
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 304
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
     def mock_request(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        return DummyResp()
+        return make_response(304)
 
     monkeypatch.setattr(session._http, "request", mock_request)
 
@@ -3419,7 +3299,9 @@ def test_if_modified_since_non_utc_timezone_converted(session: Session, monkeypa
     assert captured_kwargs["headers"]["If-Modified-Since"] == "Wed, 01 Jan 2025 12:00:00 GMT"
 
 
-def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeypatch) -> None:
+def test_if_modified_since_bypasses_cache(
+    session: Session, dummy_cache, monkeypatch, make_response
+) -> None:
     """Test that if_modified_since skips the cache entirely."""
     # Arrange
     session.cache = dummy_cache
@@ -3427,18 +3309,11 @@ def test_if_modified_since_bypasses_cache(session: Session, dummy_cache, monkeyp
     cache_key = "https://metron.cloud/api/arc/1/"
     dummy_cache.store(cache_key, {"id": 1, "name": "Cached"}, resource="arc", kind="detail")
 
-    class DummyResp:
-        def __init__(self):
-            self.status_code = 200
-            self.headers = {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"id": 1, "name": "Fresh"}
-
-    monkeypatch.setattr(session._http, "request", lambda *a, **k: DummyResp())
+    monkeypatch.setattr(
+        session._http,
+        "request",
+        lambda *a, **k: make_response(json_body={"id": 1, "name": "Fresh"}),
+    )
 
     with patch(
         "mokkari.session.TypeAdapter.validate_python",
