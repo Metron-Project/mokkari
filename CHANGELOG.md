@@ -23,6 +23,9 @@ and this project adheres to
   in `mokkari.rate_limit`, cache coordination in a private module, and the
   endpoint methods in private mixins. The public API is unchanged, but code that
   patches or calls `Session`'s private methods may need updating.
+- The detail methods, such as `issue()` and `series()`, are typed as returning
+  the resource rather than `None` as well, unless `if_modified_since` is passed.
+  Type checkers no longer require a `None` check on every plain call.
 
 ### Fixed
 
