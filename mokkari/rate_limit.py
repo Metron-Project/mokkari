@@ -540,9 +540,8 @@ class HeaderPacedRateLimiter:
             self._sustained_limit = status.sustained.limit
         now = datetime.now(UTC)
         self._sustained.tighten(status.sustained.remaining, status.sustained.reset, now)
-        if burst.remaining is not None and burst.remaining <= 0 and burst.reset is not None:
-            # A reset more than a window away can only come from a clock that disagrees
-            # with Metron's, so the wait is capped at one window.
-            wait = min((burst.reset - now).total_seconds(), self._burst.period)
-            if wait > 0:
-                self._blocked_until = max(self._blocked_until, time.monotonic() + wait)
+        # A reset more than a window away can only come from a clock that disagrees with
+        # Metron's, so the wait is capped at one window.
+        wait = min(burst.seconds_until_reset(now), self._burst.period)
+        if wait > 0:
+            self._blocked_until = max(self._blocked_until, time.monotonic() + wait)
