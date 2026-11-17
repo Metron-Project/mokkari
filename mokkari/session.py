@@ -955,8 +955,7 @@ class _SessionCore:
                 data=data,
                 files=files,
             )
-            self._update_rate_limit_status(response.headers)
-            status = self.rate_limit_status
+            status = self._update_rate_limit_status(response.headers)
             self._update_cache_status(response.headers)
             if response.status_code == requests.codes.too_many:
                 self._report_rate_limited(self._retry_after_seconds(response))
@@ -1019,10 +1018,16 @@ class _SessionCore:
             msg = f"HTTP error: {err!r} | Response body: {response.text}"
             raise ApiError(msg) from err
 
-    def _update_rate_limit_status(self, headers: Mapping[str, str]) -> None:
-        """Update the session's rate-limit state from a response's headers."""
+    def _update_rate_limit_status(self, headers: Mapping[str, str]) -> RateLimitStatus:
+        """Update the session's rate-limit state from a response's headers.
+
+        Returns:
+            The updated state, as merged under the lock, so the caller gets this
+            response's headers even if another thread updates the state right after.
+        """
         with self._rate_limit_lock:
             self._rate_limit_status = self._rate_limit_status.merge_headers(headers)
+            return self._rate_limit_status
 
     def _update_cache_status(self, headers: Any) -> None:
         """Update the session's last-observed ``X-Cache`` status from response headers.
