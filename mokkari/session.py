@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from email.utils import format_datetime as format_http_datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Final, Self
+from typing import Any, Final, Self, TypeAlias
 from urllib.parse import urlencode
 
 import requests
@@ -144,6 +144,10 @@ def _created_tags(resource: str) -> _WriteTags:
 
 
 _JSON_CONTENT_TYPE: Final[str] = "application/json;charset=utf-8"
+
+# A write's request body: one model, or a list of them for a bulk endpoint (e.g. credits).
+# ``list`` is invariant, so its items are ``Any`` to accept e.g. ``list[CreditPost]``.
+_Payload: TypeAlias = BaseModel | list[Any]
 
 
 @functools.cache
@@ -552,7 +556,7 @@ class Session:
         self,
         method: str,
         endpoint: list[str | int],
-        data: BaseModel | list[BaseModel],
+        data: _Payload,
         *,
         also_invalidates: tuple[str, ...] = (),
         tags: _WriteTags | None = None,
@@ -582,7 +586,7 @@ class Session:
         self,
         method: str,
         endpoint: list[str | int],
-        data: BaseModel | list[BaseModel] | None,
+        data: _Payload | None,
         *,
         also_invalidates: tuple[str, ...] = (),
         tags: _WriteTags | None = None,
@@ -703,7 +707,7 @@ class Session:
         self,
         method: str,
         endpoint: list[str | int],
-        data: BaseModel | list[BaseModel],
+        data: _Payload,
         response_class: type,
         *,
         also_invalidates: tuple[str, ...] = (),
@@ -2289,7 +2293,7 @@ class Session:
         return {**data, "results": results}
 
     def _prepare_request_payload(
-        self, data: BaseModel | list[BaseModel] | None
+        self, data: _Payload | None
     ) -> tuple[dict[str, str], dict[str, tuple[str, bytes]] | None, str | dict[str, Any] | None]:
         """Prepare request payload, handling data serialization and file uploads.
 
