@@ -9,7 +9,7 @@ from __future__ import annotations
 
 __all__ = ["ReadingListEndpoints"]
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from mokkari.cache import ResourceEndpoint
 from mokkari.schemas.reading_list import ReadingListItem, ReadingListList, ReadingListRead
@@ -30,6 +30,10 @@ class ReadingListEndpoints(_Base):
     """
 
     # Reading List methods
+    @overload
+    def reading_list(self, _id: int, if_modified_since: None = None) -> ReadingListRead: ...
+    @overload
+    def reading_list(self, _id: int, if_modified_since: datetime) -> ReadingListRead | None: ...
     def reading_list(
         self, _id: int, if_modified_since: datetime | None = None
     ) -> ReadingListRead | None:

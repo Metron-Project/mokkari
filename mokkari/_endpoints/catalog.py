@@ -9,7 +9,7 @@ from __future__ import annotations
 
 __all__ = ["CatalogEndpoints"]
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from mokkari.cache import ResourceEndpoint
 from mokkari.schemas.arc import Arc, ArcPost
@@ -48,6 +48,10 @@ class CatalogEndpoints(_Base):
     """
 
     # Creator methods
+    @overload
+    def creator(self, _id: int, if_modified_since: None = None) -> Creator: ...
+    @overload
+    def creator(self, _id: int, if_modified_since: datetime) -> Creator | None: ...
     def creator(self, _id: int, if_modified_since: datetime | None = None) -> Creator | None:
         """Retrieve detailed information about a creator by ID.
 
@@ -138,6 +142,10 @@ class CatalogEndpoints(_Base):
         return self._list_resources(ResourceEndpoint.CREATOR, params, BaseResource)
 
     # Character methods
+    @overload
+    def character(self, _id: int, if_modified_since: None = None) -> Character: ...
+    @overload
+    def character(self, _id: int, if_modified_since: datetime) -> Character | None: ...
     def character(self, _id: int, if_modified_since: datetime | None = None) -> Character | None:
         """Retrieve detailed information about a character by ID.
 
@@ -222,6 +230,10 @@ class CatalogEndpoints(_Base):
         return self._get_resource_issues(ResourceEndpoint.CHARACTER, _id)
 
     # Publisher methods
+    @overload
+    def publisher(self, _id: int, if_modified_since: None = None) -> Publisher: ...
+    @overload
+    def publisher(self, _id: int, if_modified_since: datetime) -> Publisher | None: ...
     def publisher(self, _id: int, if_modified_since: datetime | None = None) -> Publisher | None:
         """Retrieve detailed information about a publisher by ID.
 
@@ -285,6 +297,10 @@ class CatalogEndpoints(_Base):
         return self._list_resources(ResourceEndpoint.PUBLISHER, params, BaseResource)
 
     # Team methods
+    @overload
+    def team(self, _id: int, if_modified_since: None = None) -> Team: ...
+    @overload
+    def team(self, _id: int, if_modified_since: datetime) -> Team | None: ...
     def team(self, _id: int, if_modified_since: datetime | None = None) -> Team | None:
         """Retrieve detailed information about a team by ID.
 
@@ -361,6 +377,10 @@ class CatalogEndpoints(_Base):
         return self._get_resource_issues(ResourceEndpoint.TEAM, _id)
 
     # Arc methods
+    @overload
+    def arc(self, _id: int, if_modified_since: None = None) -> Arc: ...
+    @overload
+    def arc(self, _id: int, if_modified_since: datetime) -> Arc | None: ...
     def arc(self, _id: int, if_modified_since: datetime | None = None) -> Arc | None:
         """Retrieve detailed information about a story arc by ID.
 
@@ -437,6 +457,10 @@ class CatalogEndpoints(_Base):
         return self._get_resource_issues(ResourceEndpoint.ARC, _id)
 
     # Series methods
+    @overload
+    def series(self, _id: int, if_modified_since: None = None) -> Series: ...
+    @overload
+    def series(self, _id: int, if_modified_since: datetime) -> Series | None: ...
     def series(self, _id: int, if_modified_since: datetime | None = None) -> Series | None:
         """Retrieve detailed information about a series by ID.
 
@@ -525,6 +549,10 @@ class CatalogEndpoints(_Base):
         return self._validate_list_response(resp, GenericItem)
 
     # Issue methods
+    @overload
+    def issue(self, _id: int, if_modified_since: None = None) -> Issue: ...
+    @overload
+    def issue(self, _id: int, if_modified_since: datetime) -> Issue | None: ...
     def issue(self, _id: int, if_modified_since: datetime | None = None) -> Issue | None:
         """Retrieve detailed information about an issue by ID.
 
@@ -670,6 +698,10 @@ class CatalogEndpoints(_Base):
         return self._validate_list_response(resp, GenericItem)
 
     # Universe methods
+    @overload
+    def universe(self, _id: int, if_modified_since: None = None) -> Universe: ...
+    @overload
+    def universe(self, _id: int, if_modified_since: datetime) -> Universe | None: ...
     def universe(self, _id: int, if_modified_since: datetime | None = None) -> Universe | None:
         """Retrieve detailed information about a universe by ID.
 
@@ -735,6 +767,10 @@ class CatalogEndpoints(_Base):
         return self._list_resources(ResourceEndpoint.UNIVERSE, params, BaseResource)
 
     # Imprint methods
+    @overload
+    def imprint(self, _id: int, if_modified_since: None = None) -> Imprint: ...
+    @overload
+    def imprint(self, _id: int, if_modified_since: datetime) -> Imprint | None: ...
     def imprint(self, _id: int, if_modified_since: datetime | None = None) -> Imprint | None:
         """Retrieve detailed information about an imprint by ID.
 

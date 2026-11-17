@@ -1632,7 +1632,6 @@ def test_without_if_modified_since_uses_cache(session: Session, dummy_cache, mon
     result = session.arc(1)
 
     # Assert — served from the cache without a request
-    assert result is not None
     assert result.name == "Cached"
     request.assert_not_called()
 

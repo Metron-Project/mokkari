@@ -9,7 +9,7 @@ from __future__ import annotations
 
 __all__ = ["CollectionEndpoints"]
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from mokkari.cache import ResourceEndpoint
 from mokkari.schemas.collection import (
@@ -41,6 +41,10 @@ class CollectionEndpoints(_Base):
     """
 
     # Collection methods
+    @overload
+    def collection(self, _id: int, if_modified_since: None = None) -> CollectionRead: ...
+    @overload
+    def collection(self, _id: int, if_modified_since: datetime) -> CollectionRead | None: ...
     def collection(
         self, _id: int, if_modified_since: datetime | None = None
     ) -> CollectionRead | None:
