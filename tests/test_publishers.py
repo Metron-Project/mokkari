@@ -10,6 +10,7 @@ import requests_mock
 from pydantic import ValidationError
 
 from mokkari import exceptions
+from mokkari.schemas import publisher
 from mokkari.schemas.publisher import Publisher, PublisherPost
 from mokkari.session import Session
 
@@ -140,6 +141,11 @@ def test_publisher_post_rejects_country_of_wrong_length(country: str) -> None:
     """A country code that isn't 2 letters is rejected before anything is sent."""
     with pytest.raises(ValidationError, match="Country code must be 2 characters long"):
         PublisherPost(name="Titan", country=country)
+
+
+def test_country_code_length_keeps_its_old_name() -> None:
+    """The misspelled constant name from 5.1.0 still imports, with the same value."""
+    assert publisher.COUNTY_CODE_LENGTH == publisher.COUNTRY_CODE_LENGTH == 2
 
 
 def test_publisher_keeps_country_from_metron() -> None:

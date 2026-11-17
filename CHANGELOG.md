@@ -20,6 +20,8 @@ and this project adheres to
 - The `HEADER_BURST_*` and `HEADER_SUSTAINED_*` header-name constants are now
   exported from `mokkari.rate_limit`, along with `limit_error()` and
   `daily_limit_error()`. They can still be imported from `mokkari.session`.
+- `mokkari.schemas.publisher.COUNTY_CODE_LENGTH` is now spelled
+  `COUNTRY_CODE_LENGTH`. The old name still works through 5.x.
 - `Session`'s internals have been split up: rate-limit header handling now lives
   in `mokkari.rate_limit`, cache coordination in a private module, and the
   endpoint methods in private mixins. The public API is unchanged, but code that

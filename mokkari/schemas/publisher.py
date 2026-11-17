@@ -17,6 +17,9 @@ from mokkari.schemas.attribution import Attribution
 from mokkari.schemas.base import BaseResource
 
 COUNTRY_CODE_LENGTH = 2
+# The misspelled name this constant had until 5.1.0, kept importable through 5.x.
+# New code should use COUNTRY_CODE_LENGTH.
+COUNTY_CODE_LENGTH = COUNTRY_CODE_LENGTH
 
 
 def ensure_country_code_length(value: str) -> str:
