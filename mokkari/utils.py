@@ -25,7 +25,8 @@ SECONDS_PER_HOUR: Final[int] = 3_600
 SECONDS_PER_MINUTE: Final[int] = 60
 
 # The Hamming distance Metron's cover-hash search uses when none is given, and the
-# widest it allows.
+# widest it allows. These mirror Metron's current server-side limits for reference;
+# mokkari doesn't enforce them, so Metron stays the authority if it changes them.
 DEFAULT_COVER_HASH_DISTANCE: Final[int] = 10
 MAX_COVER_HASH_DISTANCE: Final[int] = 20
 

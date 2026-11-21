@@ -35,7 +35,7 @@ from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostRes
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 from mokkari.schemas.variant import VariantPost, VariantPostResponse
-from mokkari.utils import hamming_distance
+from mokkari.utils import _COVER_HASH_RE, hamming_distance
 
 if TYPE_CHECKING:
     from mokkari._endpoints._helpers import EndpointHelpers as _Base
@@ -647,6 +647,7 @@ class CatalogEndpoints(_Base):
 
         Args:
             cover_hash: The cover's 64-bit perceptual hash (pHash) as 16 hex digits.
+                Surrounding whitespace is stripped.
             max_distance: The widest Hamming distance to return, at most
                 ``mokkari.utils.MAX_COVER_HASH_DISTANCE``. ``None`` leaves it to Metron,
                 which uses ``mokkari.utils.DEFAULT_COVER_HASH_DISTANCE``.
@@ -657,8 +658,9 @@ class CatalogEndpoints(_Base):
             list[CoverMatch]: Every match in Metron's order, closest first, with its distance.
 
         Raises:
-            ApiError: If Metron refuses a value, such as a malformed hash or a distance out
-                of range, or the request fails.
+            ValueError: If ``cover_hash`` isn't 16 hex digits.
+            ApiError: If Metron refuses a value, such as a distance out of range, or the
+                request fails.
             RateLimitError: If the Metron API rate limit has been exceeded.
 
         Examples:
@@ -666,6 +668,10 @@ class CatalogEndpoints(_Base):
             >>> matches = session.issues_by_cover_hash("c3a1e1f0f8d8c0c0", max_distance=6)
             >>> exact = [m.issue for m in matches if m.distance == 0]
         """
+        cover_hash = cover_hash.strip()
+        if not _COVER_HASH_RE.fullmatch(cover_hash):
+            msg = f"cover_hash must be 16 hex digits, got {cover_hash!r}"
+            raise ValueError(msg)
         query: dict[str, str | int] = dict(params or {})
         if max_distance is not None:
             query["cover_hash_max_distance"] = max_distance

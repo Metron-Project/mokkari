@@ -423,7 +423,7 @@ def test_issues_by_cover_hash_default_distance(talker: Session) -> None:
 
 
 def test_issues_by_cover_hash_refused(talker: Session) -> None:
-    """A hash or distance Metron refuses raises ApiError."""
+    """A distance Metron refuses raises ApiError."""
     with requests_mock.Mocker() as r:
         r.get(
             "https://metron.cloud/api/issue/",
@@ -432,6 +432,32 @@ def test_issues_by_cover_hash_refused(talker: Session) -> None:
         )
         with pytest.raises(exceptions.ApiError):
             talker.issues_by_cover_hash("c3a1e1f0f8d8c0c0", max_distance=21)
+
+
+def test_issues_by_cover_hash_strips_whitespace(talker: Session) -> None:
+    """Whitespace around the hash is stripped, so distances are still worked out."""
+    data = {
+        "count": 1,
+        "next": None,
+        "previous": None,
+        "results": [_cover_hash_row(1, "c3a1e1f0f8d8c0c0")],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/issue/", text=json.dumps(data))
+        matches = talker.issues_by_cover_hash(" c3a1e1f0f8d8c0c0\n")
+        query = r.last_request.qs
+
+    assert query == {"cover_hash_near": ["c3a1e1f0f8d8c0c0"]}
+    assert [m.distance for m in matches] == [0]
+
+
+@pytest.mark.parametrize("cover_hash", ["", "abc123", "c3a1e1f0f8d8c0cg", "c3a1e1f0f8d8c0c0ff"])
+def test_issues_by_cover_hash_malformed(talker: Session, cover_hash: str) -> None:
+    """A hash that isn't 16 hex digits raises ValueError without making a request."""
+    with requests_mock.Mocker() as r:
+        with pytest.raises(ValueError, match="16 hex digits"):
+            talker.issues_by_cover_hash(cover_hash)
+        assert not r.called
 
 
 def test_issue_with_upc_sku_price() -> None:
