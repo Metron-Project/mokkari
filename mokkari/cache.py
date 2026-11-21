@@ -8,6 +8,7 @@ This module provides the parts of response caching that don't depend on a backen
 - RESOURCES: The resources Session caches under, from ``ResourceEndpoint``
 - entry_tags, update_tags, create_tags: The tags Session stores entries with, and drops
   them by after a write, for a cache with ``invalidate_tags``
+- is_cacheable: Whether Session caches the response for a cache key at all
 """
 
 from __future__ import annotations
@@ -294,6 +295,12 @@ class TtlPolicy:
 TAG_ANY: Final[str] = "any"
 TAG_CREATE: Final[str] = "post"
 
+# Query parameters whose responses Session never reads from or stores in the cache. A cover
+# search is a lookup of one file's cover, rarely repeated, and covers change most just after
+# an issue is added (e.g. a solicitation cover replaced by the final one), when it's most
+# used. Edits on Metron don't invalidate the cache, so a cached search would miss them.
+_UNCACHED_PARAMS: Final[frozenset[str]] = frozenset({"cover_hash_near"})
+
 # Query parameters that don't filter.
 _PAGINATION_PARAMS: Final[frozenset[str]] = frozenset({"page"})
 
@@ -515,6 +522,17 @@ def entry_tags(key: str, value: Any, *, resource: str, kind: CacheKind) -> froze
             return unknown
         tags.add(f"field:{_ISSUE_LIST_FIELDS[path[0]]}")
     return frozenset(tags | _filter_tags(resource, urlsplit(key).query))
+
+
+def is_cacheable(key: str) -> bool:
+    """Return whether Session reads and stores the response for cache key ``key``, a URL.
+
+    A response to a query with any of ``_UNCACHED_PARAMS`` isn't cached, whatever the TTL.
+    """
+    return not any(
+        param in _UNCACHED_PARAMS
+        for param, _ in parse_qsl(urlsplit(key).query, keep_blank_values=True)
+    )
 
 
 def _filter_tags(resource: str, query: str) -> set[str]:

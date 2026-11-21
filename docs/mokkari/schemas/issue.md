@@ -5,6 +5,7 @@
 :::mokkari.schemas.issue.IssueSeries
 :::mokkari.schemas.issue.CommonIssue
 :::mokkari.schemas.issue.BaseIssue
+:::mokkari.schemas.issue.CoverMatch
 :::mokkari.schemas.issue.Issue
 :::mokkari.schemas.issue.IssuePost
 :::mokkari.schemas.issue.IssuePostResponse

@@ -27,6 +27,7 @@ from mokkari.cache import (
     TtlPolicy,
     create_tags,
     entry_tags,
+    is_cacheable,
     update_tags,
 )
 from mokkari.schemas.character import CharacterPost
@@ -216,6 +217,60 @@ def test_custom_cache_accepted(dummy_api_token: str) -> None:
         m.role_list({"name": "writer"})
         assert r.call_count == 1
     assert list(cache.data) == [ROLE_PAGE1]
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("https://metron.cloud/api/issue/", True),
+        ("https://metron.cloud/api/issue/?cover_hash=abc&number=1", True),
+        ("https://metron.cloud/api/issue/?cover_hash_near=c3a1e1f0f8d8c0c0", False),
+        ("https://metron.cloud/api/issue/?cover_hash_near=x&page=2&series_id=1", False),
+        ("https://metron.cloud/api/issue/?cover_hash_near=", False),
+    ],
+)
+def test_is_cacheable(key: str, expected: bool) -> None:
+    """A cover-hash search isn't cacheable; other queries are."""
+    assert is_cacheable(key) is expected
+
+
+COVER_SEARCH = "https://metron.cloud/api/issue/?cover_hash_near=c3a1e1f0f8d8c0c0"
+COVER_ROW: dict[str, Any] = {
+    "id": 1,
+    "series": {"id": 1, "name": "Kang", "volume": 1, "year_began": 2021},
+    "number": "1",
+    "issue": "Kang The Conqueror (2021) #1",
+    "cover_date": "2021-10-01",
+    "cover_hash": "c3a1e1f0f8d8c0c0",
+    "modified": "2019-06-23T15:13:19.432378-04:00",
+}
+
+
+def test_cover_search_not_cached(dummy_api_token: str, cache: sqlite_cache.SqliteCache) -> None:
+    """A cover search, and every page of it, is neither read from nor stored in the cache."""
+    page2 = f"{COVER_SEARCH}&page=2"
+    m = api(dummy_api_token, cache=cache)
+    # Entries that would be served if the search were cached.
+    stale = {"count": 1, "next": None, "previous": None, "results": []}
+    cache.store(COVER_SEARCH, stale, resource="issue", kind="list")
+    cache.store(page2, stale, resource="issue", kind="list")
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            COVER_SEARCH,
+            json={"count": 2, "next": page2, "previous": None, "results": [COVER_ROW]},
+        )
+        r.get(
+            page2,
+            json={"count": 2, "next": None, "previous": COVER_SEARCH, "results": [COVER_ROW]},
+        )
+        assert len(m.issues_by_cover_hash("c3a1e1f0f8d8c0c0")) == 2
+        assert len(m.issues_by_cover_hash("c3a1e1f0f8d8c0c0")) == 2
+        assert r.call_count == 4
+
+    # Only the entries stored above are there; the responses weren't stored.
+    assert cache.get(COVER_SEARCH) == stale
+    assert cache.get(page2) == stale
 
 
 # ============================================================================

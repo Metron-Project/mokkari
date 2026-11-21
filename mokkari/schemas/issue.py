@@ -10,6 +10,7 @@ This module provides the following classes:
 - IssueSeries
 - CommonIssue
 - BaseIssue
+- CoverMatch
 - Issue
 - IssuePost
 - IssuePostResponse
@@ -20,6 +21,7 @@ __all__ = [
     "BaseIssue",
     "BasicSeries",
     "CommonIssue",
+    "CoverMatch",
     "Credit",
     "CreditPost",
     "CreditPostResponse",
@@ -176,6 +178,20 @@ class BaseIssue(CommonIssue):
 
     issue_name: str = Field(alias="issue")
     series: BasicSeries
+
+
+class CoverMatch(BaseModel):
+    """An issue a cover-hash search returned, and how far its cover is from the hash.
+
+    Attributes:
+        issue (BaseIssue): The matching issue, as ``issues_list()`` returns it.
+        distance (int, optional): The Hamming distance between the searched hash and the
+            issue's ``cover_hash``, or None if the issue's hash is missing or isn't 16 hex
+            digits.
+    """
+
+    issue: BaseIssue
+    distance: int | None = None
 
 
 class Issue(CommonIssue):

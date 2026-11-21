@@ -10,6 +10,11 @@ and this project adheres to
 
 ### Added
 
+- `Session.issues_by_cover_hash()`, which searches issues by a cover's
+  perceptual hash and returns each match as a `CoverMatch` with its Hamming
+  distance from the hash, along with `mokkari.utils.hamming_distance()`,
+  `mokkari.utils.is_cover_hash()`, and the `DEFAULT_COVER_HASH_DISTANCE` and
+  `MAX_COVER_HASH_DISTANCE` constants.
 - `RateLimitWindow.from_headers()` and `RateLimitWindow.seconds_until_reset()`,
   and `RateLimitStatus.merge_headers()` and `RateLimitStatus.exhausted_error()`,
   for reading Metron's `X-RateLimit-*` headers and checking for an exhausted
@@ -17,6 +22,9 @@ and this project adheres to
 
 ### Changed
 
+- `issues_list()` calls filtered by `cover_hash_near` are no longer cached, so a
+  cover search always reflects Metron's current covers. Callers that repeat the
+  same cover search will now make a request each time.
 - The `HEADER_BURST_*` and `HEADER_SUSTAINED_*` header-name constants are now
   exported from `mokkari.rate_limit`, along with `limit_error()` and
   `daily_limit_error()`. They can still be imported from `mokkari.session`.
