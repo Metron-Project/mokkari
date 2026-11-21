@@ -23,6 +23,7 @@ from mokkari.schemas.generic import GenericItem
 from mokkari.schemas.imprint import Imprint
 from mokkari.schemas.issue import (
     BaseIssue,
+    CoverMatch,
     CreditPost,
     CreditPostResponse,
     Issue,
@@ -34,6 +35,7 @@ from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostRes
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 from mokkari.schemas.variant import VariantPost, VariantPostResponse
+from mokkari.utils import hamming_distance
 
 if TYPE_CHECKING:
     from mokkari._endpoints._helpers import EndpointHelpers as _Base
@@ -631,6 +633,47 @@ class CatalogEndpoints(_Base):
             >>> recent_issues = session.issues_list({"modified_gt": "2023-01-01"})
         """
         return self._list_resources(ResourceEndpoint.ISSUE, params, BaseIssue)
+
+    def issues_by_cover_hash(
+        self,
+        cover_hash: str,
+        max_distance: int | None = None,
+        params: dict[str, str | int] | None = None,
+    ) -> list[CoverMatch]:
+        """Retrieve the issues whose covers are near a perceptual hash.
+
+        Metron returns the matches closest first but doesn't say how close each is, so
+        the distance is worked out from each issue's ``cover_hash``.
+
+        Args:
+            cover_hash: The cover's 64-bit perceptual hash (pHash) as 16 hex digits.
+            max_distance: The widest Hamming distance to return, at most
+                ``mokkari.utils.MAX_COVER_HASH_DISTANCE``. ``None`` leaves it to Metron,
+                which uses ``mokkari.utils.DEFAULT_COVER_HASH_DISTANCE``.
+            params: Further ``issues_list()`` filters to narrow the search by, such as
+                ``series_id`` or ``number``.
+
+        Returns:
+            list[CoverMatch]: Every match in Metron's order, closest first, with its distance.
+
+        Raises:
+            ApiError: If Metron refuses a value, such as a malformed hash or a distance out
+                of range, or the request fails.
+            RateLimitError: If the Metron API rate limit has been exceeded.
+
+        Examples:
+            >>> session = Session("your-api-token")
+            >>> matches = session.issues_by_cover_hash("c3a1e1f0f8d8c0c0", max_distance=6)
+            >>> exact = [m.issue for m in matches if m.distance == 0]
+        """
+        query: dict[str, str | int] = dict(params or {})
+        if max_distance is not None:
+            query["cover_hash_max_distance"] = max_distance
+        query["cover_hash_near"] = cover_hash
+        return [
+            CoverMatch(issue=issue, distance=hamming_distance(cover_hash, issue.cover_hash))
+            for issue in self.issues_list(query)
+        ]
 
     def credits_post(self, data: list[CreditPost]) -> list[CreditPostResponse]:
         """Create new credits for issues in bulk.

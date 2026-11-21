@@ -17,7 +17,14 @@ import threading
 from collections import Counter, defaultdict, deque
 from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
-from mokkari.cache import NO_CACHE, Cache, ResourceEndpoint, TtlPolicy, entry_tags
+from mokkari.cache import (
+    NO_CACHE,
+    Cache,
+    ResourceEndpoint,
+    TtlPolicy,
+    entry_tags,
+    is_cacheable,
+)
 from mokkari.exceptions import CacheError
 
 if TYPE_CHECKING:
@@ -155,9 +162,10 @@ class CacheCoordinator:
 
         Returns:
             Any | None: The cached response data if available and cache is configured,
-                       None if not found, the cache isn't available, or reading it failed.
+                       None if not found, the cache isn't available, the key isn't
+                       cacheable (see ``is_cacheable``), or reading it failed.
         """
-        if self.cache is None:
+        if self.cache is None or not is_cacheable(key):
             return None
         # A failing cache (e.g. its database is locked or unreadable) is treated as a miss,
         # so the data is fetched from Metron instead of the request failing. A database
@@ -188,7 +196,7 @@ class CacheCoordinator:
             invalidations: ``resource``'s ``invalidation_count`` from just before the
                 request was sent.
         """
-        if self.cache is None:
+        if self.cache is None or not is_cacheable(key):
             return
         # A cache with a TTL policy (e.g. SqliteCache) wouldn't keep the data, so don't
         # describe it for one.

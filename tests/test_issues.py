@@ -368,6 +368,72 @@ def test_issueslist_with_params(talker: Session) -> None:
     assert issues[1].cover_date == date(2021, 11, 1)
 
 
+def _cover_hash_row(issue_id: int, cover_hash: str) -> dict[str, object]:
+    return {
+        "id": issue_id,
+        "series": {"id": 1, "name": "Kang", "volume": 1, "year_began": 2021},
+        "number": str(issue_id),
+        "issue": f"Kang The Conqueror (2021) #{issue_id}",
+        "cover_date": "2021-10-01",
+        "cover_hash": cover_hash,
+        "modified": _MODIFIED,
+    }
+
+
+def test_issues_by_cover_hash(talker: Session) -> None:
+    """A cover search sends the hash and filters, and annotates each match with its distance."""
+    data = {
+        "count": 3,
+        "next": None,
+        "previous": None,
+        "results": [
+            _cover_hash_row(1, "c3a1e1f0f8d8c0c0"),
+            _cover_hash_row(2, "C3A1E1F0F8D8C0C3"),
+            _cover_hash_row(3, ""),
+        ],
+    }
+    with requests_mock.Mocker() as r:
+        r.get("https://metron.cloud/api/issue/", text=json.dumps(data))
+        matches = talker.issues_by_cover_hash(
+            "c3a1e1f0f8d8c0c0", max_distance=6, params={"series_id": 1}
+        )
+        query = r.last_request.qs
+
+    assert query == {
+        "series_id": ["1"],
+        "cover_hash_max_distance": ["6"],
+        "cover_hash_near": ["c3a1e1f0f8d8c0c0"],
+    }
+    assert [(m.issue.id, m.distance) for m in matches] == [(1, 0), (2, 2), (3, None)]
+
+
+def test_issues_by_cover_hash_default_distance(talker: Session) -> None:
+    """Without a max distance, the search leaves it to Metron and the caller's params alone."""
+    params: dict[str, str | int] = {"number": "1"}
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/issue/",
+            text=json.dumps({"count": 0, "next": None, "previous": None, "results": []}),
+        )
+        assert talker.issues_by_cover_hash("c3a1e1f0f8d8c0c0", params=params) == []
+        query = r.last_request.qs
+
+    assert query == {"number": ["1"], "cover_hash_near": ["c3a1e1f0f8d8c0c0"]}
+    assert params == {"number": "1"}
+
+
+def test_issues_by_cover_hash_refused(talker: Session) -> None:
+    """A hash or distance Metron refuses raises ApiError."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://metron.cloud/api/issue/",
+            status_code=400,
+            text=json.dumps({"cover_hash_max_distance": ["Ensure this value is <= 20."]}),
+        )
+        with pytest.raises(exceptions.ApiError):
+            talker.issues_by_cover_hash("c3a1e1f0f8d8c0c0", max_distance=21)
+
+
 def test_issue_with_upc_sku_price() -> None:
     """Test issue with upc, sku, and price values."""
     usca_3 = Issue(

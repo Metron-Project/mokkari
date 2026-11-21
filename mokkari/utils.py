@@ -3,6 +3,7 @@
 This module provides the following functions:
 
 - format_time: Format a number of seconds as a human-readable duration
+- hamming_distance: Count the bits that differ between two cover hashes
 
 It imports nothing from the rest of ``mokkari``, so any module can use it without
 creating a circular import.
@@ -10,12 +11,26 @@ creating a circular import.
 
 from __future__ import annotations
 
+import re
 from typing import Final
 
-__all__ = ["format_time"]
+__all__ = [
+    "DEFAULT_COVER_HASH_DISTANCE",
+    "MAX_COVER_HASH_DISTANCE",
+    "format_time",
+    "hamming_distance",
+]
 
 SECONDS_PER_HOUR: Final[int] = 3_600
 SECONDS_PER_MINUTE: Final[int] = 60
+
+# The Hamming distance Metron's cover-hash search uses when none is given, and the
+# widest it allows.
+DEFAULT_COVER_HASH_DISTANCE: Final[int] = 10
+MAX_COVER_HASH_DISTANCE: Final[int] = 20
+
+# A 64-bit perceptual hash, as Metron stores and takes it.
+_COVER_HASH_RE: Final[re.Pattern[str]] = re.compile(r"[0-9a-fA-F]{16}")
 
 
 def format_time(seconds: str | float) -> str:
@@ -56,3 +71,25 @@ def format_time(seconds: str | float) -> str:
         parts.append(f"{remaining_seconds} second{'s' if remaining_seconds != 1 else ''}")
 
     return ", ".join(parts)
+
+
+def hamming_distance(a: str, b: str) -> int | None:
+    """Count the bits that differ between two cover hashes.
+
+    Args:
+        a: A 64-bit perceptual hash as 16 hex digits.
+        b: Another.
+
+    Returns:
+        int | None: The number of differing bits, 0 to 64, or ``None`` if either isn't
+        16 hex digits.
+
+    Examples:
+        >>> hamming_distance("ffffffffffffffff", "fffffffffffffffe")
+        1
+        >>> hamming_distance("ffffffffffffffff", "") is None
+        True
+    """
+    if not (_COVER_HASH_RE.fullmatch(a) and _COVER_HASH_RE.fullmatch(b)):
+        return None
+    return (int(a, 16) ^ int(b, 16)).bit_count()
