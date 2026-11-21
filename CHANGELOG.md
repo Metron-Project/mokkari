@@ -12,7 +12,9 @@ and this project adheres to
 
 - `Session.issues_by_cover_hash()`, which searches issues by a cover's
   perceptual hash and returns each match as a `CoverMatch` with its Hamming
-  distance from the hash, along with `mokkari.utils.hamming_distance()`.
+  distance from the hash, along with `mokkari.utils.hamming_distance()`,
+  `mokkari.utils.is_cover_hash()`, and the `DEFAULT_COVER_HASH_DISTANCE` and
+  `MAX_COVER_HASH_DISTANCE` constants.
 - `RateLimitWindow.from_headers()` and `RateLimitWindow.seconds_until_reset()`,
   and `RateLimitStatus.merge_headers()` and `RateLimitStatus.exhausted_error()`,
   for reading Metron's `X-RateLimit-*` headers and checking for an exhausted

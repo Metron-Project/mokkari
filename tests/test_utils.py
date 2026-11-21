@@ -1,11 +1,11 @@
 """Test Utils module.
 
-This module contains tests for the format_time and hamming_distance helpers.
+This module contains tests for the format_time, hamming_distance and is_cover_hash helpers.
 """
 
 import pytest
 
-from mokkari.utils import format_time, hamming_distance
+from mokkari.utils import format_time, hamming_distance, is_cover_hash
 
 
 def test_format_time_minutes_and_seconds() -> None:
@@ -33,3 +33,20 @@ def test_format_time_hours() -> None:
 def test_hamming_distance(a: str, b: str, expected: int | None) -> None:
     """hamming_distance counts differing bits, or returns None for a malformed hash."""
     assert hamming_distance(a, b) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("c3a1e1f0f8d8c0c0", True),
+        ("C3A1E1F0F8D8C0C0", True),
+        ("", False),
+        ("abc123", False),
+        ("c3a1e1f0f8d8c0cg", False),
+        (" c3a1e1f0f8d8c0c0", False),
+        ("c3a1e1f0f8d8c0c0ff", False),
+    ],
+)
+def test_is_cover_hash(value: str, *, expected: bool) -> None:
+    """is_cover_hash accepts exactly 16 hex digits in either case."""
+    assert is_cover_hash(value) is expected

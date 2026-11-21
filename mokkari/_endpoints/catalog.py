@@ -35,7 +35,7 @@ from mokkari.schemas.series import BaseSeries, Series, SeriesPost, SeriesPostRes
 from mokkari.schemas.team import Team, TeamPost, TeamPostResponse
 from mokkari.schemas.universe import Universe, UniversePost, UniversePostResponse
 from mokkari.schemas.variant import VariantPost, VariantPostResponse
-from mokkari.utils import _COVER_HASH_RE, hamming_distance
+from mokkari.utils import hamming_distance, is_cover_hash
 
 if TYPE_CHECKING:
     from mokkari._endpoints._helpers import EndpointHelpers as _Base
@@ -669,7 +669,7 @@ class CatalogEndpoints(_Base):
             >>> exact = [m.issue for m in matches if m.distance == 0]
         """
         cover_hash = cover_hash.strip()
-        if not _COVER_HASH_RE.fullmatch(cover_hash):
+        if not is_cover_hash(cover_hash):
             msg = f"cover_hash must be 16 hex digits, got {cover_hash!r}"
             raise ValueError(msg)
         query: dict[str, str | int] = dict(params or {})
