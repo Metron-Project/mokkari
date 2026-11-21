@@ -26,11 +26,20 @@ __all__ = [
 SECONDS_PER_HOUR: Final[int] = 3_600
 SECONDS_PER_MINUTE: Final[int] = 60
 
-# The Hamming distance Metron's cover-hash search uses when none is given, and the
-# widest it allows. These mirror Metron's current server-side limits for reference;
-# mokkari doesn't enforce them, so Metron stays the authority if it changes them.
 DEFAULT_COVER_HASH_DISTANCE: Final[int] = 10
+"""The Hamming distance Metron's cover-hash search uses when none is given.
+
+This mirrors Metron's current server-side default for reference. mokkari doesn't
+enforce it, so Metron stays the authority if it changes.
+"""
+
 MAX_COVER_HASH_DISTANCE: Final[int] = 20
+"""The widest Hamming distance Metron's cover-hash search allows.
+
+This mirrors Metron's current server-side limit for reference. mokkari doesn't
+enforce it, so Metron stays the authority if it changes; a wider distance gets a
+400 from Metron, which raises ``ApiError``.
+"""
 
 # A 64-bit perceptual hash, as Metron stores and takes it.
 _COVER_HASH_RE: Final[re.Pattern[str]] = re.compile(r"[0-9a-fA-F]{16}")
